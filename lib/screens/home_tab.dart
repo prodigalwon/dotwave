@@ -1,11 +1,58 @@
 import 'package:flutter/material.dart';
+import '../bridge/bridge_generated.dart/frb_generated.dart';
 
-class HomeTab extends StatelessWidget {
+class HomeTab extends StatefulWidget {
   final String address;
   const HomeTab({super.key, required this.address});
 
+  @override
+  State<HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<HomeTab> {
+  static const _rpcUrl = 'ws://127.0.0.1:9944';
+  static const _dotDecimals = 10;
+
+  String? _balanceDot;
+  bool _loadingBalance = true;
+  String? _balanceError;
+
   String get _truncatedAddress =>
-      '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+      '${widget.address.substring(0, 6)}...${widget.address.substring(widget.address.length - 4)}';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchBalance();
+  }
+
+  Future<void> _fetchBalance() async {
+    setState(() {
+      _loadingBalance = true;
+      _balanceError = null;
+    });
+    try {
+      final planckStr = await RustLib.instance.api.crateCoreFetchBalance(
+        address: widget.address,
+        rpcUrl: _rpcUrl,
+      );
+      final planck = BigInt.parse(planckStr);
+      final divisor = BigInt.from(10).pow(_dotDecimals);
+      final whole = planck ~/ divisor;
+      final frac = ((planck % divisor) * BigInt.from(1000) ~/ divisor)
+          .toString()
+          .padLeft(3, '0');
+      setState(() {
+        _balanceDot = '$whole.$frac';
+        _loadingBalance = false;
+      });
+    } catch (e) {
+      setState(() {
+        _balanceError = 'Sync failed';
+        _loadingBalance = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,45 +114,60 @@ class HomeTab extends StatelessWidget {
                     const SizedBox(height: 32),
 
                     // Balance card
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [Color(0xFFE6007A), Color(0xFF6D28D9)],
+                    GestureDetector(
+                      onTap: _loadingBalance ? null : _fetchBalance,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFE6007A), Color(0xFF6D28D9)],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Total Balance',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Total Balance',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
                             ),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            '— DOT',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 36,
-                              fontWeight: FontWeight.bold,
+                            const SizedBox(height: 8),
+                            _loadingBalance
+                                ? const SizedBox(
+                                    height: 40,
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white54,
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                : Text(
+                                    _balanceError != null
+                                        ? '— DOT'
+                                        : '${_balanceDot!} DOT',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 36,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _balanceError ?? 'Tap to refresh',
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
+                              ),
                             ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Connect to network to sync',
-                            style: TextStyle(
-                              color: Colors.white54,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
 

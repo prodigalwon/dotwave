@@ -10,10 +10,14 @@ import 'backup_provider_screen.dart';
 import 'restore_provider_screen.dart';
 import 'home_shell.dart';
 
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('>>> Starting RustLib.init()');
   await RustLib.init();
+  debugPrint('>>> RustLib.init() done');
   await AndroidKeystore.generateKey();
+  debugPrint('>>> AndroidKeystore.generateKey() done');
   runApp(const DotWaveApp());
 }
 

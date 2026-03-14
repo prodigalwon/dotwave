@@ -6,6 +6,14 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+Future<String> fetchBalance({
+  required String address,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreFetchBalance(
+  address: address,
+  rpcUrl: rpcUrl,
+);
+
 (DotAccount, String) generateAccount() =>
     RustLib.instance.api.crateCoreGenerateAccount();
 

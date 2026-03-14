@@ -9,6 +9,7 @@ use subxt::{OnlineClient, PolkadotConfig};
 use subxt::utils::AccountId32;
 use std::str::FromStr;
 
+#[flutter_rust_bridge::frb(ignore)]
 #[subxt::subxt(runtime_metadata_path = "src/polkadot_metadata.scale")]
 pub mod polkadot {}
 
