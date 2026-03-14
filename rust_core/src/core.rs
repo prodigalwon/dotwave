@@ -5,6 +5,42 @@ use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, aead::{Aead, KeyInit}};
 use getrandom::fill as getrandom_fill;
 use zeroize::Zeroize;
 use zxcvbn::zxcvbn;
+use subxt::{OnlineClient, PolkadotConfig};
+use subxt::utils::AccountId32;
+use std::str::FromStr;
+
+#[subxt::subxt(runtime_metadata_path = "src/polkadot_metadata.scale")]
+pub mod polkadot {}
+
+pub fn fetch_balance(address: String, rpc_url: String) -> anyhow::Result<String> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let api = OnlineClient::<PolkadotConfig>::from_insecure_url(&rpc_url).await?;
+        let account = AccountId32::from_str(&address)
+            .map_err(|e| anyhow::anyhow!("Invalid address: {}", e))?;
+
+        let storage_query = polkadot::storage()
+            .system()
+            .account();
+
+            let block = api.at_current_block().await?;
+            let result = block
+                .storage()
+                .entry(storage_query)?
+                .try_fetch((account,))
+                .await?;
+
+            let balance = match result {
+                Some(sv) => {
+                    let info = sv.decode()?;
+                    info.data.free.to_string()
+                }
+                None => "0".to_string(),
+            };
+
+        Ok(balance)
+    })
+}
 
 #[flutter_rust_bridge::frb(sync)]
 pub struct DotAccount {
@@ -38,12 +74,9 @@ pub fn restore_account(phrase: String) -> Result<DotAccount, String> {
 
 #[flutter_rust_bridge::frb(sync)]
 pub fn encrypt_phrase(phrase: String, passphrase: String) -> Result<Vec<u8>, String> {
-    // Generate random salt
     let mut salt = [0u8; 32];
     getrandom_fill(&mut salt).map_err(|e| format!("RNG failed: {:?}", e))?;
 
-    // Argon2id with hardened parameters
-    // m_cost: 256MB, t_cost: 4 iterations, p_cost: 1
     let params = Params::new(262144, 4, 1, Some(32))
         .map_err(|e| format!("Argon2 params failed: {:?}", e))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
@@ -53,11 +86,9 @@ pub fn encrypt_phrase(phrase: String, passphrase: String) -> Result<Vec<u8>, Str
         .hash_password_into(passphrase.as_bytes(), &salt, &mut key_bytes)
         .map_err(|e| format!("Key derivation failed: {:?}", e))?;
 
-    // Generate random nonce
     let mut nonce_bytes = [0u8; 12];
     getrandom_fill(&mut nonce_bytes).map_err(|e| format!("RNG failed: {:?}", e))?;
 
-    // Encrypt with ChaCha20-Poly1305
     let key = Key::from_slice(&key_bytes);
     let cipher = ChaCha20Poly1305::new(key);
     let nonce = Nonce::from_slice(&nonce_bytes);
@@ -66,10 +97,8 @@ pub fn encrypt_phrase(phrase: String, passphrase: String) -> Result<Vec<u8>, Str
         .encrypt(nonce, phrase.as_bytes())
         .map_err(|e| format!("Encryption failed: {:?}", e))?;
 
-    // Zero out key material
     key_bytes.zeroize();
 
-    // Format: [32 bytes salt][12 bytes nonce][ciphertext]
     let mut result = Vec::new();
     result.extend_from_slice(&salt);
     result.extend_from_slice(&nonce_bytes);
@@ -87,7 +116,6 @@ pub fn decrypt_phrase(blob: Vec<u8>, passphrase: String) -> Result<String, Strin
     let nonce_bytes = &blob[32..44];
     let ciphertext = &blob[44..];
 
-    // Re-derive key with same hardened parameters
     let params = Params::new(262144, 4, 1, Some(32))
         .map_err(|e| format!("Argon2 params failed: {:?}", e))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
@@ -109,6 +137,7 @@ pub fn decrypt_phrase(blob: Vec<u8>, passphrase: String) -> Result<String, Strin
 
     String::from_utf8(plaintext).map_err(|_| "Invalid UTF-8 in decrypted phrase".to_string())
 }
+
 #[flutter_rust_bridge::frb(sync)]
 pub fn check_passphrase_strength(passphrase: String) -> PassphraseStrength {
     let estimate = zxcvbn(&passphrase, &[]);
@@ -126,8 +155,8 @@ pub fn check_passphrase_strength(passphrase: String) -> PassphraseStrength {
 
 #[flutter_rust_bridge::frb(sync)]
 pub struct PassphraseStrength {
-    pub score: u8,          // 0-4, we require minimum 3
+    pub score: u8,
     pub warning: Option<String>,
     pub suggestions: Vec<String>,
-    pub guesses_log10: f64, // log10 of estimated guesses to crack
+    pub guesses_log10: f64,
 }
