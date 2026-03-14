@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
+import 'receive_screen.dart';
 
 class HomeTab extends StatefulWidget {
   final String address;
@@ -10,7 +11,7 @@ class HomeTab extends StatefulWidget {
 }
 
 class _HomeTabState extends State<HomeTab> {
-  static const _rpcUrl = 'ws://127.0.0.1:9944';
+  static const _rpcUrl = 'ws://172.24.112.1:9944';
   static const _dotDecimals = 10;
 
   String? _balanceDot;
@@ -188,7 +189,14 @@ class _HomeTabState extends State<HomeTab> {
                           child: _QuickActionButton(
                             icon: Icons.arrow_downward,
                             label: 'Receive',
-                            onTap: () {},
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ReceiveScreen(address: widget.address),
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(width: 12),
