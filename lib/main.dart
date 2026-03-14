@@ -3,10 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'bridge/bridge_generated.dart/frb_generated.dart';
 import 'package:no_screenshot/no_screenshot.dart';
+import 'keystore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await RustLib.init();
+  await AndroidKeystore.generateKey();
   runApp(const DotWaveApp());
 }
 
@@ -298,48 +300,46 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
   bool _obscure = true;
 
   Future<void> _savePassphrase() async {
-    if (_passphraseController.text != _confirmController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passphrases do not match')),
-      );
-      return;
-    }
-    if (_passphraseController.text.length < 8) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passphrase must be at least 8 characters')),
-      );
-      return;
-    }
-
-    setState(() => _loading = true);
-
-    try {
-      final encrypted = RustLib.instance.api.crateCoreEncryptPhrase(
-        phrase: widget.phrase,
-        passphrase: _passphraseController.text,
-      );
-
-      // Store encrypted blob in secure storage for now
-      // TODO: replace with cloud storage upload
-      await _storage.write(
-        key: 'encrypted_phrase',
-        value: encrypted.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
-      );
-
-      if (!mounted) return;
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => HomeScreen(address: widget.address)),
-        (_) => false,
-      );
-    } catch (e) {
-      setState(() => _loading = false);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to encrypt: $e')),
-      );
-    }
+  if (_passphraseController.text != _confirmController.text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Passphrases do not match')),
+    );
+    return;
   }
+  if (_passphraseController.text.length < 8) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Passphrase must be at least 8 characters')),
+    );
+    return;
+  }
+
+  setState(() => _loading = true);
+
+  try {
+    final phraseBytes = Uint8List.fromList(widget.phrase.codeUnits);
+    final keystoreEncrypted = await AndroidKeystore.encrypt(phraseBytes);
+    final fullyEncrypted = RustLib.instance.api.crateCoreEncryptPhrase(
+      phrase: String.fromCharCodes(keystoreEncrypted),
+      passphrase: _passphraseController.text,
+    );
+    await _storage.write(
+      key: 'encrypted_phrase',
+      value: fullyEncrypted.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+    );
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => HomeScreen(address: widget.address)),
+      (_) => false,
+    );
+  } catch (e) {
+    setState(() => _loading = false);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Failed to encrypt: $e')),
+    );
+  }
+}
 
   @override
   void dispose() {
