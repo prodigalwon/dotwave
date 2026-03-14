@@ -4,6 +4,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'bridge/bridge_generated.dart/frb_generated.dart';
 import 'package:no_screenshot/no_screenshot.dart';
 import 'keystore.dart';
+import 'dart:typed_data';
+import 'package:local_auth/local_auth.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,20 +50,43 @@ class _SplashScreenState extends State<SplashScreen> {
     _checkExistingAccount();
   }
 
-  Future<void> _checkExistingAccount() async {
-    final address = await _storage.read(key: 'account_address');
-    if (!mounted) return;
+Future<void> _checkExistingAccount() async {
+  final address = await _storage.read(key: 'account_address');
+  if (!mounted) return;
 
-    if (address != null) {
+  if (address != null) {
+    final authenticated = await _authenticateUser();
+    if (!mounted) return;
+    if (authenticated) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => HomeScreen(address: address)),
       );
     } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Authentication required to access your account')),
       );
+      await _checkExistingAccount();
+    }
+  } else {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+    );
+  }
+}
+
+Future<bool> _authenticateUser() async {
+    final auth = LocalAuthentication();
+    final canAuth = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+    if (!canAuth) return true;
+
+    try {
+      return await auth.authenticate(
+        localizedReason: 'Authenticate to access your Dotwave account',
+      );
+    } catch (e) {
+      return false;
     }
   }
 
