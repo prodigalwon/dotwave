@@ -28,19 +28,38 @@ Dotwave is built with a security-first approach. Key material never exists in pl
 - Backup encryption: **Argon2id + ChaCha20-Poly1305** with hardened parameters (256MB memory cost, 4 iterations)
 - Biometric/PIN authentication gate for returning users
 - Recovery: encrypted cloud backup + user passphrase — no Dotwave servers involved
+- Passphrase entropy enforcement via zxcvbn with live strength meter
+- Paste-friendly passphrase fields with autofill hint support for password managers
+
+## Cloud Backup Providers
+
+- Google Drive
+- OneDrive
+- WebDAV (Proton Drive, Nextcloud, iCloud, and any WebDAV-compatible service)
+- Local file export (advanced option with explicit user warning)
 
 ## Project Structure
 
 ```
 dotwave/
-├── lib/                        # Flutter/Dart UI
-│   ├── main.dart               # App entry, screens, navigation
-│   └── keystore.dart           # Android Keystore platform channel
-├── android/                    # Android project files
-├── rust_core/                  # Rust core library
+├── lib/
+│   ├── main.dart                    # App entry, all screens and navigation
+│   ├── keystore.dart                # Android Keystore platform channel
+│   ├── cloud_backup.dart            # CloudBackupProvider abstract interface
+│   ├── backup_provider_screen.dart  # Provider picker UI for backup
+│   ├── restore_provider_screen.dart # Provider picker UI for restore
+│   └── providers/
+│       ├── google_drive_provider.dart
+│       ├── onedrive_provider.dart
+│       ├── webdav_provider.dart
+│       └── local_backup_provider.dart
+├── android/
+│   └── app/src/main/kotlin/com/dotwave/dotwave/
+│       └── MainActivity.kt          # Android Keystore + biometric platform code
+├── rust_core/
 │   ├── src/
 │   │   ├── lib.rs
-│   │   └── core.rs             # Crypto, keypair, RPC logic
+│   │   └── core.rs                  # Keypair gen, encrypt, decrypt, entropy check
 │   └── Cargo.toml
 └── flutter_rust_bridge.yaml
 ```
@@ -71,9 +90,17 @@ flutter_rust_bridge_codegen generate
 flutter build apk --debug
 ```
 
+## Onboarding Flow
+
+**New user:** Generate account → view seed phrase (screenshot blocked) → set recovery passphrase (entropy enforced) → choose cloud backup provider → upload encrypted backup → home screen
+
+**Returning user:** Biometric/PIN authentication → home screen
+
+**Account recovery:** Enter passphrase → choose backup provider → download encrypted blob → decrypt → restore keypair → home screen
+
 ## Status
 
-Early development. Security foundation is complete. Feature buildout in progress.
+Security foundation complete. Account lifecycle (create, backup, restore, authenticate) fully implemented. Home screen and feature buildout in progress.
 
 ## License
 
