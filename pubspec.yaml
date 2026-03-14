@@ -40,6 +40,8 @@ dependencies:
   pointycastle: ^4.0.0
   crypto: ^3.0.7
   local_auth: ^3.0.1
+  google_sign_in: ^7.2.0
+  googleapis: ^16.0.0
 
 dev_dependencies:
   flutter_test:

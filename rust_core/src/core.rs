@@ -1,9 +1,10 @@
 use bip39::{Mnemonic, Language};
 use sp_core::{sr25519, Pair};
-use aes_gcm::{Aes256Gcm, Key, Nonce, aead::{Aead, KeyInit}};
-use argon2::{Argon2, password_hash::SaltString};
-
+use argon2::{Argon2, Algorithm, Version, Params};
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, aead::{Aead, KeyInit}};
 use getrandom::fill as getrandom_fill;
+use zeroize::Zeroize;
+use zxcvbn::zxcvbn;
 
 #[flutter_rust_bridge::frb(sync)]
 pub struct DotAccount {
@@ -37,31 +38,40 @@ pub fn restore_account(phrase: String) -> Result<DotAccount, String> {
 
 #[flutter_rust_bridge::frb(sync)]
 pub fn encrypt_phrase(phrase: String, passphrase: String) -> Result<Vec<u8>, String> {
-    // Derive a 32-byte key from passphrase using Argon2
-    let mut salt_bytes = [0u8; 16];
-    getrandom_fill(&mut salt_bytes).map_err(|e| format!("RNG failed: {:?}", e))?;
-    let salt = SaltString::encode_b64(&salt_bytes).map_err(|e| format!("Salt encoding failed: {:?}", e))?;
-    let argon2 = Argon2::default();
+    // Generate random salt
+    let mut salt = [0u8; 32];
+    getrandom_fill(&mut salt).map_err(|e| format!("RNG failed: {:?}", e))?;
+
+    // Argon2id with hardened parameters
+    // m_cost: 256MB, t_cost: 4 iterations, p_cost: 1
+    let params = Params::new(262144, 4, 1, Some(32))
+        .map_err(|e| format!("Argon2 params failed: {:?}", e))?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
     let mut key_bytes = [0u8; 32];
     argon2
-        .hash_password_into(passphrase.as_bytes(), salt.as_str().as_bytes(), &mut key_bytes)
+        .hash_password_into(passphrase.as_bytes(), &salt, &mut key_bytes)
         .map_err(|e| format!("Key derivation failed: {:?}", e))?;
 
-    // Encrypt with AES-256-GCM
-    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-    let cipher = Aes256Gcm::new(key);
+    // Generate random nonce
     let mut nonce_bytes = [0u8; 12];
     getrandom_fill(&mut nonce_bytes).map_err(|e| format!("RNG failed: {:?}", e))?;
+
+    // Encrypt with ChaCha20-Poly1305
+    let key = Key::from_slice(&key_bytes);
+    let cipher = ChaCha20Poly1305::new(key);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let ciphertext = cipher
         .encrypt(nonce, phrase.as_bytes())
         .map_err(|e| format!("Encryption failed: {:?}", e))?;
 
-    // Return salt + nonce + ciphertext as single blob
+    // Zero out key material
+    key_bytes.zeroize();
+
+    // Format: [32 bytes salt][12 bytes nonce][ciphertext]
     let mut result = Vec::new();
-    result.extend_from_slice(salt.as_str().as_bytes());
-    result.push(0u8); // null separator for salt string
+    result.extend_from_slice(&salt);
     result.extend_from_slice(&nonce_bytes);
     result.extend_from_slice(&ciphertext);
     Ok(result)
@@ -69,36 +79,55 @@ pub fn encrypt_phrase(phrase: String, passphrase: String) -> Result<Vec<u8>, Str
 
 #[flutter_rust_bridge::frb(sync)]
 pub fn decrypt_phrase(blob: Vec<u8>, passphrase: String) -> Result<String, String> {
-    // Split out salt string (null terminated)
-    let salt_end = blob
-        .iter()
-        .position(|&b| b == 0)
-        .ok_or("Invalid blob: no salt terminator")?;
-    let salt_str = std::str::from_utf8(&blob[..salt_end])
-        .map_err(|_| "Invalid salt encoding")?;
-    let rest = &blob[salt_end + 1..];
-
-    if rest.len() < 12 {
+    if blob.len() < 44 {
         return Err("Invalid blob: too short".to_string());
     }
 
-    let nonce_bytes = &rest[..12];
-    let ciphertext = &rest[12..];
+    let salt = &blob[..32];
+    let nonce_bytes = &blob[32..44];
+    let ciphertext = &blob[44..];
 
-    // Re-derive key
-    let argon2 = Argon2::default();
+    // Re-derive key with same hardened parameters
+    let params = Params::new(262144, 4, 1, Some(32))
+        .map_err(|e| format!("Argon2 params failed: {:?}", e))?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
     let mut key_bytes = [0u8; 32];
     argon2
-        .hash_password_into(passphrase.as_bytes(), salt_str.as_bytes(), &mut key_bytes)
+        .hash_password_into(passphrase.as_bytes(), salt, &mut key_bytes)
         .map_err(|e| format!("Key derivation failed: {:?}", e))?;
 
-    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-    let cipher = Aes256Gcm::new(key);
+    let key = Key::from_slice(&key_bytes);
+    let cipher = ChaCha20Poly1305::new(key);
     let nonce = Nonce::from_slice(nonce_bytes);
 
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|_| "Decryption failed: wrong passphrase or corrupted data")?;
+        .map_err(|_| "Decryption failed: wrong passphrase or corrupted data".to_string())?;
+
+    key_bytes.zeroize();
 
     String::from_utf8(plaintext).map_err(|_| "Invalid UTF-8 in decrypted phrase".to_string())
+}
+#[flutter_rust_bridge::frb(sync)]
+pub fn check_passphrase_strength(passphrase: String) -> PassphraseStrength {
+    let estimate = zxcvbn(&passphrase, &[]);
+    PassphraseStrength {
+        score: estimate.score() as u8,
+        warning: estimate.feedback()
+            .and_then(|f| f.warning())
+            .map(|w| format!("{}", w)),
+        suggestions: estimate.feedback()
+            .map(|f| f.suggestions().iter().map(|s| format!("{}", s)).collect())
+            .unwrap_or_default(),
+        guesses_log10: estimate.guesses_log10(),
+    }
+}
+
+#[flutter_rust_bridge::frb(sync)]
+pub struct PassphraseStrength {
+    pub score: u8,          // 0-4, we require minimum 3
+    pub warning: Option<String>,
+    pub suggestions: Vec<String>,
+    pub guesses_log10: f64, // log10 of estimated guesses to crack
 }

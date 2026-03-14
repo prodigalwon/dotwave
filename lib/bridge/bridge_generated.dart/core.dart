@@ -24,6 +24,11 @@ String decryptPhrase({required List<int> blob, required String passphrase}) =>
       passphrase: passphrase,
     );
 
+PassphraseStrength checkPassphraseStrength({required String passphrase}) =>
+    RustLib.instance.api.crateCoreCheckPassphraseStrength(
+      passphrase: passphrase,
+    );
+
 class DotAccount {
   final String address;
   final Uint8List publicKey;
@@ -40,4 +45,35 @@ class DotAccount {
           runtimeType == other.runtimeType &&
           address == other.address &&
           publicKey == other.publicKey;
+}
+
+class PassphraseStrength {
+  final int score;
+  final String? warning;
+  final List<String> suggestions;
+  final double guessesLog10;
+
+  const PassphraseStrength({
+    required this.score,
+    this.warning,
+    required this.suggestions,
+    required this.guessesLog10,
+  });
+
+  @override
+  int get hashCode =>
+      score.hashCode ^
+      warning.hashCode ^
+      suggestions.hashCode ^
+      guessesLog10.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PassphraseStrength &&
+          runtimeType == other.runtimeType &&
+          score == other.score &&
+          warning == other.warning &&
+          suggestions == other.suggestions &&
+          guessesLog10 == other.guessesLog10;
 }
