@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:local_auth/local_auth.dart';
 import 'backup_provider_screen.dart';
 import 'restore_provider_screen.dart';
+import 'home_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,7 +63,8 @@ Future<void> _checkExistingAccount() async {
     if (authenticated) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => HomeScreen(address: address)),
+        MaterialPageRoute(builder: (_) => HomeShell(address:
+ address)),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -295,24 +297,7 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
   }
 }
 
-class HomeScreen extends StatelessWidget {
-  final String address;
-  const HomeScreen({super.key, required this.address});
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Dotwave')),
-      body: Center(
-        child: Text(
-          address,
-          style: const TextStyle(fontSize: 12, color: Colors.white60),
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}
 class SetPassphraseScreen extends StatefulWidget {
   final String phrase;
   final String address;
@@ -387,7 +372,8 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
               onComplete: () {
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (_) => HomeScreen(address: widget.address)),
+                  MaterialPageRoute(builder: (_) => HomeShell(address:
+ widget.address)),
                   (_) => false,
                 );
               },
@@ -580,7 +566,8 @@ Future<void> _restoreFromBlob(Uint8List blob) async {
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (_) => HomeScreen(address: account.address)),
+      MaterialPageRoute(builder: (_) => HomeShell(address:
+ account.address)),
       (_) => false,
     );
   } catch (e) {
