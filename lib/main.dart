@@ -6,6 +6,7 @@ import 'package:no_screenshot/no_screenshot.dart';
 import 'keystore.dart';
 import 'dart:typed_data';
 import 'package:local_auth/local_auth.dart';
+import 'backup_provider_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -374,11 +375,24 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
         value: fullyEncrypted.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
       );
       if (!mounted) return;
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => HomeScreen(address: widget.address)),
-        (_) => false,
-      );
+      if (!mounted) return;
+      if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => BackupProviderScreen(
+              encryptedBlob: Uint8List.fromList(fullyEncrypted),
+              address: widget.address,
+              onComplete: () {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => HomeScreen(address: widget.address)),
+                  (_) => false,
+                );
+              },
+            ),
+          ),
+        );
     } catch (e) {
       setState(() => _loading = false);
       if (!mounted) return;
