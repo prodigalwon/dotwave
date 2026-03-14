@@ -147,7 +147,10 @@ class OnboardingScreen extends StatelessWidget {
               const SizedBox(height: 16),
               OutlinedButton(
                 onPressed: () {
-                  // TODO: restore account flow
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const RestoreAccountScreen()),
+                  );
                 },
                 child: const Padding(
                   padding: EdgeInsets.all(16.0),
@@ -498,4 +501,148 @@ Widget build(BuildContext context) {
     ),
   );
 }
+}
+class RestoreAccountScreen extends StatefulWidget {
+  const RestoreAccountScreen({super.key});
+
+  @override
+  State<RestoreAccountScreen> createState() => _RestoreAccountScreenState();
+}
+
+class _RestoreAccountScreenState extends State<RestoreAccountScreen> {
+  final _passphraseController = TextEditingController();
+  final _storage = const FlutterSecureStorage();
+  bool _loading = false;
+  bool _obscure = true;
+
+  Future<void> _restoreAccount() async {
+    if (_passphraseController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your recovery passphrase')),
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    try {
+      // Read encrypted blob from secure storage
+      // TODO: replace with cloud storage download
+      final blobHex = await _storage.read(key: 'encrypted_phrase');
+      if (blobHex == null) {
+        throw Exception('No backup found on this device. Cloud restore coming soon.');
+      }
+
+      // Convert hex back to bytes
+      final blob = List.generate(
+        blobHex.length ~/ 2,
+        (i) => int.parse(blobHex.substring(i * 2, i * 2 + 2), radix: 16),
+      );
+
+      // Decrypt with Rust
+      final phrase = RustLib.instance.api.crateCoreDecryptPhrase(
+        blob: blob,
+        passphrase: _passphraseController.text,
+      );
+
+      // Restore keypair from phrase
+      final account = RustLib.instance.api.crateCoreRestoreAccount(
+        phrase: phrase,
+      );
+
+      // Persist restored account
+      await _storage.write(key: 'account_address', value: account.address);
+
+      // Re-encrypt and store blob with new Keystore key
+      final phraseBytes = Uint8List.fromList(phrase.codeUnits);
+      final keystoreEncrypted = await AndroidKeystore.encrypt(phraseBytes);
+      final fullyEncrypted = RustLib.instance.api.crateCoreEncryptPhrase(
+        phrase: String.fromCharCodes(keystoreEncrypted),
+        passphrase: _passphraseController.text,
+      );
+      await _storage.write(
+        key: 'encrypted_phrase',
+        value: fullyEncrypted.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+      );
+
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => HomeScreen(address: account.address)),
+        (_) => false,
+      );
+    } catch (e) {
+      setState(() => _loading = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Restore failed: $e')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _passphraseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Restore Account')),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Restore your account',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Enter your recovery passphrase to restore your account from your cloud backup.',
+                style: TextStyle(color: Colors.white60),
+              ),
+              const SizedBox(height: 32),
+              TextField(
+                controller: _passphraseController,
+                obscureText: _obscure,
+                enableSuggestions: false,
+                autocorrect: false,
+                autofillHints: const [AutofillHints.password],
+                decoration: InputDecoration(
+                  labelText: 'Recovery passphrase',
+                  border: const OutlineInputBorder(),
+                  helperText: 'Paste from your password manager',
+                  helperStyle: const TextStyle(color: Colors.white38),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+              FilledButton(
+                onPressed: _loading ? null : _restoreAccount,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: _loading
+                      ? const CircularProgressIndicator()
+                      : const Text('Restore Account'),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Cloud backup restore coming soon. Currently restores from this device only.',
+                style: TextStyle(fontSize: 12, color: Colors.white38),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
