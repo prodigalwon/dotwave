@@ -13,3 +13,4 @@ rand = "0.10.0"
 rand_core = "0.10.0"
 sp-core = { version = "39.0.0", features = ["full_crypto"] }
 zeroize = "1.8.2"
+zxcvbn = "3.1.0"

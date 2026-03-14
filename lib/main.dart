@@ -325,46 +325,65 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
   bool _obscure = true;
 
   Future<void> _savePassphrase() async {
-  if (_passphraseController.text != _confirmController.text) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Passphrases do not match')),
-    );
-    return;
-  }
-  if (_passphraseController.text.length < 8) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Passphrase must be at least 8 characters')),
-    );
-    return;
-  }
+    if (_passphraseController.text != _confirmController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passphrases do not match')),
+      );
+      return;
+    }
+    if (_passphraseController.text.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passphrase must be at least 8 characters')),
+      );
+      return;
+    }
 
-  setState(() => _loading = true);
-
-  try {
-    final phraseBytes = Uint8List.fromList(widget.phrase.codeUnits);
-    final keystoreEncrypted = await AndroidKeystore.encrypt(phraseBytes);
-    final fullyEncrypted = RustLib.instance.api.crateCoreEncryptPhrase(
-      phrase: String.fromCharCodes(keystoreEncrypted),
+    // Check entropy
+    final strength = RustLib.instance.api.crateCoreCheckPassphraseStrength(
       passphrase: _passphraseController.text,
     );
-    await _storage.write(
-      key: 'encrypted_phrase',
-      value: fullyEncrypted.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
-    );
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => HomeScreen(address: widget.address)),
-      (_) => false,
-    );
-  } catch (e) {
-    setState(() => _loading = false);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Failed to encrypt: $e')),
-    );
+
+    if (strength.score < 3) {
+      final warning = strength.warning ?? 'Passphrase is too weak';
+      final suggestions = strength.suggestions.isNotEmpty
+          ? '\n• ${strength.suggestions.join('\n• ')}'
+          : '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$warning$suggestions'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    try {
+      final phraseBytes = Uint8List.fromList(widget.phrase.codeUnits);
+      final keystoreEncrypted = await AndroidKeystore.encrypt(phraseBytes);
+      final fullyEncrypted = RustLib.instance.api.crateCoreEncryptPhrase(
+        phrase: String.fromCharCodes(keystoreEncrypted),
+        passphrase: _passphraseController.text,
+      );
+      await _storage.write(
+        key: 'encrypted_phrase',
+        value: fullyEncrypted.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+      );
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => HomeScreen(address: widget.address)),
+        (_) => false,
+      );
+    } catch (e) {
+      setState(() => _loading = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to encrypt: $e')),
+      );
+    }
   }
-}
 
   @override
   void dispose() {
@@ -396,6 +415,7 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
               TextField(
                 controller: _passphraseController,
                 obscureText: _obscure,
+                onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   labelText: 'Recovery passphrase',
                   border: const OutlineInputBorder(),
@@ -405,6 +425,44 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 8),
+              if (_passphraseController.text.isNotEmpty)
+                Builder(builder: (context) {
+                  final strength = RustLib.instance.api.crateCoreCheckPassphraseStrength(
+                    passphrase: _passphraseController.text,
+                  );
+                  final colors = [
+                    Colors.red,
+                    Colors.orange,
+                    Colors.yellow,
+                    Colors.lightGreen,
+                    Colors.green,
+                  ];
+                  final labels = ['Very weak', 'Weak', 'Fair', 'Strong', 'Very strong'];
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LinearProgressIndicator(
+                        value: (strength.score + 1) / 5,
+                        color: colors[strength.score],
+                        backgroundColor: Colors.white12,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        labels[strength.score],
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colors[strength.score],
+                        ),
+                      ),
+                      if (strength.warning != null)
+                        Text(
+                          strength.warning!,
+                          style: const TextStyle(fontSize: 12, color: Colors.white60),
+                        ),
+                    ],
+                  );
+                }),
               const SizedBox(height: 16),
               TextField(
                 controller: _confirmController,

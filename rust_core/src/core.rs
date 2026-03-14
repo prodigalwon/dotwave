@@ -4,6 +4,7 @@ use argon2::{Argon2, Algorithm, Version, Params};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, aead::{Aead, KeyInit}};
 use getrandom::fill as getrandom_fill;
 use zeroize::Zeroize;
+use zxcvbn::zxcvbn;
 
 #[flutter_rust_bridge::frb(sync)]
 pub struct DotAccount {
@@ -107,4 +108,26 @@ pub fn decrypt_phrase(blob: Vec<u8>, passphrase: String) -> Result<String, Strin
     key_bytes.zeroize();
 
     String::from_utf8(plaintext).map_err(|_| "Invalid UTF-8 in decrypted phrase".to_string())
+}
+#[flutter_rust_bridge::frb(sync)]
+pub fn check_passphrase_strength(passphrase: String) -> PassphraseStrength {
+    let estimate = zxcvbn(&passphrase, &[]);
+    PassphraseStrength {
+        score: estimate.score() as u8,
+        warning: estimate.feedback()
+            .and_then(|f| f.warning())
+            .map(|w| format!("{}", w)),
+        suggestions: estimate.feedback()
+            .map(|f| f.suggestions().iter().map(|s| format!("{}", s)).collect())
+            .unwrap_or_default(),
+        guesses_log10: estimate.guesses_log10(),
+    }
+}
+
+#[flutter_rust_bridge::frb(sync)]
+pub struct PassphraseStrength {
+    pub score: u8,          // 0-4, we require minimum 3
+    pub warning: Option<String>,
+    pub suggestions: Vec<String>,
+    pub guesses_log10: f64, // log10 of estimated guesses to crack
 }
