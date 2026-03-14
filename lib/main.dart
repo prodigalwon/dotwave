@@ -393,12 +393,13 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Set Recovery Passphrase')),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(title: const Text('Set Recovery Passphrase')),
+    body: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: AutofillGroup(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -408,7 +409,7 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'If you lose your phone, you\'ll need this passphrase plus your cloud backup to recover your account. Store it somewhere safe — we cannot recover it for you.',
+                'If you lose your phone, you\'ll need this passphrase plus your cloud backup to recover your account. Use a password manager with end-to-end encryption to generate and store your passphrase. Avoid storing it anywhere that syncs to a cloud service you don\'t control.',
                 style: TextStyle(color: Colors.white60),
               ),
               const SizedBox(height: 32),
@@ -416,9 +417,14 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
                 controller: _passphraseController,
                 obscureText: _obscure,
                 onChanged: (_) => setState(() {}),
+                enableSuggestions: false,
+                autocorrect: false,
+                autofillHints: const [AutofillHints.newPassword],
                 decoration: InputDecoration(
                   labelText: 'Recovery passphrase',
                   border: const OutlineInputBorder(),
+                  helperText: 'Paste from your password manager',
+                  helperStyle: const TextStyle(color: Colors.white38),
                   suffixIcon: IconButton(
                     icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
                     onPressed: () => setState(() => _obscure = !_obscure),
@@ -467,6 +473,9 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
               TextField(
                 controller: _confirmController,
                 obscureText: _obscure,
+                enableSuggestions: false,
+                autocorrect: false,
+                autofillHints: const [AutofillHints.newPassword],
                 decoration: const InputDecoration(
                   labelText: 'Confirm passphrase',
                   border: OutlineInputBorder(),
@@ -486,6 +495,7 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
