@@ -1,0 +1,15 @@
+[package]
+name = "rust_core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aes-gcm = "0.10.3"
+argon2 = "0.5.3"
+bip39 = "2.2.2"
+flutter_rust_bridge = "=2.11.1"
+getrandom = "0.4.2"
+rand = "0.10.0"
+rand_core = "0.10.0"
+sp-core = { version = "39.0.0", features = ["full_crypto"] }
+zeroize = "1.8.2"
