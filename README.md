@@ -98,9 +98,21 @@ flutter build apk --debug
 
 **Account recovery:** Enter passphrase → choose backup provider → download encrypted blob → decrypt → restore keypair → home screen
 
+## Known Limitations & TODOs
+
+### Name Registration Pricing
+
+Name registration fees are currently **hardcoded** in `rust_core/src/core.rs` (`get_name_price`) using a tiered length-based table (e.g. 1-char = 1000 DOT, 6+ chars = 0.5 DOT). This is a temporary stand-in.
+
+**Before production:** replace with a live query to the on-chain `price_oracle` pallet. Governance can update the price schedule at any time via referendum, so hardcoding will silently go stale. The correct approach is to call the oracle at registration time and display whatever the chain currently reports.
+
+### Name Registration Extrinsic
+
+The `register_name` function in Rust connects to the node and derives the keypair, but the actual PNS registration extrinsic submission is stubbed pending confirmation of the pallet call name and parameters.
+
 ## Status
 
-Security foundation complete. Account lifecycle (create, backup, restore, authenticate) fully implemented. Home screen and feature buildout in progress.
+Security foundation complete. Account lifecycle (create, backup, restore, authenticate) fully implemented. Name search, availability checking, and marketplace listing detection live. Transaction confirmation blade (reusable for all TX types) in place. Name registration extrinsic and price oracle integration pending.
 
 ## License
 

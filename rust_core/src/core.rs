@@ -24,22 +24,86 @@ pub fn fetch_balance(address: String, rpc_url: String) -> anyhow::Result<String>
             .system()
             .account();
 
-            let block = api.at_current_block().await?;
-            let result = block
-                .storage()
-                .entry(storage_query)?
-                .try_fetch((account,))
-                .await?;
+        let block = api.at_current_block().await?;
+        let result = block
+            .storage()
+            .entry(storage_query)?
+            .try_fetch((account,))
+            .await?;
 
-            let balance = match result {
-                Some(sv) => {
-                    let info = sv.decode()?;
-                    info.data.free.to_string()
-                }
-                None => "0".to_string(),
-            };
+        let balance = match result {
+            Some(sv) => {
+                let info = sv.decode()?;
+                info.data.free.to_string()
+            }
+            None => "0".to_string(),
+        };
 
         Ok(balance)
+    })
+}
+
+#[flutter_rust_bridge::frb(sync)]
+pub struct NameAvailability {
+    pub available: bool,
+    pub for_sale: bool,
+}
+
+pub fn check_name_availability(name: String, rpc_url: String) -> Result<NameAvailability, String> {
+    let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let api = OnlineClient::<PolkadotConfig>::from_insecure_url(&rpc_url)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let name_bytes = name.as_bytes().to_vec();
+
+        let block = api.at_current_block().await.map_err(|e| e.to_string())?;
+
+        let resolve_payload = polkadot::runtime_apis()
+            .pns_storage_api()
+            .resolve_name(name_bytes.clone());
+
+        let record: Option<_> = block
+            .runtime_apis()
+            .call(resolve_payload)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let available = record.is_none();
+        let for_sale = record.map(|r| r.for_sale).unwrap_or(false);
+
+        Ok(NameAvailability { available, for_sale })
+    })
+}
+
+pub fn get_name_price(name: String, _rpc_url: String) -> Result<String, String> {
+    let planck: u128 = match name.chars().count() {
+        1 => 1_000 * 1_000_000_000_000,
+        2 => 100  * 1_000_000_000_000,
+        3 => 45   * 1_000_000_000_000,
+        4 => 25   * 1_000_000_000_000,
+        5 => 10   * 1_000_000_000_000,
+        _ => 500_000_000_000, // 0.5 DOT
+    };
+    Ok(planck.to_string())
+}
+
+pub fn register_name(name: String, phrase: String, rpc_url: String) -> Result<String, String> {
+    let (pair, _) = sr25519::Pair::from_phrase(&phrase, None)
+        .map_err(|e| format!("Keypair error: {:?}", e))?;
+
+    let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let _api = OnlineClient::<PolkadotConfig>::from_insecure_url(&rpc_url)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let _name_bytes = name.as_bytes().to_vec();
+        let _public = pair.public();
+
+        // TODO: submit extrinsic once pallet call is confirmed
+        Err("PNS registration extrinsic not yet implemented".to_string())
     })
 }
 

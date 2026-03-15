@@ -14,6 +14,27 @@ Future<String> fetchBalance({
   rpcUrl: rpcUrl,
 );
 
+Future<NameAvailability> checkNameAvailability({
+  required String name,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreCheckNameAvailability(
+  name: name,
+  rpcUrl: rpcUrl,
+);
+
+Future<String> getNamePrice({required String name, required String rpcUrl}) =>
+    RustLib.instance.api.crateCoreGetNamePrice(name: name, rpcUrl: rpcUrl);
+
+Future<String> registerName({
+  required String name,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreRegisterName(
+  name: name,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
 (DotAccount, String) generateAccount() =>
     RustLib.instance.api.crateCoreGenerateAccount();
 
@@ -53,6 +74,24 @@ class DotAccount {
           runtimeType == other.runtimeType &&
           address == other.address &&
           publicKey == other.publicKey;
+}
+
+class NameAvailability {
+  final bool available;
+  final bool forSale;
+
+  const NameAvailability({required this.available, required this.forSale});
+
+  @override
+  int get hashCode => available.hashCode ^ forSale.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NameAvailability &&
+          runtimeType == other.runtimeType &&
+          available == other.available &&
+          forSale == other.forSale;
 }
 
 class PassphraseStrength {

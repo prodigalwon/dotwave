@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
+import '../widgets/transaction_blade.dart';
 import 'receive_screen.dart';
 
 class HomeTab extends StatefulWidget {
@@ -12,11 +14,20 @@ class HomeTab extends StatefulWidget {
 
 class _HomeTabState extends State<HomeTab> {
   static const _rpcUrl = 'ws://172.24.112.1:9944';
-  static const _dotDecimals = 10;
+  static const _dotDecimals = 12;
 
   String? _balanceDot;
   bool _loadingBalance = true;
   String? _balanceError;
+
+  final _searchController = TextEditingController();
+  bool _searchingName = false;
+  bool _searchingMarketplace = false;
+  bool? _nameAvailable;
+  bool? _nameForSale;
+  String? _nameInputError;
+
+  static final _validName = RegExp(r'^[a-zA-Z0-9]+$');
 
   String get _truncatedAddress =>
       '${widget.address.substring(0, 6)}...${widget.address.substring(widget.address.length - 4)}';
@@ -25,6 +36,51 @@ class _HomeTabState extends State<HomeTab> {
   void initState() {
     super.initState();
     _fetchBalance();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _searchName() async {
+    final name = _searchController.text.trim();
+    if (name.isEmpty) return;
+
+    if (!_validName.hasMatch(name)) {
+      setState(() {
+        _nameInputError = 'Only letters and numbers allowed';
+        _nameAvailable = null;
+        _nameForSale = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _nameInputError = null;
+      _searchingName = true;
+      _nameAvailable = null;
+      _nameForSale = null;
+    });
+    try {
+      final result = await RustLib.instance.api.crateCoreCheckNameAvailability(
+        name: name,
+        rpcUrl: _rpcUrl,
+      );
+      setState(() {
+        _nameAvailable = result.available;
+        _searchingName = false;
+        _searchingMarketplace = !result.available;
+        _nameForSale = result.forSale ? true : null;
+        _searchingMarketplace = false;
+      });
+    } catch (_) {
+      setState(() {
+        _searchingName = false;
+        _searchingMarketplace = false;
+      });
+    }
   }
 
   Future<void> _fetchBalance() async {
@@ -217,6 +273,195 @@ class _HomeTabState extends State<HomeTab> {
                         ),
                       ],
                     ),
+
+                    const SizedBox(height: 32),
+
+                    // Name search
+                    const Text(
+                      'Find a Name',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            style: const TextStyle(color: Colors.white),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                            ],
+                            onChanged: (_) {
+                              if (_nameInputError != null) {
+                                setState(() => _nameInputError = null);
+                              }
+                            },
+                            decoration: InputDecoration(
+                              hintText: 'Search a name...',
+                              hintStyle: const TextStyle(color: Colors.white38),
+                              filled: true,
+                              fillColor: const Color(0xFF1E1E1E),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: _nameInputError != null
+                                    ? const BorderSide(color: Colors.redAccent, width: 1.5)
+                                    : BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: _nameInputError != null
+                                      ? Colors.redAccent
+                                      : const Color(0xFFE6007A),
+                                  width: 1.5,
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                            ),
+                            onSubmitted: (_) => _searchName(),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                          onTap: _searchingName ? null : _searchName,
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE6007A),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: _searchingName
+                                ? const Padding(
+                                    padding: EdgeInsets.all(12),
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.search, color: Colors.white, size: 22),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_nameInputError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _nameInputError!,
+                        style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                      ),
+                    ],
+                    if (_nameAvailable == true) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            final name = _searchController.text.trim();
+                            TransactionBlade.show(
+                              context,
+                              TransactionBlade(
+                                transactionType: 'Name Registration',
+                                rows: [
+                                  TxRow('Name', '$name.dot'),
+                                ],
+                                costLabel: 'Registration Fee',
+                                loadCost: () =>
+                                    RustLib.instance.api.crateCoreGetNamePrice(
+                                      name: name,
+                                      rpcUrl: _rpcUrl,
+                                    ),
+                                preflightCheck: () async {
+                                  final result = await RustLib.instance.api
+                                      .crateCoreCheckNameAvailability(
+                                    name: name,
+                                    rpcUrl: _rpcUrl,
+                                  );
+                                  return result.available
+                                      ? null
+                                      : 'Name no longer available';
+                                },
+                                onConfirm: (phrase) =>
+                                    RustLib.instance.api.crateCoreRegisterName(
+                                  name: name,
+                                  phrase: phrase,
+                                  rpcUrl: _rpcUrl,
+                                ),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF16A34A),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: const Text(
+                            'Available!',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ] else if (_nameAvailable == false) ...[
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Taken',
+                        style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (_searchingMarketplace) ...[
+                        const SizedBox(height: 8),
+                        const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            color: Colors.white38,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      ] else if (_nameForSale == true) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () {},
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFE6007A),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: const Text(
+                              'For Sale!',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
 
                     const SizedBox(height: 32),
 
