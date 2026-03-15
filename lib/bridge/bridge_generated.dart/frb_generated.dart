@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 1604391641;
+  int get rustContentHash => -1065598670;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -75,6 +75,12 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<String> crateCoreBuyName({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+  });
+
   Future<NameAvailability> crateCoreCheckNameAvailability({
     required String name,
     required String rpcUrl,
@@ -101,6 +107,11 @@ abstract class RustLibApi extends BaseApi {
 
   (DotAccount, String) crateCoreGenerateAccount();
 
+  Future<NameListing?> crateCoreGetNameListing({
+    required String name,
+    required String rpcUrl,
+  });
+
   Future<String> crateCoreGetNamePrice({
     required String name,
     required String rpcUrl,
@@ -112,7 +123,31 @@ abstract class RustLibApi extends BaseApi {
     required String rpcUrl,
   });
 
+  Future<String?> crateCoreResolveAddressToName({
+    required String address,
+    required String rpcUrl,
+  });
+
+  Future<ResolvedName?> crateCoreResolveNameVerified({
+    required String name,
+    required String rpcUrl,
+  });
+
   DotAccount crateCoreRestoreAccount({required String phrase});
+
+  Future<String> crateCoreSendDot({
+    required String toAddress,
+    required String amountPlanck,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<bool> crateCoreVerifyNameOwnership({
+    required String name,
+    required String blockHashHex,
+    required String expectedOwner,
+    required String rpcUrl,
+  });
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -122,6 +157,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required super.generalizedFrbRustBinding,
     required super.portManager,
   });
+
+  @override
+  Future<String> crateCoreBuyName({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 1,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreBuyNameConstMeta,
+        argValues: [name, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreBuyNameConstMeta => const TaskConstMeta(
+    debugName: "buy_name",
+    argNames: ["name", "phrase", "rpcUrl"],
+  );
 
   @override
   Future<NameAvailability> crateCoreCheckNameAvailability({
@@ -137,7 +208,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 2,
             port: port_,
           );
         },
@@ -167,7 +238,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(passphrase, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_passphrase_strength,
@@ -197,7 +268,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_prim_u_8_loose(blob, serializer);
           sse_encode_String(passphrase, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -226,7 +297,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(phrase, serializer);
           sse_encode_String(passphrase, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -258,7 +329,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 6,
             port: port_,
           );
         },
@@ -284,7 +355,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_record_dot_account_string,
@@ -301,6 +372,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "generate_account", argNames: []);
 
   @override
+  Future<NameListing?> crateCoreGetNameListing({
+    required String name,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_name_listing,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreGetNameListingConstMeta,
+        argValues: [name, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreGetNameListingConstMeta => const TaskConstMeta(
+    debugName: "get_name_listing",
+    argNames: ["name", "rpcUrl"],
+  );
+
+  @override
   Future<String> crateCoreGetNamePrice({
     required String name,
     required String rpcUrl,
@@ -314,7 +419,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 9,
             port: port_,
           );
         },
@@ -350,7 +455,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 10,
             port: port_,
           );
         },
@@ -371,13 +476,83 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<String?> crateCoreResolveAddressToName({
+    required String address,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(address, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreResolveAddressToNameConstMeta,
+        argValues: [address, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreResolveAddressToNameConstMeta =>
+      const TaskConstMeta(
+        debugName: "resolve_address_to_name",
+        argNames: ["address", "rpcUrl"],
+      );
+
+  @override
+  Future<ResolvedName?> crateCoreResolveNameVerified({
+    required String name,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_resolved_name,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreResolveNameVerifiedConstMeta,
+        argValues: [name, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreResolveNameVerifiedConstMeta =>
+      const TaskConstMeta(
+        debugName: "resolve_name_verified",
+        argNames: ["name", "rpcUrl"],
+      );
+
+  @override
   DotAccount crateCoreRestoreAccount({required String phrase}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(phrase, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_dot_account,
@@ -392,6 +567,83 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateCoreRestoreAccountConstMeta =>
       const TaskConstMeta(debugName: "restore_account", argNames: ["phrase"]);
+
+  @override
+  Future<String> crateCoreSendDot({
+    required String toAddress,
+    required String amountPlanck,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(toAddress, serializer);
+          sse_encode_String(amountPlanck, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 14,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreSendDotConstMeta,
+        argValues: [toAddress, amountPlanck, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreSendDotConstMeta => const TaskConstMeta(
+    debugName: "send_dot",
+    argNames: ["toAddress", "amountPlanck", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<bool> crateCoreVerifyNameOwnership({
+    required String name,
+    required String blockHashHex,
+    required String expectedOwner,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(blockHashHex, serializer);
+          sse_encode_String(expectedOwner, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreVerifyNameOwnershipConstMeta,
+        argValues: [name, blockHashHex, expectedOwner, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreVerifyNameOwnershipConstMeta =>
+      const TaskConstMeta(
+        debugName: "verify_name_ownership",
+        argNames: ["name", "blockHashHex", "expectedOwner", "rpcUrl"],
+      );
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
@@ -409,6 +661,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   bool dco_decode_bool(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as bool;
+  }
+
+  @protected
+  NameListing dco_decode_box_autoadd_name_listing(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_name_listing(raw);
+  }
+
+  @protected
+  ResolvedName dco_decode_box_autoadd_resolved_name(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_resolved_name(raw);
   }
 
   @protected
@@ -460,9 +724,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  NameListing dco_decode_name_listing(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return NameListing(
+      price: dco_decode_String(arr[0]),
+      seller: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
   String? dco_decode_opt_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  NameListing? dco_decode_opt_box_autoadd_name_listing(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_name_listing(raw);
+  }
+
+  @protected
+  ResolvedName? dco_decode_opt_box_autoadd_resolved_name(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_resolved_name(raw);
   }
 
   @protected
@@ -487,6 +775,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       throw Exception('Expected 2 elements, got ${arr.length}');
     }
     return (dco_decode_dot_account(arr[0]), dco_decode_String(arr[1]));
+  }
+
+  @protected
+  ResolvedName dco_decode_resolved_name(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return ResolvedName(
+      owner: dco_decode_String(arr[0]),
+      lastBlock: dco_decode_u_32(arr[1]),
+      blockHash: dco_decode_String(arr[2]),
+    );
+  }
+
+  @protected
+  int dco_decode_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
   }
 
   @protected
@@ -519,6 +826,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   bool sse_decode_bool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
+  NameListing sse_decode_box_autoadd_name_listing(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_name_listing(deserializer));
+  }
+
+  @protected
+  ResolvedName sse_decode_box_autoadd_resolved_name(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_resolved_name(deserializer));
   }
 
   @protected
@@ -570,11 +893,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  NameListing sse_decode_name_listing(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_price = sse_decode_String(deserializer);
+    var var_seller = sse_decode_String(deserializer);
+    return NameListing(price: var_price, seller: var_seller);
+  }
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_String(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  NameListing? sse_decode_opt_box_autoadd_name_listing(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_name_listing(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  ResolvedName? sse_decode_opt_box_autoadd_resolved_name(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_resolved_name(deserializer));
     } else {
       return null;
     }
@@ -605,6 +962,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_field0 = sse_decode_dot_account(deserializer);
     var var_field1 = sse_decode_String(deserializer);
     return (var_field0, var_field1);
+  }
+
+  @protected
+  ResolvedName sse_decode_resolved_name(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_owner = sse_decode_String(deserializer);
+    var var_lastBlock = sse_decode_u_32(deserializer);
+    var var_blockHash = sse_decode_String(deserializer);
+    return ResolvedName(
+      owner: var_owner,
+      lastBlock: var_lastBlock,
+      blockHash: var_blockHash,
+    );
+  }
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint32();
   }
 
   @protected
@@ -643,6 +1019,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_bool(bool self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self ? 1 : 0);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_name_listing(
+    NameListing self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_name_listing(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_resolved_name(
+    ResolvedName self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_resolved_name(self, serializer);
   }
 
   @protected
@@ -700,12 +1094,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_name_listing(NameListing self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.price, serializer);
+    sse_encode_String(self.seller, serializer);
+  }
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_String(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_name_listing(
+    NameListing? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_name_listing(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_resolved_name(
+    ResolvedName? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_resolved_name(self, serializer);
     }
   }
 
@@ -729,6 +1156,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_dot_account(self.$1, serializer);
     sse_encode_String(self.$2, serializer);
+  }
+
+  @protected
+  void sse_encode_resolved_name(ResolvedName self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.owner, serializer);
+    sse_encode_u_32(self.lastBlock, serializer);
+    sse_encode_String(self.blockHash, serializer);
+  }
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint32(self);
   }
 
   @protected

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'governance_screen.dart';
 
 class ExploreTab extends StatelessWidget {
   const ExploreTab({super.key});
@@ -102,7 +103,15 @@ class _AppTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: app.available
-          ? () {}
+          ? () {
+              if (app.name == 'Governance') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const GovernanceScreen()),
+                );
+              }
+            }
           : () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('${app.name} coming soon')),

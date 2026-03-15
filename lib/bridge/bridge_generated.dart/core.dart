@@ -25,6 +25,61 @@ Future<NameAvailability> checkNameAvailability({
   rpcUrl: rpcUrl,
 );
 
+Future<String?> resolveAddressToName({
+  required String address,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreResolveAddressToName(
+  address: address,
+  rpcUrl: rpcUrl,
+);
+
+Future<NameListing?> getNameListing({
+  required String name,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreGetNameListing(name: name, rpcUrl: rpcUrl);
+
+Future<ResolvedName?> resolveNameVerified({
+  required String name,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreResolveNameVerified(
+  name: name,
+  rpcUrl: rpcUrl,
+);
+
+Future<bool> verifyNameOwnership({
+  required String name,
+  required String blockHashHex,
+  required String expectedOwner,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreVerifyNameOwnership(
+  name: name,
+  blockHashHex: blockHashHex,
+  expectedOwner: expectedOwner,
+  rpcUrl: rpcUrl,
+);
+
+Future<String> sendDot({
+  required String toAddress,
+  required String amountPlanck,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreSendDot(
+  toAddress: toAddress,
+  amountPlanck: amountPlanck,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+Future<String> buyName({
+  required String name,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreBuyName(
+  name: name,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
 Future<String> getNamePrice({required String name, required String rpcUrl}) =>
     RustLib.instance.api.crateCoreGetNamePrice(name: name, rpcUrl: rpcUrl);
 
@@ -97,6 +152,24 @@ class NameAvailability {
           forSale == other.forSale;
 }
 
+class NameListing {
+  final String price;
+  final String seller;
+
+  const NameListing({required this.price, required this.seller});
+
+  @override
+  int get hashCode => price.hashCode ^ seller.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NameListing &&
+          runtimeType == other.runtimeType &&
+          price == other.price &&
+          seller == other.seller;
+}
+
 class PassphraseStrength {
   final int score;
   final String? warning;
@@ -126,4 +199,28 @@ class PassphraseStrength {
           warning == other.warning &&
           suggestions == other.suggestions &&
           guessesLog10 == other.guessesLog10;
+}
+
+class ResolvedName {
+  final String owner;
+  final int lastBlock;
+  final String blockHash;
+
+  const ResolvedName({
+    required this.owner,
+    required this.lastBlock,
+    required this.blockHash,
+  });
+
+  @override
+  int get hashCode => owner.hashCode ^ lastBlock.hashCode ^ blockHash.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ResolvedName &&
+          runtimeType == other.runtimeType &&
+          owner == other.owner &&
+          lastBlock == other.lastBlock &&
+          blockHash == other.blockHash;
 }

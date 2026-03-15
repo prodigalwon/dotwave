@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
+import '../bridge/bridge_generated.dart/core.dart';
 import '../widgets/transaction_blade.dart';
+import 'governance_screen.dart';
 import 'receive_screen.dart';
+import 'send_screen.dart';
 
 class HomeTab extends StatefulWidget {
   final String address;
@@ -19,6 +23,8 @@ class _HomeTabState extends State<HomeTab> {
   String? _balanceDot;
   bool _loadingBalance = true;
   String? _balanceError;
+  DateTime? _lastRefreshed;
+  Timer? _refreshTimer;
 
   final _searchController = TextEditingController();
   bool _searchingName = false;
@@ -28,18 +34,48 @@ class _HomeTabState extends State<HomeTab> {
   String? _nameInputError;
 
   static final _validName = RegExp(r'^[a-zA-Z0-9]+$');
+  bool _loadingListing = false;
 
-  String get _truncatedAddress =>
+  String? _ownedName; // resolved PNS name without ".dot"
+
+  String get _refreshLabel {
+    if (_lastRefreshed == null) return 'Tap to refresh';
+    final elapsed = DateTime.now().difference(_lastRefreshed!);
+    final mm = elapsed.inMinutes.toString().padLeft(2, '0');
+    final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+    return 'Tap to refresh · $mm:$ss ago';
+  }
+
+  String get _displayIdentity => _ownedName ??
       '${widget.address.substring(0, 6)}...${widget.address.substring(widget.address.length - 4)}';
 
   @override
   void initState() {
     super.initState();
     _fetchBalance();
+    _resolveOwnedName();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_lastRefreshed != null && mounted) setState(() {});
+    });
+  }
+
+  Future<void> _resolveOwnedName() async {
+    try {
+      final name = await RustLib.instance.api.crateCoreResolveAddressToName(
+        address: widget.address,
+        rpcUrl: _rpcUrl,
+      );
+      if (mounted && name != null) {
+        setState(() => _ownedName = name);
+      }
+    } catch (_) {
+      // silent — just keep showing the truncated address
+    }
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -75,11 +111,76 @@ class _HomeTabState extends State<HomeTab> {
         _nameForSale = result.forSale ? true : null;
         _searchingMarketplace = false;
       });
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('Name search error [${e.runtimeType}]: $e\n$stack');
+      if (!mounted) return;
+      final msg = e is String ? e : e.toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Search error: $msg'),
+          backgroundColor: Colors.redAccent,
+          duration: const Duration(seconds: 8),
+        ),
+      );
       setState(() {
         _searchingName = false;
         _searchingMarketplace = false;
+        _nameInputError = msg.isEmpty ? 'Unknown error (see console)' : msg;
       });
+    }
+  }
+
+  Future<void> _onForSaleTap() async {
+    final name = _searchController.text.trim();
+    setState(() => _loadingListing = true);
+    try {
+      final listing = await RustLib.instance.api.crateCoreGetNameListing(
+        name: name,
+        rpcUrl: _rpcUrl,
+      );
+      if (!mounted) return;
+      setState(() => _loadingListing = false);
+
+      if (listing == null) {
+        // Listing expired between search and tap
+        setState(() => _nameForSale = null);
+        return;
+      }
+
+      final shouldContinue = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => _ForSaleDialog(name: name, listing: listing),
+      );
+
+      if (shouldContinue == true && mounted) {
+        TransactionBlade.show(
+          context,
+          TransactionBlade(
+            transactionType: 'Name Purchase',
+            rows: [
+              TxRow('Name', '$name.dot'),
+              TxRow('Seller',
+                  '${listing.seller.substring(0, 6)}...${listing.seller.substring(listing.seller.length - 4)}'),
+            ],
+            costLabel: 'Asking Price',
+            loadCost: () async => listing.price,
+            preflightCheck: () async {
+              final current = await RustLib.instance.api.crateCoreGetNameListing(
+                name: name,
+                rpcUrl: _rpcUrl,
+              );
+              return current == null ? 'Name is no longer for sale' : null;
+            },
+            onConfirm: (phrase) => RustLib.instance.api.crateCoreBuyName(
+              name: name,
+              phrase: phrase,
+              rpcUrl: _rpcUrl,
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      setState(() => _loadingListing = false);
     }
   }
 
@@ -102,6 +203,7 @@ class _HomeTabState extends State<HomeTab> {
       setState(() {
         _balanceDot = '$whole.$frac';
         _loadingBalance = false;
+        _lastRefreshed = DateTime.now();
       });
     } catch (e) {
       setState(() {
@@ -140,7 +242,7 @@ class _HomeTabState extends State<HomeTab> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _truncatedAddress,
+                              _displayIdentity,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 18,
@@ -207,7 +309,7 @@ class _HomeTabState extends State<HomeTab> {
                                   )
                                 : Text(
                                     _balanceError != null
-                                        ? '— DOT'
+                                        ? 'Offline'
                                         : '${_balanceDot!} DOT',
                                     style: const TextStyle(
                                       color: Colors.white,
@@ -217,7 +319,7 @@ class _HomeTabState extends State<HomeTab> {
                                   ),
                             const SizedBox(height: 4),
                             Text(
-                              _balanceError ?? 'Tap to refresh',
+                              _balanceError ?? _refreshLabel,
                               style: const TextStyle(
                                 color: Colors.white54,
                                 fontSize: 12,
@@ -237,7 +339,13 @@ class _HomeTabState extends State<HomeTab> {
                           child: _QuickActionButton(
                             icon: Icons.arrow_upward,
                             label: 'Send',
-                            onTap: () {},
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    SendScreen(fromAddress: widget.address),
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -268,7 +376,11 @@ class _HomeTabState extends State<HomeTab> {
                           child: _QuickActionButton(
                             icon: Icons.how_to_vote_outlined,
                             label: 'Vote',
-                            onTap: () {},
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const GovernanceScreen()),
+                            ),
                           ),
                         ),
                       ],
@@ -420,11 +532,16 @@ class _HomeTabState extends State<HomeTab> {
                       ),
                     ] else if (_nameAvailable == false) ...[
                       const SizedBox(height: 12),
-                      const Text(
-                        'Taken',
-                        style: TextStyle(
-                          color: Colors.white54,
-                          fontSize: 14,
+                      const SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                          'Taken. Try Again.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                       if (_searchingMarketplace) ...[
@@ -442,22 +559,31 @@ class _HomeTabState extends State<HomeTab> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: () {},
+                            onPressed: _loadingListing ? null : _onForSaleTap,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFE6007A),
                               foregroundColor: Colors.white,
+                              disabledBackgroundColor:
+                                  const Color(0xFFE6007A).withOpacity(0.4),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
-                            child: const Text(
-                              'For Sale!',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                            child: _loadingListing
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white, strokeWidth: 2),
+                                  )
+                                : const Text(
+                                    'For Sale!',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                           ),
                         ),
                       ],
@@ -491,6 +617,118 @@ class _HomeTabState extends State<HomeTab> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ForSaleDialog extends StatelessWidget {
+  final String name;
+  final NameListing listing;
+
+  const _ForSaleDialog({required this.name, required this.listing});
+
+  static const _dotDecimals = 12;
+
+  String _formatDot(String planck) {
+    final value = BigInt.parse(planck);
+    final divisor = BigInt.from(10).pow(_dotDecimals);
+    final whole = value ~/ divisor;
+    final frac = ((value % divisor) * BigInt.from(1000) ~/ divisor)
+        .toString()
+        .padLeft(3, '0');
+    return '$whole.$frac DOT';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final seller = listing.seller;
+    final truncatedSeller =
+        '${seller.substring(0, 6)}...${seller.substring(seller.length - 4)}';
+
+    return Dialog(
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$name.dot',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Listed for sale',
+              style: TextStyle(color: Colors.white38, fontSize: 13),
+            ),
+            const SizedBox(height: 20),
+            const Divider(color: Colors.white12),
+            const SizedBox(height: 16),
+            _row('Asking Price', _formatDot(listing.price),
+                valueColor: const Color(0xFFE6007A)),
+            const SizedBox(height: 10),
+            _row('Seller', truncatedSeller),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white54,
+                      side: const BorderSide(color: Colors.white24),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text('Close'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE6007A),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text(
+                      'Continue',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _row(String label, String value, {Color? valueColor}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 14)),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor ?? Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }

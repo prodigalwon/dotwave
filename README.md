@@ -106,6 +106,10 @@ Name registration fees are currently **hardcoded** in `rust_core/src/core.rs` (`
 
 **Before production:** replace with a live query to the on-chain `price_oracle` pallet. Governance can update the price schedule at any time via referendum, so hardcoding will silently go stale. The correct approach is to call the oracle at registration time and display whatever the chain currently reports.
 
+### PNS Reverse Lookup (Address → Display Name)
+
+The home screen is wired to show an owned name (e.g. `frank`) instead of the truncated SS58 address, but `resolve_address_to_name` currently returns `None` always. The PNS pallet does not store the label string in any on-chain structure accessible from the client — `OwnerToPrimaryName` returns a `DomainHash` (one-way hash), and neither `NameRecord` nor `RegistrarInfo` contain the original label bytes. Requires one of: a new `DomainHash → Vec<u8>` storage map, a new `reverse_lookup(AccountId)` runtime API, or an off-chain indexer.
+
 ### Name Registration Extrinsic
 
 The `register_name` function in Rust connects to the node and derives the keypair, but the actual PNS registration extrinsic submission is stubbed pending confirmation of the pallet call name and parameters.
