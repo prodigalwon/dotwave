@@ -5,9 +5,22 @@ use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, aead::{Aead, KeyInit}};
 use getrandom::fill as getrandom_fill;
 use zeroize::Zeroize;
 use zxcvbn::zxcvbn;
-use subxt::{OnlineClient, PolkadotConfig};
-use subxt::utils::AccountId32;
+use subxt::{OnlineClient, PolkadotConfig, Config};
+use subxt::utils::{AccountId32, MultiAddress, MultiSignature};
 use std::str::FromStr;
+
+struct Sr25519Signer(sr25519::Pair);
+
+impl subxt::tx::Signer<PolkadotConfig> for Sr25519Signer {
+    fn account_id(&self) -> <PolkadotConfig as Config>::AccountId {
+        AccountId32::from(self.0.public().0)
+    }
+
+    fn sign(&self, payload: &[u8]) -> <PolkadotConfig as Config>::Signature {
+        let sig = <sr25519::Pair as Pair>::sign(&self.0, payload);
+        MultiSignature::Sr25519(sig.0)
+    }
+}
 
 #[flutter_rust_bridge::frb(ignore)]
 #[subxt::subxt(runtime_metadata_path = "src/polkadot_metadata.scale")]
@@ -95,15 +108,27 @@ pub fn register_name(name: String, phrase: String, rpc_url: String) -> Result<St
 
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(async {
-        let _api = OnlineClient::<PolkadotConfig>::from_insecure_url(&rpc_url)
+        let api = OnlineClient::<PolkadotConfig>::from_insecure_url(&rpc_url)
             .await
             .map_err(|e| e.to_string())?;
 
-        let _name_bytes = name.as_bytes().to_vec();
-        let _public = pair.public();
+        let signer = Sr25519Signer(pair);
+        let owner = MultiAddress::Id(AccountId32::from(signer.0.public().0));
+        let name_bytes = name.into_bytes();
 
-        // TODO: submit extrinsic once pallet call is confirmed
-        Err("PNS registration extrinsic not yet implemented".to_string())
+        let tx = polkadot::tx()
+            .pns_registrar()
+            .register(name_bytes, owner);
+
+        let hash = api
+            .tx()
+            .await
+            .map_err(|e| e.to_string())?
+            .sign_and_submit_default(&tx, &signer)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(format!("{:?}", hash))
     })
 }
 

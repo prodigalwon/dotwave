@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import '../keystore.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
+import 'package:flutter/foundation.dart';
 
 /// A single label/value row shown in the transaction detail section.
 class TxRow {
@@ -18,6 +19,7 @@ enum _BladeState {
   checkingAvailability,
   awaitingPassphrase,
   submitting,
+  success,
   error,
 }
 
@@ -135,20 +137,25 @@ class _TransactionBladeState extends State<TransactionBlade> {
     }
 
     // Step 2: biometric
+// Step 2: biometric
+// Step 2: biometric
     final auth = LocalAuthentication();
     bool authenticated = false;
-    try {
-      final canAuth = await auth.canCheckBiometrics || await auth.isDeviceSupported();
-      if (canAuth) {
-        authenticated = await auth.authenticate(
-          localizedReason: 'Confirm ${widget.transactionType}',
-          options: const AuthenticationOptions(biometricOnly: false),
-        );
-      } else {
-        authenticated = true;
+    if (kDebugMode) {
+      authenticated = true;
+    } else {
+      try {
+        final canAuth = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+        if (canAuth) {
+          authenticated = await auth.authenticate(
+            localizedReason: 'Confirm ${widget.transactionType}',
+          );
+        } else {
+          authenticated = true;
+        }
+      } catch (_) {
+        authenticated = false;
       }
-    } catch (_) {
-      authenticated = false;
     }
     if (!authenticated) {
       setState(() => _state = _BladeState.idle);
@@ -184,8 +191,12 @@ class _TransactionBladeState extends State<TransactionBlade> {
 
       await widget.onConfirm(phrase);
 
+      if (!mounted) return;
+      setState(() => _state = _BladeState.success);
+      await Future.delayed(const Duration(milliseconds: 1800));
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _state = _BladeState.error;
         _errorMessage = e is String ? e : e.toString();
@@ -197,18 +208,22 @@ class _TransactionBladeState extends State<TransactionBlade> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Column(
+      body: Stack(
         children: [
-          // Tappable dim area above the blade
-          Expanded(
-            child: GestureDetector(
-              onTap: () => Navigator.of(context).pop(),
-              behavior: HitTestBehavior.opaque,
-              child: const SizedBox.expand(),
-            ),
-          ),
-          // The blade itself
-          Container(
+          Column(
+            children: [
+              // Tappable dim area above the blade
+              Expanded(
+                child: GestureDetector(
+                  onTap: _state == _BladeState.success
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                  behavior: HitTestBehavior.opaque,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              // The blade itself
+              Container(
             decoration: const BoxDecoration(
               color: Color(0xFF141414),
               borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -397,6 +412,53 @@ class _TransactionBladeState extends State<TransactionBlade> {
               ),
             ),
           ),
+            ],
+          ),
+
+          // Success overlay
+          if (_state == _BladeState.success)
+            Positioned.fill(
+              child: AnimatedOpacity(
+                opacity: 1.0,
+                duration: const Duration(milliseconds: 300),
+                child: Container(
+                  color: Colors.black87,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF16A34A).withOpacity(0.15),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFF16A34A),
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.check,
+                            color: Color(0xFF16A34A),
+                            size: 36,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Success!',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -409,6 +471,7 @@ class _TransactionBladeState extends State<TransactionBlade> {
 
   VoidCallback? get _action {
     if (_state == _BladeState.awaitingPassphrase) return _onSign;
+    if (_state == _BladeState.error) return () => setState(() { _state = _BladeState.idle; _errorMessage = null; });
     return _onSubmit;
   }
 
@@ -430,7 +493,7 @@ class _TransactionBladeState extends State<TransactionBlade> {
         return const Text('Sign & Submit',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold));
       case _BladeState.error:
-        return const Text('Try Again',
+        return const Text('Okay',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold));
       default:
         return const Text('Confirm',

@@ -15,10 +15,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('>>> Starting RustLib.init()');
   await RustLib.init();
-  debugPrint('>>> RustLib.init() done');
+  debugPrint('>>> RustLib done, starting Keystore');
   await AndroidKeystore.generateKey();
-  debugPrint('>>> AndroidKeystore.generateKey() done');
+  debugPrint('>>> Keystore done, starting app');
   runApp(const DotWaveApp());
+
 }
 
 class DotWaveApp extends StatelessWidget {
