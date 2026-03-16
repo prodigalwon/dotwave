@@ -132,6 +132,62 @@ class _HomeTabState extends State<HomeTab> {
     return result == true;
   }
 
+  Future<void> _showGiftBlade(String name) async {
+    final recipient = await Navigator.of(context).push<String>(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black54,
+        barrierDismissible: true,
+        pageBuilder: (_, __, ___) => _GiftNameBlade(
+          name: name,
+          ownedName: _ownedName!,
+          rpcUrl: _rpcUrl,
+        ),
+        transitionsBuilder: (_, animation, __, child) {
+          final slide = Tween(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+          return SlideTransition(position: slide, child: child);
+        },
+      ),
+    );
+    if (recipient == null || !mounted) return;
+    TransactionBlade.show(
+      context,
+      TransactionBlade(
+        transactionType: 'Name Registration (Gift)',
+        rows: [
+          TxRow('Name', '$name.dot'),
+          TxRow('Recipient',
+              '${recipient.substring(0, 6)}...${recipient.substring(recipient.length - 4)}'),
+        ],
+        costLabel: 'Registration Fee',
+        loadCost: () => RustLib.instance.api.crateCoreGetNamePrice(
+          name: name,
+          rpcUrl: _rpcUrl,
+        ),
+        preflightCheck: () async {
+          final result = await RustLib.instance.api
+              .crateCoreCheckNameAvailability(name: name, rpcUrl: _rpcUrl);
+          if (!result.available) return 'Name no longer available';
+          final existing = await RustLib.instance.api
+              .crateCoreResolveAddressToName(
+                  address: recipient, rpcUrl: _rpcUrl);
+          if (existing != null) return 'Recipient already owns $existing.dot';
+          return null;
+        },
+        onConfirm: (phrase) => RustLib.instance.api.crateCoreRegisterNameFor(
+          name: name,
+          phrase: phrase,
+          recipient: recipient,
+          rpcUrl: _rpcUrl,
+        ),
+      ),
+    );
+  }
+
   Future<void> _searchName() async {
     final name = _searchController.text.trim();
     if (name.isEmpty) return;
@@ -150,7 +206,8 @@ class _HomeTabState extends State<HomeTab> {
       _searchingName = true;
       _nameAvailable = null;
       _nameForSale = null;
-      _searchForFun = false;
+      // Don't reset _searchForFun here — once the user confirms browsing for fun,
+      // keep that state so repeated searches don't re-trigger the blade.
     });
 
     try {
@@ -586,29 +643,29 @@ class _HomeTabState extends State<HomeTab> {
                           ),
                         ),
                       ] else if (_searchForFun) ...[
-                        // Owns a name, browsing for fun — block purchase
-                        Container(
+                        // Browsing for fun — offer to register for someone else
+                        SizedBox(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF16A34A).withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                                color: const Color(0xFF16A34A).withOpacity(0.25)),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.check_circle_outline,
-                                  color: Color(0xFF16A34A), size: 16),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  'Available — but you\'re $_ownedName.dot',
-                                  style: const TextStyle(
-                                      color: Color(0xFF16A34A), fontSize: 13),
-                                ),
+                          child: ElevatedButton.icon(
+                            onPressed: () => _showGiftBlade(
+                                _searchController.text.trim()),
+                            icon: const Icon(Icons.card_gift_card_outlined,
+                                size: 18),
+                            label: const Text(
+                              'Register for someone else',
+                              style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF16A34A),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                            ],
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                            ),
                           ),
                         ),
                       ] else ...[
@@ -657,7 +714,15 @@ class _HomeTabState extends State<HomeTab> {
                                     phrase: phrase,
                                     rpcUrl: _rpcUrl,
                                   ),
-                                  onSuccess: () => _saveOwnedName(name),
+                                  onSuccess: () async {
+                                    await _saveOwnedName(name);
+                                    if (mounted) {
+                                      setState(() {
+                                        _nameAvailable = null;
+                                        _searchController.clear();
+                                      });
+                                    }
+                                  },
                                 ),
                               );
                             },
@@ -978,6 +1043,287 @@ class _SearchForFunBlade extends StatelessWidget {
                       ),
                     ],
                   ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Gift-name blade: lets the user register an available name for someone else.
+// Returns the recipient SS58 address via Navigator.pop when confirmed.
+// ---------------------------------------------------------------------------
+
+enum _GiftCheckState { idle, checking, clear, taken }
+
+class _GiftNameBlade extends StatefulWidget {
+  final String name;
+  final String ownedName;
+  final String rpcUrl;
+
+  const _GiftNameBlade({
+    required this.name,
+    required this.ownedName,
+    required this.rpcUrl,
+  });
+
+  @override
+  State<_GiftNameBlade> createState() => _GiftNameBladeState();
+}
+
+class _GiftNameBladeState extends State<_GiftNameBlade> {
+  final _recipientController = TextEditingController();
+  _GiftCheckState _checkState = _GiftCheckState.idle;
+  String? _takenByName;
+  String? _inputError;
+
+  static final _ss58Re = RegExp(r'^[1-9A-HJ-NP-Za-km-z]+$');
+
+  bool _isValidSs58(String s) =>
+      s.length >= 46 && s.length <= 50 && _ss58Re.hasMatch(s);
+
+  @override
+  void dispose() {
+    _recipientController.dispose();
+    super.dispose();
+  }
+
+  void _onAddressChanged(String _) {
+    if (_checkState != _GiftCheckState.idle) {
+      setState(() {
+        _checkState = _GiftCheckState.idle;
+        _takenByName = null;
+        _inputError = null;
+      });
+    }
+  }
+
+  Future<void> _check() async {
+    final addr = _recipientController.text.trim();
+    if (!_isValidSs58(addr)) {
+      setState(() => _inputError = 'Enter a valid SS58 address');
+      return;
+    }
+    setState(() {
+      _inputError = null;
+      _checkState = _GiftCheckState.checking;
+    });
+    try {
+      final existing = await RustLib.instance.api.crateCoreResolveAddressToName(
+        address: addr,
+        rpcUrl: widget.rpcUrl,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (existing != null) {
+          _checkState = _GiftCheckState.taken;
+          _takenByName = existing;
+        } else {
+          _checkState = _GiftCheckState.clear;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _checkState = _GiftCheckState.idle;
+        _inputError = 'Check failed — try again';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final addr = _recipientController.text.trim();
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              behavior: HitTestBehavior.opaque,
+              child: const SizedBox.expand(),
+            ),
+          ),
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF141414),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Drag handle
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 24),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Center(
+                    child: Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16A34A).withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.card_gift_card_outlined,
+                          color: Color(0xFF16A34A), size: 30),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Center(
+                    child: Text(
+                      'Register ${widget.name}.dot for someone else',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Center(
+                    child: Text(
+                      "You're ${widget.ownedName}.dot",
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  // SS58 input
+                  TextField(
+                    controller: _recipientController,
+                    onChanged: _onAddressChanged,
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 13,
+                        fontFamily: 'monospace'),
+                    decoration: InputDecoration(
+                      hintText: 'Recipient SS58 address',
+                      hintStyle: const TextStyle(
+                          color: Colors.white38, fontSize: 13),
+                      filled: true,
+                      fillColor: const Color(0xFF1E1E1E),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                            color: Colors.white12, width: 1),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                            color: const Color(0xFF16A34A).withOpacity(0.5),
+                            width: 1.5),
+                      ),
+                    ),
+                  ),
+                  if (_inputError != null) ...[
+                    const SizedBox(height: 6),
+                    Text(_inputError!,
+                        style: const TextStyle(
+                            color: Colors.redAccent, fontSize: 12)),
+                  ],
+                  const SizedBox(height: 16),
+                  // Check button (always shown)
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: _checkState == _GiftCheckState.checking
+                          ? null
+                          : _check,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: _checkState == _GiftCheckState.checking
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white54),
+                            )
+                          : const Text('Check address'),
+                    ),
+                  ),
+                  // Taken message
+                  if (_checkState == _GiftCheckState.taken) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: Colors.orange.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline,
+                              color: Colors.orange, size: 16),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'This address already owns $_takenByName.dot',
+                              style: const TextStyle(
+                                  color: Colors.orange, fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  // Proceed button — only shown when check passed
+                  if (_checkState == _GiftCheckState.clear) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () =>
+                            Navigator.of(context).pop(addr),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF16A34A),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text(
+                          'Continue to payment',
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

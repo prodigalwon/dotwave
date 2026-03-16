@@ -110,6 +110,19 @@ Future<String> buyName({
   rpcUrl: rpcUrl,
 );
 
+/// Register a name on behalf of someone else — the signer pays, but `recipient` is set as owner.
+Future<String> registerNameFor({
+  required String name,
+  required String phrase,
+  required String recipient,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreRegisterNameFor(
+  name: name,
+  phrase: phrase,
+  recipient: recipient,
+  rpcUrl: rpcUrl,
+);
+
 Future<String> getNamePrice({required String name, required String rpcUrl}) =>
     RustLib.instance.api.crateCoreGetNamePrice(name: name, rpcUrl: rpcUrl);
 

@@ -335,6 +335,40 @@ pub fn buy_name(name: String, phrase: String, rpc_url: String) -> Result<String,
     Err("Name purchase extrinsic not yet implemented".to_string())
 }
 
+/// Register a name on behalf of someone else — the signer pays, but `recipient` is set as owner.
+pub fn register_name_for(name: String, phrase: String, recipient: String, rpc_url: String) -> Result<String, String> {
+    let (pair, _) = sr25519::Pair::from_phrase(&phrase, None)
+        .map_err(|e| format!("Keypair error: {:?}", e))?;
+
+    let recipient_id = AccountId32::from_str(&recipient)
+        .map_err(|e| format!("Invalid recipient address: {}", e))?;
+
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let api = OnlineClient::<PolkadotConfig>::from_insecure_url(&rpc_url)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let signer = Sr25519Signer(pair);
+        let owner = MultiAddress::Id(recipient_id);
+        let name_bytes = name.into_bytes();
+
+        let tx = polkadot::tx()
+            .pns_registrar()
+            .register(name_bytes, owner);
+
+        let hash = api
+            .tx()
+            .await
+            .map_err(|e| e.to_string())?
+            .sign_and_submit_default(&tx, &signer)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(format!("{:?}", hash))
+    })
+}
+
 pub fn get_name_price(name: String, _rpc_url: String) -> Result<String, String> {
     let planck: u128 = match name.chars().count() {
         1 => 1_000 * 1_000_000_000_000,
