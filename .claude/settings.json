@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"conviction\\\\|referenda\\\\|vote\" /home/coder/Polkadot/dotwave/rust_core/src/ --include=*.rs)",
+      "Bash(flutter_rust_bridge_codegen generate:*)"
+    ]
+  }
+}

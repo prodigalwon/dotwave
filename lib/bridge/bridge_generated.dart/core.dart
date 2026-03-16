@@ -33,6 +33,36 @@ Future<String?> resolveAddressToName({
   rpcUrl: rpcUrl,
 );
 
+/// Stub — reverse lookup not yet supported by pallet.
+Future<bool> hasCanonicalName({
+  required String address,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreHasCanonicalName(
+  address: address,
+  rpcUrl: rpcUrl,
+);
+
+/// Vote on an OpenGov referendum via conviction_voting.vote.
+/// Uses the dynamic subxt API so it works against any compatible node
+/// (including Polkadot mainnet) regardless of the local metadata file.
+/// balance_planck: amount to lock (e.g. "100000000000" = 0.1 DOT)
+/// conviction: 0=None,1=Locked1x,2=Locked2x,...,6=Locked6x
+Future<String> voteOnReferendum({
+  required int referendumIndex,
+  required bool aye,
+  required String balancePlanck,
+  required int conviction,
+  required String rpcUrl,
+  required String phrase,
+}) => RustLib.instance.api.crateCoreVoteOnReferendum(
+  referendumIndex: referendumIndex,
+  aye: aye,
+  balancePlanck: balancePlanck,
+  conviction: conviction,
+  rpcUrl: rpcUrl,
+  phrase: phrase,
+);
+
 Future<NameListing?> getNameListing({
   required String name,
   required String rpcUrl,

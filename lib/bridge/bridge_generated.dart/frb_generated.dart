@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1065598670;
+  int get rustContentHash => 976496190;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -117,6 +117,11 @@ abstract class RustLibApi extends BaseApi {
     required String rpcUrl,
   });
 
+  Future<bool> crateCoreHasCanonicalName({
+    required String address,
+    required String rpcUrl,
+  });
+
   Future<String> crateCoreRegisterName({
     required String name,
     required String phrase,
@@ -147,6 +152,15 @@ abstract class RustLibApi extends BaseApi {
     required String blockHashHex,
     required String expectedOwner,
     required String rpcUrl,
+  });
+
+  Future<String> crateCoreVoteOnReferendum({
+    required int referendumIndex,
+    required bool aye,
+    required String balancePlanck,
+    required int conviction,
+    required String rpcUrl,
+    required String phrase,
   });
 }
 
@@ -440,6 +454,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<bool> crateCoreHasCanonicalName({
+    required String address,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(address, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreHasCanonicalNameConstMeta,
+        argValues: [address, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreHasCanonicalNameConstMeta => const TaskConstMeta(
+    debugName: "has_canonical_name",
+    argNames: ["address", "rpcUrl"],
+  );
+
+  @override
   Future<String> crateCoreRegisterName({
     required String name,
     required String phrase,
@@ -455,7 +503,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 11,
             port: port_,
           );
         },
@@ -489,7 +537,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 12,
             port: port_,
           );
         },
@@ -524,7 +572,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 13,
             port: port_,
           );
         },
@@ -552,7 +600,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(phrase, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_dot_account,
@@ -586,7 +634,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 15,
             port: port_,
           );
         },
@@ -624,7 +672,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 16,
             port: port_,
           );
         },
@@ -644,6 +692,62 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         debugName: "verify_name_ownership",
         argNames: ["name", "blockHashHex", "expectedOwner", "rpcUrl"],
       );
+
+  @override
+  Future<String> crateCoreVoteOnReferendum({
+    required int referendumIndex,
+    required bool aye,
+    required String balancePlanck,
+    required int conviction,
+    required String rpcUrl,
+    required String phrase,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(referendumIndex, serializer);
+          sse_encode_bool(aye, serializer);
+          sse_encode_String(balancePlanck, serializer);
+          sse_encode_u_8(conviction, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          sse_encode_String(phrase, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreVoteOnReferendumConstMeta,
+        argValues: [
+          referendumIndex,
+          aye,
+          balancePlanck,
+          conviction,
+          rpcUrl,
+          phrase,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreVoteOnReferendumConstMeta => const TaskConstMeta(
+    debugName: "vote_on_referendum",
+    argNames: [
+      "referendumIndex",
+      "aye",
+      "balancePlanck",
+      "conviction",
+      "rpcUrl",
+      "phrase",
+    ],
+  );
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {

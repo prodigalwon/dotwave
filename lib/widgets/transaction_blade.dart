@@ -44,6 +44,9 @@ class TransactionBlade extends StatefulWidget {
   /// Return null if OK, or an error string to block submission.
   final Future<String?> Function()? preflightCheck;
 
+  /// Called immediately after a successful transaction, before the blade closes.
+  final VoidCallback? onSuccess;
+
   const TransactionBlade({
     super.key,
     required this.transactionType,
@@ -52,6 +55,7 @@ class TransactionBlade extends StatefulWidget {
     this.loadCost,
     this.costLabel = 'Fee',
     this.preflightCheck,
+    this.onSuccess,
   });
 
   /// Push the blade as a translucent slide-up overlay.
@@ -193,6 +197,7 @@ class _TransactionBladeState extends State<TransactionBlade> {
 
       if (!mounted) return;
       setState(() => _state = _BladeState.success);
+      widget.onSuccess?.call();
       await Future.delayed(const Duration(milliseconds: 1800));
       if (mounted) Navigator.of(context).pop();
     } catch (e) {

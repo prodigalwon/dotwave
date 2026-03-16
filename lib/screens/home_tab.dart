@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../bridge/bridge_generated.dart/core.dart';
 import '../widgets/transaction_blade.dart';
 import 'governance_screen.dart';
+import 'tokens_screen.dart';
 import 'receive_screen.dart';
 import 'send_screen.dart';
 
@@ -32,11 +34,13 @@ class _HomeTabState extends State<HomeTab> {
   bool? _nameAvailable;
   bool? _nameForSale;
   String? _nameInputError;
+  bool _searchForFun = false; // true when user searches knowing they own a name
 
   static final _validName = RegExp(r'^[a-zA-Z0-9]+$');
   bool _loadingListing = false;
 
   String? _ownedName; // resolved PNS name without ".dot"
+  Timer? _namePoller;
 
   String get _refreshLabel {
     if (_lastRefreshed == null) return 'Tap to refresh';
@@ -54,30 +58,78 @@ class _HomeTabState extends State<HomeTab> {
     super.initState();
     _fetchBalance();
     _resolveOwnedName();
+    _namePoller = Timer.periodic(const Duration(minutes: 10), (_) {
+      _resolveOwnedName();
+    });
     _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_lastRefreshed != null && mounted) setState(() {});
     });
   }
 
+  String get _storageKey => 'owned_name_${widget.address}';
+
   Future<void> _resolveOwnedName() async {
     try {
-      final name = await RustLib.instance.api.crateCoreResolveAddressToName(
-        address: widget.address,
+      const storage = FlutterSecureStorage();
+      final stored = await storage.read(key: _storageKey);
+      if (stored == null || stored.isEmpty) {
+        if (mounted) setState(() => _ownedName = null);
+        return;
+      }
+      // Verify the stored name still resolves to this address on-chain.
+      final resolved = await RustLib.instance.api.crateCoreResolveNameVerified(
+        name: stored,
         rpcUrl: _rpcUrl,
       );
-      if (mounted && name != null) {
-        setState(() => _ownedName = name);
+      final stillOwned = resolved?.owner == widget.address;
+      if (!stillOwned) {
+        await storage.delete(key: _storageKey);
+      }
+      if (mounted) {
+        setState(() => _ownedName = stillOwned ? stored : null);
+        if (stillOwned && _searchController.text.isEmpty) {
+          _searchController.text = stored;
+        }
       }
     } catch (_) {
-      // silent — just keep showing the truncated address
+      // silent — keep showing whatever we had
+    }
+  }
+
+  Future<void> _saveOwnedName(String name) async {
+    const storage = FlutterSecureStorage();
+    await storage.write(key: _storageKey, value: name);
+    if (mounted) {
+      setState(() => _ownedName = name);
+      if (_searchController.text.isEmpty) _searchController.text = name;
     }
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _namePoller?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<bool> _showSearchForFunBlade() async {
+    final result = await Navigator.of(context).push<bool>(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black54,
+        barrierDismissible: true,
+        pageBuilder: (_, __, ___) => _SearchForFunBlade(ownedName: _ownedName!),
+        transitionsBuilder: (_, animation, __, child) {
+          final slide = Tween(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+          return SlideTransition(position: slide, child: child);
+        },
+      ),
+    );
+    return result == true;
   }
 
   Future<void> _searchName() async {
@@ -98,18 +150,41 @@ class _HomeTabState extends State<HomeTab> {
       _searchingName = true;
       _nameAvailable = null;
       _nameForSale = null;
+      _searchForFun = false;
     });
+
     try {
-      final result = await RustLib.instance.api.crateCoreCheckNameAvailability(
+      final availability = await RustLib.instance.api.crateCoreCheckNameAvailability(
         name: name,
         rpcUrl: _rpcUrl,
       );
+
+      // If the searched name is taken, check if this address owns it — auto-detect
+      // pre-existing names that were registered before this app tracked them.
+      if (!availability.available && _ownedName == null) {
+        final resolved = await RustLib.instance.api.crateCoreResolveNameVerified(
+          name: name,
+          rpcUrl: _rpcUrl,
+        );
+        if (resolved?.owner == widget.address) {
+          await _saveOwnedName(name);
+        }
+      }
+
+      if (!mounted) return;
+
+      // If they own a name (from storage), show the blade before revealing results.
+      if (_ownedName != null && !_searchForFun) {
+        setState(() => _searchingName = false);
+        final confirmed = await _showSearchForFunBlade();
+        if (!confirmed) return;
+        setState(() => _searchForFun = true);
+      }
+
       setState(() {
-        _nameAvailable = result.available;
+        _nameAvailable = availability.available;
         _searchingName = false;
-        _searchingMarketplace = !result.available;
-        _nameForSale = result.forSale ? true : null;
-        _searchingMarketplace = false;
+        _nameForSale = availability.forSale ? true : null;
       });
     } catch (e, stack) {
       debugPrint('Name search error [${e.runtimeType}]: $e\n$stack');
@@ -366,9 +441,14 @@ class _HomeTabState extends State<HomeTab> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: _QuickActionButton(
-                            icon: Icons.swap_horiz,
-                            label: 'Swap',
-                            onTap: () {},
+                            icon: Icons.toll_outlined,
+                            label: 'Tokens',
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => TokensScreen(address: widget.address),
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -408,9 +488,12 @@ class _HomeTabState extends State<HomeTab> {
                               FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
                             ],
                             onChanged: (_) {
-                              if (_nameInputError != null) {
-                                setState(() => _nameInputError = null);
-                              }
+                              setState(() {
+                                _nameInputError = null;
+                                _searchForFun = false;
+                                _nameAvailable = null;
+                                _nameForSale = null;
+                              });
                             },
                             decoration: InputDecoration(
                               hintText: 'Search a name...',
@@ -476,60 +559,126 @@ class _HomeTabState extends State<HomeTab> {
                     ],
                     if (_nameAvailable == true) ...[
                       const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            final name = _searchController.text.trim();
-                            TransactionBlade.show(
-                              context,
-                              TransactionBlade(
-                                transactionType: 'Name Registration',
-                                rows: [
-                                  TxRow('Name', '$name.dot'),
-                                ],
-                                costLabel: 'Registration Fee',
-                                loadCost: () =>
-                                    RustLib.instance.api.crateCoreGetNamePrice(
-                                      name: name,
-                                      rpcUrl: _rpcUrl,
-                                    ),
-                                preflightCheck: () async {
-                                  final result = await RustLib.instance.api
-                                      .crateCoreCheckNameAvailability(
-                                    name: name,
-                                    rpcUrl: _rpcUrl,
-                                  );
-                                  return result.available
-                                      ? null
-                                      : 'Name no longer available';
-                                },
-                                onConfirm: (phrase) =>
-                                    RustLib.instance.api.crateCoreRegisterName(
-                                  name: name,
-                                  phrase: phrase,
-                                  rpcUrl: _rpcUrl,
+                      if (_ownedName != null) ...[
+                        // User already owns a name — block registration
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: Colors.orange.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.info_outline,
+                                  color: Colors.orange, size: 16),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'You already own $_ownedName.dot',
+                                  style: const TextStyle(
+                                      color: Colors.orange, fontSize: 13),
                                 ),
                               ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF16A34A),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            ],
                           ),
-                          child: const Text(
-                            'Available!',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                        ),
+                      ] else if (_searchForFun) ...[
+                        // Owns a name, browsing for fun — block purchase
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF16A34A).withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: const Color(0xFF16A34A).withOpacity(0.25)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check_circle_outline,
+                                  color: Color(0xFF16A34A), size: 16),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Available — but you\'re $_ownedName.dot',
+                                  style: const TextStyle(
+                                      color: Color(0xFF16A34A), fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ] else ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              final name = _searchController.text.trim();
+                              TransactionBlade.show(
+                                context,
+                                TransactionBlade(
+                                  transactionType: 'Name Registration',
+                                  rows: [
+                                    TxRow('Name', '$name.dot'),
+                                  ],
+                                  costLabel: 'Registration Fee',
+                                  loadCost: () =>
+                                      RustLib.instance.api.crateCoreGetNamePrice(
+                                        name: name,
+                                        rpcUrl: _rpcUrl,
+                                      ),
+                                  preflightCheck: () async {
+                                    // Re-check availability
+                                    final result = await RustLib.instance.api
+                                        .crateCoreCheckNameAvailability(
+                                      name: name,
+                                      rpcUrl: _rpcUrl,
+                                    );
+                                    if (!result.available) {
+                                      return 'Name no longer available';
+                                    }
+                                    // Re-check the user doesn't already own one
+                                    final existing = await RustLib.instance.api
+                                        .crateCoreResolveAddressToName(
+                                      address: widget.address,
+                                      rpcUrl: _rpcUrl,
+                                    );
+                                    if (existing != null) {
+                                      return 'You already own $existing.dot';
+                                    }
+                                    return null;
+                                  },
+                                  onConfirm: (phrase) =>
+                                      RustLib.instance.api.crateCoreRegisterName(
+                                    name: name,
+                                    phrase: phrase,
+                                    rpcUrl: _rpcUrl,
+                                  ),
+                                  onSuccess: () => _saveOwnedName(name),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF16A34A),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: const Text(
+                              'Available!',
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold),
                             ),
                           ),
                         ),
-                      ),
+                      ],
                     ] else if (_nameAvailable == false) ...[
                       const SizedBox(height: 12),
                       const SizedBox(
@@ -729,6 +878,112 @@ class _ForSaleDialog extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SearchForFunBlade extends StatelessWidget {
+  final String ownedName;
+  const _SearchForFunBlade({required this.ownedName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(false),
+              behavior: HitTestBehavior.opaque,
+              child: const SizedBox.expand(),
+            ),
+          ),
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF141414),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 24),
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE6007A).withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.badge_outlined,
+                        color: Color(0xFFE6007A), size: 30),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    "You're $ownedName.dot",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'You already own a name.\nSearch for fun?',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white54, fontSize: 15, height: 1.5),
+                  ),
+                  const SizedBox(height: 28),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white54,
+                            side: const BorderSide(color: Colors.white24),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: const Text('No thanks'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFE6007A),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: const Text('Sure!',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

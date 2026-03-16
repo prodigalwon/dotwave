@@ -91,15 +91,73 @@ pub fn check_name_availability(name: String, rpc_url: String) -> Result<NameAvai
 }
 
 pub fn resolve_address_to_name(_address: String, _rpc_url: String) -> Result<Option<String>, String> {
-    // The current PNS runtime API does not store or expose the label string in any
-    // on-chain structure. OwnerToPrimaryName returns a DomainHash (one-way hash),
-    // and neither NameRecord nor RegistrarInfo contain the original label bytes.
-    //
-    // To implement this, the pallet needs one of:
-    //   - A new storage map:   DomainHash → Vec<u8> (label bytes)
-    //   - A new runtime API:   fn reverse_lookup(owner: AccountId) -> Option<Vec<u8>>
-    //   - An off-chain indexer listening to registration events
     Ok(None)
+}
+
+/// Stub — reverse lookup not yet supported by pallet.
+pub fn has_canonical_name(_address: String, _rpc_url: String) -> Result<bool, String> {
+    Ok(false)
+}
+
+/// Vote on an OpenGov referendum via conviction_voting.vote.
+/// Uses the dynamic subxt API so it works against any compatible node
+/// (including Polkadot mainnet) regardless of the local metadata file.
+/// balance_planck: amount to lock (e.g. "100000000000" = 0.1 DOT)
+/// conviction: 0=None,1=Locked1x,2=Locked2x,...,6=Locked6x
+pub fn vote_on_referendum(
+    referendum_index: u32,
+    aye: bool,
+    balance_planck: String,
+    conviction: u8,
+    rpc_url: String,
+    phrase: String,
+) -> Result<String, String> {
+    use subxt::dynamic::Value;
+
+    let balance: u128 = balance_planck.parse().map_err(|_| "Invalid balance".to_string())?;
+    let (pair, _) = sr25519::Pair::from_phrase(&phrase, None)
+        .map_err(|e| format!("Keypair error: {:?}", e))?;
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    rt.block_on(async {
+        let api = OnlineClient::<PolkadotConfig>::from_insecure_url(&rpc_url)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let signer = Sr25519Signer(pair);
+
+        // Vote byte: bit7 = aye(1)/nay(0), bits0-2 = conviction
+        let vote_byte: u8 = if aye { 0x80 | conviction } else { conviction };
+
+        // AccountVote::Standard { vote: Vote(u8), balance: u128 }
+        let account_vote = Value::named_variant("Standard", [
+            ("vote",    Value::unnamed_composite([Value::from(vote_byte)])),
+            ("balance", Value::from(balance)),
+        ]);
+
+        let tx = subxt::dynamic::tx(
+            "ConvictionVoting",
+            "vote",
+            vec![
+                ("poll_index".to_string(), Value::from(referendum_index)),
+                ("vote".to_string(),       account_vote),
+            ],
+        );
+
+        let hash = api
+            .tx()
+            .await
+            .map_err(|e| e.to_string())?
+            .sign_and_submit_default(&tx, &signer)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(format!("{:?}", hash))
+    })
 }
 
 #[flutter_rust_bridge::frb(sync)]
