@@ -204,7 +204,7 @@ class _TransactionBladeState extends State<TransactionBlade> {
       if (!mounted) return;
       setState(() {
         _state = _BladeState.error;
-        _errorMessage = e is String ? e : e.toString();
+        _errorMessage = 'Error: client appears to be offline';
       });
     }
   }

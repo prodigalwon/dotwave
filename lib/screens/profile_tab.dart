@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'name_registration_screen.dart';
 
 class ProfileTab extends StatelessWidget {
   final String address;
@@ -87,7 +88,13 @@ class ProfileTab extends StatelessWidget {
             icon: Icons.badge_outlined,
             label: 'Register a Name',
             subtitle: 'Claim your .dot name',
-            onTap: () {},
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    NameRegistrationScreen(address: address),
+              ),
+            ),
           ),
 
           const SizedBox(height: 16),

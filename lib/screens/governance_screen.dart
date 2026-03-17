@@ -105,7 +105,7 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted) setState(() { _loading = false; _error = 'Error: client appears to be offline'; });
     }
   }
 

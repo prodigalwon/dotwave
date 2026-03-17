@@ -94,7 +94,7 @@ class _SendScreenState extends State<SendScreen> {
       if (!mounted) return;
       setState(() {
         _resolvingName = false;
-        _recipientError = 'Lookup failed: ${e.toString()}';
+        _recipientError = 'Error: client appears to be offline';
       });
     }
   }
@@ -121,7 +121,7 @@ class _SendScreenState extends State<SendScreen> {
       setState(() {
         _verifying = false;
         _verified = false;
-        _verifyError = e.toString();
+        _verifyError = 'Error: client appears to be offline';
       });
     }
   }

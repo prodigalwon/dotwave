@@ -91,7 +91,7 @@ class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _bodyError = e.toString();
+        _bodyError = 'Error: client appears to be offline';
         _loadingBody = false;
       });
     }
@@ -116,7 +116,7 @@ class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _commentsError = e.toString();
+        _commentsError = 'Error: client appears to be offline';
         _loadingComments = false;
       });
     }

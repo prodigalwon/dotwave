@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'bridge/bridge_generated.dart/frb_generated.dart';
 import 'package:no_screenshot/no_screenshot.dart';
 import 'keystore.dart';
@@ -10,6 +11,8 @@ import 'package:local_auth/local_auth.dart';
 import 'backup_provider_screen.dart';
 import 'restore_provider_screen.dart';
 import 'home_shell.dart';
+import 'theme.dart';
+import 'screens/name_registration_screen.dart';
 
 
 void main() async {
@@ -31,13 +34,7 @@ class DotWaveApp extends StatelessWidget {
     return MaterialApp(
       title: 'Dotwave',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFE6007A),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.dark,
       home: const SplashScreen(),
     );
   }
@@ -104,15 +101,32 @@ Future<bool> _authenticateUser() async {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
+      backgroundColor: AppTheme.bg,
       body: Center(
-        child: Text(
-          'dotwave',
-          style: TextStyle(
-            fontSize: 36,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 2,
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: AppTheme.cardGradient,
+              ),
+              child: const Icon(Icons.waves, color: Colors.white, size: 36),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'dotwave',
+              style: GoogleFonts.syne(
+                fontSize: 34,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: 1,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -125,50 +139,63 @@ class OnboardingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.bg,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(32.0),
+          padding: const EdgeInsets.symmetric(horizontal: 28.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Welcome to Dotwave',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              const Spacer(flex: 2),
+              // Logo mark
+              Center(
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    gradient: AppTheme.cardGradient,
+                  ),
+                  child: const Icon(Icons.waves, color: Colors.white, size: 40),
+                ),
+              ),
+              const SizedBox(height: 28),
+              Text(
+                'dotwave',
+                style: GoogleFonts.syne(
+                  fontSize: 40,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
-              const Text(
+              const SizedBox(height: 12),
+              Text(
                 'Your gateway to the Polkadot ecosystem.',
-                style: TextStyle(fontSize: 16, color: Colors.white60),
+                style: GoogleFonts.dmSans(
+                  fontSize: 16,
+                  color: AppTheme.textSecondary,
+                  height: 1.5,
+                ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 64),
+              const Spacer(flex: 3),
               FilledButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CreateAccountScreen()),
-                  );
-                },
-                child: const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text('Create Account'),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CreateAccountScreen()),
                 ),
+                child: const Text('Create Account'),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const RestoreAccountScreen()),
-                  );
-                },
-                child: const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text('I already have an account'),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const RestoreAccountScreen()),
                 ),
+                child: const Text('I already have an account'),
               ),
+              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -380,8 +407,10 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
               onComplete: () {
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (_) => HomeShell(address:
- widget.address)),
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        PickNamePromptScreen(address: widget.address),
+                  ),
                   (_) => false,
                 );
               },
@@ -646,4 +675,108 @@ Widget build(BuildContext context) {
     ),
   );
 }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Post-onboarding name prompt
+// ─────────────────────────────────────────────────────────────────────────────
+
+class PickNamePromptScreen extends StatelessWidget {
+  final String address;
+  const PickNamePromptScreen({super.key, required this.address});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.bg,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Spacer(flex: 2),
+              Center(
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppTheme.pink.withOpacity(0.12),
+                    border: Border.all(
+                      color: AppTheme.pink.withOpacity(0.3),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Icon(Icons.badge_outlined,
+                      color: AppTheme.pink, size: 40),
+                ),
+              ),
+              const SizedBox(height: 28),
+              Text(
+                'Choose your name',
+                style: GoogleFonts.syne(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Flexible(
+                    child: Text(
+                      'Your .dot name is how people find you on Polkadot — send DOT, message friends, and unlock dApps, all without a long address.',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 15,
+                        color: AppTheme.textSecondary,
+                        height: 1.55,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Tooltip(
+                    message:
+                        'Friends and family can send you DOT by typing yourname.dot instead of your 48-character address. Your name also unlocks identity features, governance tools, and other dApps across the Polkadot ecosystem.',
+                    preferBelow: true,
+                    triggerMode: TooltipTriggerMode.tap,
+                    child: const Icon(Icons.info_outline,
+                        size: 16, color: AppTheme.textTertiary),
+                  ),
+                ],
+              ),
+              const Spacer(flex: 3),
+              FilledButton(
+                onPressed: () => Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => NameRegistrationScreen(
+                      address: address,
+                      isOnboarding: true,
+                    ),
+                  ),
+                ),
+                child: const Text('Pick my name'),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => HomeShell(address: address)),
+                  (_) => false,
+                ),
+                child: const Text('Skip for now'),
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
