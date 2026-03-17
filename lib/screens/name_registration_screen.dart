@@ -132,6 +132,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
       context,
       TransactionBlade(
         transactionType: 'Name Registration (Gift)',
+        rpcUrl: _rpcUrl,
         rows: [
           TxRow('Name', '$name.dot'),
           TxRow(
@@ -245,6 +246,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
           context,
           TransactionBlade(
             transactionType: 'Name Purchase',
+            rpcUrl: _rpcUrl,
             rows: [
               TxRow('Name', '$name.dot'),
               TxRow(
@@ -454,6 +456,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
                           context,
                           TransactionBlade(
                             transactionType: 'Name Registration',
+                            rpcUrl: _rpcUrl,
                             rows: [
                               TxRow('Name', '$name.dot'),
                             ],

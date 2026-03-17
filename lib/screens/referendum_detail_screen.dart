@@ -123,96 +123,54 @@ class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
   }
 
   Future<void> _onVoteTap() async {
-    final aye = await _showVoteChoiceSheet();
-    if (aye == null || !mounted) return;
-    await _showVoteBlade(aye: aye);
-  }
+    const storage = FlutterSecureStorage();
+    final address = await storage.read(key: 'account_address') ?? '';
+    if (!mounted) return;
 
-  Future<bool?> _showVoteChoiceSheet() {
-    return showModalBottomSheet<bool>(
+    final config = await showModalBottomSheet<_VoteConfigData>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF141414),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40, height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Text(
-                'Vote on #${widget.post.postId}',
-                style: const TextStyle(
-                  color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                widget.post.displayTitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white54, fontSize: 13),
-              ),
-              const SizedBox(height: 28),
-              Row(
-                children: [
-                  Expanded(
-                    child: _VoteChoiceButton(
-                      label: 'Aye',
-                      icon: Icons.thumb_up_outlined,
-                      color: const Color(0xFF16A34A),
-                      onTap: () => Navigator.pop(ctx, true),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _VoteChoiceButton(
-                      label: 'Nay',
-                      icon: Icons.thumb_down_outlined,
-                      color: const Color(0xFFEF4444),
-                      onTap: () => Navigator.pop(ctx, false),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => _VoteConfigSheet(
+        address: address,
+        rpcUrl: _mainnetRpc,
+        post: widget.post,
       ),
     );
+
+    if (config == null || !mounted) return;
+    await _showVoteBlade(config: config);
   }
 
-  Future<void> _showVoteBlade({required bool aye}) async {
-    const storage = FlutterSecureStorage();
-    final address = await storage.read(key: 'account_address') ?? '';
-    const defaultBalance = '100000000000'; // 0.1 DOT
+  Future<void> _showVoteBlade({required _VoteConfigData config}) async {
+    const lockPeriods = ['No lock', '7 days', '14 days', '28 days', '56 days', '112 days', '224 days'];
+    const weightLabels = ['0.1×', '1×', '2×', '3×', '4×', '5×', '6×'];
+    final amountDot = (BigInt.parse(config.balancePlanck) ~/ BigInt.from(10).pow(12)).toString();
+    final convictionLabel = config.conviction == 0
+        ? 'None (${weightLabels[0]} weight, no lock)'
+        : '${weightLabels[config.conviction]} weight — ${lockPeriods[config.conviction]}';
 
     if (!mounted) return;
     await TransactionBlade.show(
       context,
       TransactionBlade(
         transactionType: 'Governance Vote',
+        rpcUrl: _mainnetRpc,
         rows: [
           TxRow('Referendum', '#${widget.post.postId}'),
-          TxRow('Vote', aye ? 'Aye' : 'Nay',
-              valueColor: aye ? const Color(0xFF16A34A) : const Color(0xFFEF4444)),
-          TxRow('Conviction', '1x Locked'),
-          TxRow('Amount', '0.1 DOT'),
+          TxRow('Vote', config.aye ? 'Aye' : 'Nay',
+              valueColor: config.aye ? const Color(0xFF16A34A) : const Color(0xFFEF4444)),
+          TxRow('Conviction', convictionLabel),
+          TxRow('Amount', '$amountDot DOT'),
         ],
         onConfirm: (phrase) => RustLib.instance.api.crateCoreVoteOnReferendum(
           referendumIndex: widget.post.postId,
-          aye: aye,
-          balancePlanck: defaultBalance,
-          conviction: 1,
+          aye: config.aye,
+          balancePlanck: config.balancePlanck,
+          conviction: config.conviction,
           rpcUrl: _mainnetRpc,
           phrase: phrase,
         ),
@@ -235,27 +193,29 @@ class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
         title: Text('#${post.postId}',
             style: const TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
-        actions: [
-          if (canVote)
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: TextButton(
-                onPressed: _onVoteTap,
-                style: TextButton.styleFrom(
-                  backgroundColor: const Color(0xFFE6007A).withOpacity(0.15),
-                  foregroundColor: const Color(0xFFE6007A),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                ),
-                child: const Text('Vote',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ),
-        ],
       ),
+      floatingActionButton: canVote
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: FloatingActionButton.extended(
+                  onPressed: _onVoteTap,
+                  backgroundColor: const Color(0xFFE6007A),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  label: const Text('Vote',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
+                  icon: const Icon(Icons.how_to_vote_outlined),
+                ),
+              ),
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1008,6 +968,577 @@ class _VoteBox extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Vote config data ───────────────────────────────────────────────────────
+
+class _VoteConfigData {
+  final bool aye;
+  final int conviction;
+  final String balancePlanck;
+  const _VoteConfigData({
+    required this.aye,
+    required this.conviction,
+    required this.balancePlanck,
+  });
+}
+
+class _ConvictionEntry {
+  final int value;
+  final String weightLabel;
+  final String lockPeriod;
+  const _ConvictionEntry(this.value, this.weightLabel, this.lockPeriod);
+}
+
+// ─── Vote config sheet ──────────────────────────────────────────────────────
+
+class _VoteConfigSheet extends StatefulWidget {
+  final String address;
+  final String rpcUrl;
+  final ReferendumPost post;
+  const _VoteConfigSheet({
+    required this.address,
+    required this.rpcUrl,
+    required this.post,
+  });
+
+  @override
+  State<_VoteConfigSheet> createState() => _VoteConfigSheetState();
+}
+
+class _VoteConfigSheetState extends State<_VoteConfigSheet> {
+  static const _dotDecimals = 12;
+
+  static const _convictions = [
+    _ConvictionEntry(0, '0.1×', 'No lock'),
+    _ConvictionEntry(1, '1×', '7 days'),
+    _ConvictionEntry(2, '2×', '14 days'),
+    _ConvictionEntry(3, '3×', '28 days'),
+    _ConvictionEntry(4, '4×', '56 days'),
+    _ConvictionEntry(5, '5×', '112 days'),
+    _ConvictionEntry(6, '6×', '224 days'),
+  ];
+
+  bool _aye = true;
+  int _conviction = 1;
+  BigInt _balancePlanck = BigInt.zero;
+  bool _loadingBalance = true;
+  bool _offline = false;
+  String? _submitError;
+  final _amountCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchBalance();
+    _amountCtrl.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchBalance() async {
+    try {
+      final planckStr = await RustLib.instance.api.crateCoreFetchBalance(
+        address: widget.address,
+        rpcUrl: widget.rpcUrl,
+      );
+      if (!mounted) return;
+      setState(() {
+        _balancePlanck = BigInt.parse(planckStr);
+        _loadingBalance = false;
+        _offline = false;
+        _submitError = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _balancePlanck = BigInt.zero;
+        _loadingBalance = false;
+        _offline = true;
+      });
+    }
+  }
+
+  BigInt get _maxDot => _balancePlanck ~/ BigInt.from(10).pow(_dotDecimals);
+
+  BigInt get _enteredDot {
+    final t = _amountCtrl.text.trim();
+    if (t.isEmpty) return BigInt.zero;
+    return BigInt.tryParse(t) ?? BigInt.zero;
+  }
+
+  bool get _overBalance => _enteredDot > _maxDot && _maxDot > BigInt.zero;
+  bool get _canSubmit =>
+      _amountCtrl.text.trim().isNotEmpty &&
+      _enteredDot > BigInt.zero &&
+      !_overBalance;
+
+  void _tapMax() {
+    _amountCtrl.text = _maxDot.toString();
+    _amountCtrl.selection =
+        TextSelection.collapsed(offset: _amountCtrl.text.length);
+  }
+
+  void _submit() {
+    if (_offline) {
+      setState(() => _submitError = 'Error: client appears to be offline');
+      return;
+    }
+    final planck =
+        (_enteredDot * BigInt.from(10).pow(_dotDecimals)).toString();
+    Navigator.pop(
+      context,
+      _VoteConfigData(
+        aye: _aye,
+        conviction: _conviction,
+        balancePlanck: planck,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entry = _convictions[_conviction];
+    final hintText = _conviction == 0
+        ? 'No lock required — vote weight is 0.1×'
+        : '${entry.weightLabel} vote weight — DOT locked for ${entry.lockPeriod}';
+
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+
+              // Title
+              Center(
+                child: Text(
+                  'Vote on #${widget.post.postId}',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold),
+                ),
+              ),
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 24),
+                  child: Text(
+                    widget.post.displayTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 13),
+                  ),
+                ),
+              ),
+
+              // Aye / Nay toggle
+              Row(
+                children: [
+                  Expanded(child: _ayeNayButton(isAye: true)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _ayeNayButton(isAye: false)),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // Conviction dropdown
+              const Text('Conviction',
+                  style: TextStyle(color: Colors.white54, fontSize: 13)),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _conviction,
+                    isExpanded: true,
+                    dropdownColor: const Color(0xFF1E1E1E),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    borderRadius: BorderRadius.circular(12),
+                    icon: const Icon(Icons.keyboard_arrow_down,
+                        color: Colors.white38),
+                    items: _convictions.map((c) {
+                      return DropdownMenuItem<int>(
+                        value: c.value,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                c.value == 0
+                                    ? 'None — 0.1× weight'
+                                    : '${c.weightLabel} weight',
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 14),
+                              ),
+                            ),
+                            Text(
+                              c.lockPeriod,
+                              style: const TextStyle(
+                                  color: Colors.white38, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _conviction = v);
+                    },
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 6, left: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      hintText,
+                      style: const TextStyle(
+                          color: Colors.white38, fontSize: 12),
+                    ),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () => showDialog<void>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor: const Color(0xFF1E1E1E),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                          title: const Text(
+                            'About Conviction Voting',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          content: const SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _ConvictionInfoSection(
+                                  heading: 'None (0.1×) — no lockup',
+                                  body:
+                                      'You can vote without locking any DOT, but your vote only counts for a tenth of your balance. Most people skip this and use Locked 1× if they want low commitment.',
+                                ),
+                                SizedBox(height: 14),
+                                _ConvictionInfoSection(
+                                  heading: 'Lock starts after the vote ends',
+                                  body:
+                                      'The lock period begins when the referendum concludes, not when you vote. If you vote early on a referendum with a 28-day voting period and chose Locked 2×, you\'re locked for 28 days of voting + 14 days after. Locked 5× or 6× can be a significant capital commitment.',
+                                ),
+                                SizedBox(height: 14),
+                                _ConvictionInfoSection(
+                                  heading: 'Delegation preserves conviction',
+                                  body:
+                                      'If you delegate to someone with Locked 3× and they vote, your tokens get their conviction applied — not yours.',
+                                ),
+                                SizedBox(height: 14),
+                                _ConvictionInfoSection(
+                                  heading: 'Splitting is allowed',
+                                  body:
+                                      'You can vote with different convictions across different referenda simultaneously with the same DOT, as long as the locks don\'t conflict.',
+                                ),
+                              ],
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('Got it',
+                                  style: TextStyle(
+                                      color: Color(0xFFE6007A),
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: Colors.white38, width: 1),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'i',
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Amount field
+              Row(
+                children: [
+                  const Text('Amount (DOT)',
+                      style: TextStyle(color: Colors.white54, fontSize: 13)),
+                  const Spacer(),
+                  Text(
+                    _loadingBalance
+                        ? 'Balance: …'
+                        : 'Balance: ${_maxDot} DOT',
+                    style: const TextStyle(
+                        color: Colors.white38, fontSize: 12),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _amountCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly
+                      ],
+                      style: TextStyle(
+                        color: _overBalance
+                            ? const Color(0xFFEF4444)
+                            : Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: const Color(0xFF1E1E1E),
+                        hintText: '0',
+                        hintStyle:
+                            const TextStyle(color: Colors.white38),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: _overBalance
+                              ? const BorderSide(
+                                  color: Color(0xFFEF4444), width: 1.5)
+                              : BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: _overBalance
+                              ? const BorderSide(
+                                  color: Color(0xFFEF4444), width: 1.5)
+                              : const BorderSide(
+                                  color: Color(0xFFE6007A), width: 1.5),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                        suffixText: 'DOT',
+                        suffixStyle: const TextStyle(
+                            color: Colors.white38, fontSize: 14),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: _loadingBalance ? null : _tapMax,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6007A).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color:
+                                const Color(0xFFE6007A).withOpacity(0.3)),
+                      ),
+                      child: Text(
+                        'MAX',
+                        style: TextStyle(
+                          color: _loadingBalance
+                              ? Colors.white38
+                              : const Color(0xFFE6007A),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (_overBalance)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 4),
+                  child: Text(
+                    'Exceeds your balance of ${_maxDot} DOT',
+                    style: const TextStyle(
+                        color: Color(0xFFEF4444), fontSize: 12),
+                  ),
+                ),
+
+              const SizedBox(height: 28),
+
+              // Offline / submit error
+              if (_submitError != null)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border:
+                        Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.wifi_off,
+                          size: 15, color: Colors.redAccent),
+                      const SizedBox(width: 8),
+                      Text(
+                        _submitError!,
+                        style: const TextStyle(
+                            color: Colors.redAccent, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Submit button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _canSubmit ? _submit : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _aye
+                        ? const Color(0xFF16A34A)
+                        : const Color(0xFFEF4444),
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor:
+                        const Color(0xFFE6007A).withOpacity(0.25),
+                    disabledForegroundColor: Colors.white38,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: Text(
+                    _aye ? 'Vote Aye' : 'Vote Nay',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _ayeNayButton({required bool isAye}) {
+    final selected = _aye == isAye;
+    final color =
+        isAye ? const Color(0xFF16A34A) : const Color(0xFFEF4444);
+    final icon =
+        isAye ? Icons.thumb_up_outlined : Icons.thumb_down_outlined;
+    final label = isAye ? 'Aye' : 'Nay';
+
+    return GestureDetector(
+      onTap: () => setState(() => _aye = isAye),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: selected ? color : const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(12),
+          border: selected ? null : Border.all(color: Colors.white12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon,
+                size: 18,
+                color: selected ? Colors.white : Colors.white38),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.white : Colors.white38,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Conviction info dialog helper ─────────────────────────────────────────
+
+class _ConvictionInfoSection extends StatelessWidget {
+  final String heading;
+  final String body;
+  const _ConvictionInfoSection({required this.heading, required this.body});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          heading,
+          style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          body,
+          style: const TextStyle(
+              color: Colors.white54, fontSize: 13, height: 1.4),
+        ),
+      ],
     );
   }
 }

@@ -36,6 +36,9 @@ class TransactionBlade extends StatefulWidget {
   /// Label for the cost line, e.g. "Registration Fee".
   final String costLabel;
 
+  /// RPC endpoint used for the connectivity/balance pre-check.
+  final String rpcUrl;
+
   /// Called after biometric + passphrase auth. Receives the decrypted phrase.
   /// Should throw a [String] message on failure.
   final Future<void> Function(String phrase) onConfirm;
@@ -50,6 +53,7 @@ class TransactionBlade extends StatefulWidget {
   const TransactionBlade({
     super.key,
     required this.transactionType,
+    required this.rpcUrl,
     required this.rows,
     required this.onConfirm,
     this.loadCost,
@@ -87,7 +91,6 @@ class TransactionBlade extends StatefulWidget {
 }
 
 class _TransactionBladeState extends State<TransactionBlade> {
-  static const _rpcUrl = 'ws://172.24.112.1:9944';
   static const _dotDecimals = 12;
 
   String? _costRaw;
@@ -130,8 +133,24 @@ class _TransactionBladeState extends State<TransactionBlade> {
   }
 
   Future<void> _onSubmit() async {
-    // Step 1: optional preflight (e.g. re-check name availability)
+    // Step 1: connectivity check — try to fetch balance; failure means offline
     setState(() { _state = _BladeState.checkingAvailability; _errorMessage = null; });
+    try {
+      const storage = FlutterSecureStorage();
+      final address = await storage.read(key: 'account_address') ?? '';
+      await RustLib.instance.api.crateCoreFetchBalance(
+        address: address,
+        rpcUrl: widget.rpcUrl,
+      );
+    } catch (_) {
+      setState(() {
+        _state = _BladeState.error;
+        _errorMessage = 'Error: client appears to be offline';
+      });
+      return;
+    }
+
+    // Step 2: optional preflight (e.g. re-check name availability)
     if (widget.preflightCheck != null) {
       final err = await widget.preflightCheck!();
       if (err != null) {

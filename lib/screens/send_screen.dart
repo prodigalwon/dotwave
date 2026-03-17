@@ -170,6 +170,7 @@ class _SendScreenState extends State<SendScreen> {
       context,
       TransactionBlade(
         transactionType: 'Token Transfer',
+        rpcUrl: _rpcUrl,
         rows: [
           TxRow('To', displayName),
           if (_isDotName && _resolved != null)
