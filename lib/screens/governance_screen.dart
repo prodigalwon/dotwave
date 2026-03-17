@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'referendum_detail_screen.dart';
+import '../bridge/bridge_generated.dart/frb_generated.dart';
 
 // ─── Filter ────────────────────────────────────────────────────────────────
 
@@ -30,7 +32,8 @@ extension _FilterExt on _Filter {
 // ─── Screen ────────────────────────────────────────────────────────────────
 
 class GovernanceScreen extends StatefulWidget {
-  const GovernanceScreen({super.key});
+  final String? initialQuery;
+  const GovernanceScreen({super.key, this.initialQuery});
 
   @override
   State<GovernanceScreen> createState() => _GovernanceScreenState();
@@ -68,6 +71,10 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialQuery != null && widget.initialQuery!.isNotEmpty) {
+      _query = widget.initialQuery!;
+      _searchCtrl.text = widget.initialQuery!;
+    }
     _load();
     _scroll.addListener(_onScroll);
   }
@@ -261,13 +268,21 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
                           return _PostCard(
                             post: visible[i],
                             query: _query,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ReferendumDetailScreen(
-                                    post: visible[i]),
-                              ),
-                            ),
+                            onTap: () async {
+                              final addr = await Navigator.push<String>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ReferendumDetailScreen(
+                                      post: visible[i]),
+                                ),
+                              );
+                              if (addr != null && mounted) {
+                                setState(() {
+                                  _query = addr;
+                                  _searchCtrl.text = addr;
+                                });
+                              }
+                            },
                           );
                         },
                       ),
@@ -452,7 +467,7 @@ InlineSpan highlightText(String text, String query,
 
 // ─── Widgets ───────────────────────────────────────────────────────────────
 
-class _PostCard extends StatelessWidget {
+class _PostCard extends StatefulWidget {
   final ReferendumPost post;
   final String query;
   final VoidCallback onTap;
@@ -461,11 +476,45 @@ class _PostCard extends StatelessWidget {
       {required this.post, required this.query, required this.onTap});
 
   @override
+  State<_PostCard> createState() => _PostCardState();
+}
+
+class _PostCardState extends State<_PostCard> {
+  static const _rpcUrl = 'ws://172.24.112.1:9944';
+  String? _resolvedName;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.post.proposer.isNotEmpty) _resolveProposer();
+  }
+
+  Future<void> _resolveProposer() async {
+    try {
+      final name = await RustLib.instance.api.crateCoreResolveAddressToName(
+        address: widget.post.proposer,
+        rpcUrl: _rpcUrl,
+      );
+      if (name != null && mounted) setState(() => _resolvedName = name);
+    } catch (_) {
+      // silent — PNS name is best-effort
+    }
+  }
+
+  void _copyName() {
+    Clipboard.setData(ClipboardData(text: _resolvedName!));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Name copied')));
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final post = widget.post;
+    final query = widget.query;
     final (statusColor, statusBg) = statusColors(post.status);
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
@@ -560,6 +609,30 @@ class _PostCard extends StatelessWidget {
                         color: Colors.white38, fontSize: 12)),
               ],
             ),
+
+            // Resolved PNS name (if found)
+            if (_resolvedName != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 17),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$_resolvedName.dot',
+                      style: const TextStyle(
+                          color: Color(0xFFE6007A),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(width: 5),
+                    GestureDetector(
+                      onTap: _copyName,
+                      child: const Icon(Icons.copy_outlined,
+                          size: 12, color: Color(0xFFE6007A)),
+                    ),
+                  ],
+                ),
+              ),
 
             // Tally bar
             if (post.tally != null) ...[

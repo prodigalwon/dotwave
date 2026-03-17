@@ -290,26 +290,42 @@ class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
             _DetailRow(
               icon: Icons.person_outline,
               label: 'Proposer',
-              child: GestureDetector(
-                onTap: () {
-                  Clipboard.setData(
-                      ClipboardData(text: post.proposer));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Address copied')),
-                  );
-                },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(truncateAddr(post.proposer),
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 14)),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.copy_outlined,
-                        size: 13, color: Colors.white38),
-                  ],
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      Clipboard.setData(
+                          ClipboardData(text: post.proposer));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Address copied')),
+                      );
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(truncateAddr(post.proposer),
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 14)),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.copy_outlined,
+                            size: 13, color: Colors.white38),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context, post.proposer),
+                    child: const Text(
+                      'History',
+                      style: TextStyle(
+                          color: Color(0xFFE6007A),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
               ),
             ),
 
