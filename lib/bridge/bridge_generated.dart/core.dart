@@ -6,8 +6,9 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These functions are ignored because they are not marked as `pub`: `connect_paseo_with_rpc`, `connect_paseo`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `encode_record_type`, `fetch_best_nonce`, `hex_encode_lower`, `paseo_tx_params`, `submit_dynamic_tx`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Sr25519Signer`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `sign`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `fmt`, `sign`
 
 Future<String> fetchBalance({
   required String address,
@@ -25,6 +26,10 @@ Future<NameAvailability> checkNameAvailability({
   rpcUrl: rpcUrl,
 );
 
+/// Reverse lookup: address → name label.
+/// Returns None because namehash is one-way (Keccak256). The pallet stores
+/// DomainHash → NameRecord but never the raw label string. A future off-chain
+/// indexer watching NameRegistered events could provide this mapping.
 Future<String?> resolveAddressToName({
   required String address,
   required String rpcUrl,
@@ -33,7 +38,7 @@ Future<String?> resolveAddressToName({
   rpcUrl: rpcUrl,
 );
 
-/// Stub — reverse lookup not yet supported by pallet.
+/// Check whether an account owns a canonical .dot name via account_dashboard.
 Future<bool> hasCanonicalName({
   required String address,
   required String rpcUrl,
@@ -100,12 +105,41 @@ Future<String> sendDot({
   rpcUrl: rpcUrl,
 );
 
+/// Fetch the balance of an Assets-pallet asset (e.g. USDT=1984, USDC=1337) on
+/// Polkadot Asset Hub.  Returns the raw balance as a decimal string ("0" if the
+/// account has no entry for that asset).  Uses subxt's dynamic API so no
+/// Asset Hub .scale metadata file is required.
+Future<String> fetchAssetBalance({
+  required String address,
+  required String assetHubRpc,
+  required int assetId,
+}) => RustLib.instance.api.crateCoreFetchAssetBalance(
+  address: address,
+  assetHubRpc: assetHubRpc,
+  assetId: assetId,
+);
+
+/// Buy a listed name from the PNS marketplace (direct purchase, no gift).
 Future<String> buyName({
   required String name,
   required String phrase,
   required String rpcUrl,
 }) => RustLib.instance.api.crateCoreBuyName(
   name: name,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Buy a listed name and gift it to a recipient. The recipient must call
+/// accept_offered_name within 90 days to activate it.
+Future<String> buyNameFor({
+  required String name,
+  required String recipient,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreBuyNameFor(
+  name: name,
+  recipient: recipient,
   phrase: phrase,
   rpcUrl: rpcUrl,
 );
@@ -123,6 +157,8 @@ Future<String> registerNameFor({
   rpcUrl: rpcUrl,
 );
 
+/// Query the on-chain RnsPriceOracle for the registration fee.
+/// BasePrice is an [u128; 11] array indexed by label length (1-char → idx 0, 11+ → idx 10).
 Future<String> getNamePrice({required String name, required String rpcUrl}) =>
     RustLib.instance.api.crateCoreGetNamePrice(name: name, rpcUrl: rpcUrl);
 
@@ -135,6 +171,206 @@ Future<String> registerName({
   phrase: phrase,
   rpcUrl: rpcUrl,
 );
+
+/// Fetch the full PNS portfolio for an account: primary name, subnames,
+/// pending offers. Returns hashes (H256 hex) — label strings are not stored
+/// on-chain due to one-way namehashing.
+Future<AccountDashboardInfo> accountDashboard({
+  required String address,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreAccountDashboard(
+  address: address,
+  rpcUrl: rpcUrl,
+);
+
+/// Fetch DNS records for a name. Pass IANA record-type codes (e.g. [65285, 65288]
+/// for PUBKEY1 + PUBKEY2). SS58 (65280) and ORIGIN (65290) are always included
+/// automatically by the pallet.
+///
+/// NOTE: The type path `polkadot::runtime_types::pns_types::ddns::codec_type::RecordType`
+/// depends on the metadata file. If it doesn't compile, regenerate metadata from the node.
+Future<List<DnsRecord>> lookupRecords({
+  required String name,
+  required List<int> recordTypes,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreLookupRecords(
+  name: name,
+  recordTypes: recordTypes,
+  rpcUrl: rpcUrl,
+);
+
+/// Release (burn) the caller's canonical name. Fails if the name has active
+/// subdomains — revoke them first.
+Future<String> releaseName({required String phrase, required String rpcUrl}) =>
+    RustLib.instance.api.crateCoreReleaseName(phrase: phrase, rpcUrl: rpcUrl);
+
+/// Renew the caller's canonical name. Resets expiry to now + 365 days.
+/// Must be called before the 30-day grace period ends.
+Future<String> renewName({required String phrase, required String rpcUrl}) =>
+    RustLib.instance.api.crateCoreRenewName(phrase: phrase, rpcUrl: rpcUrl);
+
+/// Transfer the caller's canonical name to another account.
+/// The recipient must not already own a name or hold a subdomain.
+Future<String> transferName({
+  required String toAddress,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreTransferName(
+  toAddress: toAddress,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// List the caller's canonical name for sale.
+/// price_planck: asking price in planck (string to avoid u128 overflow in Dart).
+/// expires_at_ms: unix millisecond timestamp when the listing expires.
+Future<String> createListing({
+  required String pricePlanck,
+  required BigInt expiresAtMs,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreCreateListing(
+  pricePlanck: pricePlanck,
+  expiresAtMs: expiresAtMs,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Cancel the caller's active marketplace listing.
+Future<String> cancelListing({
+  required String phrase,
+  required String rpcUrl,
+}) =>
+    RustLib.instance.api.crateCoreCancelListing(phrase: phrase, rpcUrl: rpcUrl);
+
+/// Set a DNS record on a name you own.
+/// record_type: variant name exactly as in the pallet enum — "RPC", "PUBKEY1",
+///   "AVATAR", "VALIDATOR", "PARA", "PROXY", "CONTRACT", "PUBKEY2", "PUBKEY3",
+///   "IPFS", "CONTENT". SS58 and ORIGIN are chain-managed (will be rejected).
+/// content: raw bytes (e.g. UTF-8 for RPC endpoint, raw pubkey for PUBKEY1).
+/// name: plain label ("alice") or dotted subdomain ("sub.alice").
+Future<String> setRecord({
+  required String name,
+  required String recordType,
+  required List<int> content,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreSetRecord(
+  name: name,
+  recordType: recordType,
+  content: content,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Set a text metadata record on a name you own.
+/// kind: "Email", "Url", "Avatar", "Description", "Notice", "Keywords",
+///   "Twitter", "Github", or "Ipfs".
+/// content: UTF-8 text value.
+/// name: plain label ("alice") or dotted subdomain ("sub.alice").
+Future<String> setText({
+  required String name,
+  required String kind,
+  required String content,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreSetText(
+  name: name,
+  kind: kind,
+  content: content,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Offer a subdomain to another account. Caller must own a canonical name
+/// (the parent). Target must not already own a name or subdomain.
+/// label: the subdomain part, e.g. "sally" to create sally.alice.dot
+Future<String> offerSubdomain({
+  required String label,
+  required String targetAddress,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreOfferSubdomain(
+  label: label,
+  targetAddress: targetAddress,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Accept a subdomain offer. Caller must be the target of the offer.
+/// parent: the parent domain label (e.g. "alice")
+/// label: the subdomain label (e.g. "sally")
+Future<String> acceptSubdomain({
+  required String parent,
+  required String label,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreAcceptSubdomain(
+  parent: parent,
+  label: label,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Reject a subdomain offer. Caller must be the target of the offer.
+Future<String> rejectSubdomain({
+  required String parent,
+  required String label,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreRejectSubdomain(
+  parent: parent,
+  label: label,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Revoke a subdomain you issued. Caller must own the parent name.
+Future<String> revokeSubdomain({
+  required String label,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreRevokeSubdomain(
+  label: label,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Release a subdomain you hold. Caller must be the subdomain holder.
+Future<String> releaseSubdomain({
+  required String parent,
+  required String label,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreReleaseSubdomain(
+  parent: parent,
+  label: label,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Accept a name that was bought for you via buy_name_for (gift purchase).
+/// Must be called within 90 days of the purchase. Sets the name as your
+/// canonical name.
+Future<String> acceptOfferedName({
+  required String name,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreAcceptOfferedName(
+  name: name,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Build a dynamic Value representing DevicePublicKey::EcdsaP256 for subxt submission.
+/// Takes raw P-256 public key bytes from StrongBox (SEC1 format, typically 65 bytes uncompressed).
+/// Returns the Value that can be used as the `device_pubkey` parameter in ZK-PKI extrinsics.
+Uint8List buildDevicePubkeyP256({required List<int> rawPubkey}) =>
+    RustLib.instance.api.crateCoreBuildDevicePubkeyP256(rawPubkey: rawPubkey);
+
+/// Build SCALE-encoded DevicePublicKey::EcdsaP521 from raw P-521 public key bytes.
+Uint8List buildDevicePubkeyP521({required List<int> rawPubkey}) =>
+    RustLib.instance.api.crateCoreBuildDevicePubkeyP521(rawPubkey: rawPubkey);
 
 (DotAccount, String) generateAccount() =>
     RustLib.instance.api.crateCoreGenerateAccount();
@@ -158,6 +394,218 @@ PassphraseStrength checkPassphraseStrength({required String passphrase}) =>
     RustLib.instance.api.crateCoreCheckPassphraseStrength(
       passphrase: passphrase,
     );
+
+/// Fetch the 32-byte offer nonce for a given (user, issuer) pair from the
+/// ZK-PKI pallet's `ContractOffers` storage map.
+///
+/// **STUB.** The ZK-PKI pallet is not yet deployed to any chain that
+/// Dotwave can reach, and `rust_core` does not yet embed ZK-PKI pallet
+/// metadata for subxt to type-check against. Until both land, this
+/// function returns a fixed 32-byte zero value so the production
+/// mint-cert flow's callsite can be wired and exercised ahead of chain
+/// availability.
+///
+/// # TODO — replace stub with real subxt storage query
+///
+/// When the pallet is live:
+///
+/// 1. Add the ZK-PKI pallet's SCALE metadata blob alongside
+///    `polkadot_metadata.scale` and a `subxt::subxt(...)` module decl
+///    matching the `polkadot` module at the top of this file.
+/// 2. Replace the stub body with a pattern mirroring [`fetch_balance`]:
+///
+///    ```ignore
+///    let api = connect_paseo(&rpc_url).await.map_err(|e| anyhow::anyhow!(e))?;
+///    let user_id = AccountId32::from_str(&user)?;
+///    let issuer_id = AccountId32::from_str(&issuer)?;
+///    let query = zkpki::storage().zk_pki().contract_offers(user_id, issuer_id);
+///    let block = api.at_current_block().await?;
+///    let offer = block.storage().entry(query)?.try_fetch(()).await?
+///        .ok_or_else(|| anyhow!("no offer for (user, issuer)"))?
+///        .decode()?;
+///    Ok(offer.nonce.to_vec())
+///    ```
+///
+/// 3. Exact storage item name follows the pallet's final layout — the
+///    `UserIssuerKey` newtype wrapper referenced in `pki/CLAUDE.md`
+///    means the actual query may take a single composite key.
+///
+/// Returning a `Vec<u8>` (rather than `[u8; 32]`) matches the rest of
+/// this file's byte-vector convention; callers should assert `len() == 32`.
+Future<Uint8List> fetchZkpkiOfferNonce({
+  required String user,
+  required String issuer,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreFetchZkpkiOfferNonce(
+  user: user,
+  issuer: issuer,
+  rpcUrl: rpcUrl,
+);
+
+/// Verify at runtime that the caller is running on the platform they
+/// expect. `expected` is a lowercase platform token — one of `"android"`,
+/// `"linux"`, `"windows"`, `"macos"`, `"ios"`.
+///
+/// Signals consulted:
+///
+/// | Expected  | Signals                                                  |
+/// |-----------|----------------------------------------------------------|
+/// | `android` | `std::env::consts::OS` + `/system/build.prop` +          |
+/// |           | `/system/bin/linker[64]` + `/apex` (modern Android)      |
+/// | `linux`   | `std::env::consts::OS` + `/proc/version` + absence of    |
+/// |           | `/system/build.prop` + absence of `/apex`                |
+/// | `windows` | `std::env::consts::OS` + `C:\Windows\System32`           |
+/// | `macos`   | `std::env::consts::OS` + `/System/Library/CoreServices`  |
+/// | `ios`     | `std::env::consts::OS` only (no robust runtime probe)    |
+///
+/// All signals for a given platform must agree. Any disagreement returns
+/// `Err(String)` describing which signals mismatched. Callers should
+/// treat the error as a hard stop — do not proceed with platform-specific
+/// ceremony work.
+///
+/// `std::env::consts::OS` is a compile-time constant baked into the
+/// target binary; it cannot be spoofed at runtime without modifying the
+/// binary itself. Filesystem signals catch the case where someone took a
+/// genuine Android-built binary and ran it in a Linux chroot or
+/// Docker-on-Android situation where the OS identity is ambiguous.
+Future<OsAttestation> attestRuntimeOs({required String expected}) =>
+    RustLib.instance.api.crateCoreAttestRuntimeOs(expected: expected);
+
+/// Install the mime-wrap Groth16 verifying key on-chain via `zkPki.set_mime_wrap_vk`.
+/// Signed extrinsic (no sudo needed in the integrated pallet's PoC trust model).
+/// Production wiring routes this through a governance origin.
+Future<String> submitSetMimeWrapVk({
+  required String vkBytesHex,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreSubmitSetMimeWrapVk(
+  vkBytesHex: vkBytesHex,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// `mint_cert` for a StrongBox / MimeWrap template. Called by the user
+/// (cert recipient) after an issuer has called `offer_contract` for them.
+///
+/// The chain re-derives `ec_key_pub` from the verified `cert_ec` SEC1
+/// pubkey and asserts equality with `ec_key_pub_claimed_hex` (Paseo
+/// tripwire / option B). On mainnet, the same value will be chain-derived
+/// only.
+///
+/// `attestation_payload.integrity_blob` is the SCALE-encoded `MockVerdict::Tpm{...}`
+/// blob the testnet `NoopBindingProofVerifier` decodes. `bundle.integrity_blob_hex`
+/// is the real Gate-2 `IntegrityAttestation` blob the StrongBox HIP signature
+/// commits to. They serve different layers and are kept distinct.
+Future<String> submitMintCertStrongbox({
+  required String contractNonceHex,
+  required int offerCreatedAtBlock,
+  required String integrityBlobForMockVerdictHex,
+  required StrongBoxCeremonyBundle bundle,
+  required String commitmentCHex,
+  required String ecKeyPubClaimedHex,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreSubmitMintCertStrongbox(
+  contractNonceHex: contractNonceHex,
+  offerCreatedAtBlock: offerCreatedAtBlock,
+  integrityBlobForMockVerdictHex: integrityBlobForMockVerdictHex,
+  bundle: bundle,
+  commitmentCHex: commitmentCHex,
+  ecKeyPubClaimedHex: ecKeyPubClaimedHex,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// `self_discard_cert` with `PopAssertion::MimeWrap`. Cert holder asserts
+/// PoP via a fresh Groth16 proof bound to the (bucket, nonce) replay-map
+/// key. The hip_proof must reproduce the exact bytes recorded at mint
+/// time (cert_ec / attest_ec hashes match the genesis fingerprint), which
+/// in practice means re-running the StrongBox ceremony against the same
+/// cert_ec / attest_ec keys.
+Future<String> submitSelfDiscardCertMimeWrap({
+  required String certThumbprintHex,
+  required BigInt bucket,
+  required String mimeWrapNonceHex,
+  required int userOtp,
+  required String proofBytesHex,
+  required StrongBoxCeremonyBundle bundle,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreSubmitSelfDiscardCertMimeWrap(
+  certThumbprintHex: certThumbprintHex,
+  bucket: bucket,
+  mimeWrapNonceHex: mimeWrapNonceHex,
+  userOtp: userOtp,
+  proofBytesHex: proofBytesHex,
+  bundle: bundle,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Extract the 65-byte SEC1 P-256 public key from an X.509 leaf cert's
+/// SubjectPublicKeyInfo. The Stage 4c ceremony emits `attest_ec_chain[0]`
+/// as DER but doesn't separately surface the SEC1 attest pubkey; this
+/// helper searches the leaf DER for the standard P-256 ECDSA SPKI prefix
+/// and returns the next 65 bytes (which begin with the `0x04`
+/// uncompressed-point marker). Used by the Stage 5e mint-cert UI.
+Future<Uint8List> extractSec1FromX509Leaf({required List<int> leafDer}) =>
+    RustLib.instance.api.crateCoreExtractSec1FromX509Leaf(leafDer: leafDer);
+
+class AccountDashboardInfo {
+  final bool hasPrimaryName;
+
+  /// Hex-encoded DomainHash (H256) of the primary name, e.g. "0xabc…"
+  final String? primaryNameHash;
+  final List<String> subnameHashes;
+  final List<String> pendingSubnameOffers;
+  final List<String> pendingNameOffers;
+
+  const AccountDashboardInfo({
+    required this.hasPrimaryName,
+    this.primaryNameHash,
+    required this.subnameHashes,
+    required this.pendingSubnameOffers,
+    required this.pendingNameOffers,
+  });
+
+  @override
+  int get hashCode =>
+      hasPrimaryName.hashCode ^
+      primaryNameHash.hashCode ^
+      subnameHashes.hashCode ^
+      pendingSubnameOffers.hashCode ^
+      pendingNameOffers.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AccountDashboardInfo &&
+          runtimeType == other.runtimeType &&
+          hasPrimaryName == other.hasPrimaryName &&
+          primaryNameHash == other.primaryNameHash &&
+          subnameHashes == other.subnameHashes &&
+          pendingSubnameOffers == other.pendingSubnameOffers &&
+          pendingNameOffers == other.pendingNameOffers;
+}
+
+class DnsRecord {
+  /// IANA code: 65280=SS58, 65281=RPC, 65285=PUBKEY1, 65286=AVATAR, etc.
+  final int recordType;
+  final Uint8List content;
+
+  const DnsRecord({required this.recordType, required this.content});
+
+  @override
+  int get hashCode => recordType.hashCode ^ content.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DnsRecord &&
+          runtimeType == other.runtimeType &&
+          recordType == other.recordType &&
+          content == other.content;
+}
 
 class DotAccount {
   final String address;
@@ -213,6 +661,42 @@ class NameListing {
           seller == other.seller;
 }
 
+/// Result of a successful OS attestation. `signals_checked` is the count of
+/// independent signals consulted; all must have agreed to produce this
+/// value (disagreement yields `Err`). `evidence` is a semicolon-joined
+/// description of the signals that fired, intended for logs and
+/// Fagan-inspection audit trails rather than programmatic use.
+class OsAttestation {
+  final String expected;
+  final String runtimeOs;
+  final int signalsChecked;
+  final String evidence;
+
+  const OsAttestation({
+    required this.expected,
+    required this.runtimeOs,
+    required this.signalsChecked,
+    required this.evidence,
+  });
+
+  @override
+  int get hashCode =>
+      expected.hashCode ^
+      runtimeOs.hashCode ^
+      signalsChecked.hashCode ^
+      evidence.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OsAttestation &&
+          runtimeType == other.runtimeType &&
+          expected == other.expected &&
+          runtimeOs == other.runtimeOs &&
+          signalsChecked == other.signalsChecked &&
+          evidence == other.evidence;
+}
+
 class PassphraseStrength {
   final int score;
   final String? warning;
@@ -266,4 +750,82 @@ class ResolvedName {
           owner == other.owner &&
           lastBlock == other.lastBlock &&
           blockHash == other.blockHash;
+}
+
+/// Bundle of S20 ceremony bytes for a StrongBox-tier `mint_cert`. All
+/// hex strings are 0x-prefix tolerant. The dotwave Stage 4c panel emits
+/// these via the "Raw bytes for mint_cert payload" log block.
+class StrongBoxCeremonyBundle {
+  /// 65-byte SEC1 (uncompressed P-256) public key of the cert_ec key.
+  /// Strip the 26-byte SPKI envelope from the ceremony's 91-byte DER
+  /// before passing.
+  final String certEcPublicSec1Hex;
+
+  /// 65-byte SEC1 public key of the attest_ec key. Extract from the
+  /// attest_ec_chain leaf cert via `openssl x509 -pubkey`.
+  final String attestEcPublicSec1Hex;
+
+  /// `attest_ec_chain[0]` DER bytes — the leaf certificate. The chain
+  /// only checks non-empty here in v1; full chain-to-Google-root
+  /// verification is deferred.
+  final String certEcChainLeafHex;
+  final String attestEcChainLeafHex;
+
+  /// 32-byte HMAC binding output emitted by the StrongBox HMAC key.
+  final String hmacBindingOutputHex;
+
+  /// DER-ECDSA signature by `attest_ec` over
+  /// `SHA-256(blake2_256(hmac_binding_output || nonce))`.
+  final String hmacBindingSignatureHex;
+
+  /// Gate-2 integrity blob (SCALE-encoded `IntegrityAttestation`).
+  final String integrityBlobHex;
+
+  /// DER-ECDSA signature by `cert_ec` over `SHA-256(blake2_256(integrity_blob))`.
+  final String integritySignatureHex;
+
+  /// 32-byte ceremony challenge — baked into both EC keys'
+  /// setAttestationChallenge AND the input the binding signature
+  /// signed over. Goes into `StrongBoxHipProof.nonce`. NOT the
+  /// mime-wrap-replay-map nonce.
+  final String challengeHex;
+
+  const StrongBoxCeremonyBundle({
+    required this.certEcPublicSec1Hex,
+    required this.attestEcPublicSec1Hex,
+    required this.certEcChainLeafHex,
+    required this.attestEcChainLeafHex,
+    required this.hmacBindingOutputHex,
+    required this.hmacBindingSignatureHex,
+    required this.integrityBlobHex,
+    required this.integritySignatureHex,
+    required this.challengeHex,
+  });
+
+  @override
+  int get hashCode =>
+      certEcPublicSec1Hex.hashCode ^
+      attestEcPublicSec1Hex.hashCode ^
+      certEcChainLeafHex.hashCode ^
+      attestEcChainLeafHex.hashCode ^
+      hmacBindingOutputHex.hashCode ^
+      hmacBindingSignatureHex.hashCode ^
+      integrityBlobHex.hashCode ^
+      integritySignatureHex.hashCode ^
+      challengeHex.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StrongBoxCeremonyBundle &&
+          runtimeType == other.runtimeType &&
+          certEcPublicSec1Hex == other.certEcPublicSec1Hex &&
+          attestEcPublicSec1Hex == other.attestEcPublicSec1Hex &&
+          certEcChainLeafHex == other.certEcChainLeafHex &&
+          attestEcChainLeafHex == other.attestEcChainLeafHex &&
+          hmacBindingOutputHex == other.hmacBindingOutputHex &&
+          hmacBindingSignatureHex == other.hmacBindingSignatureHex &&
+          integrityBlobHex == other.integrityBlobHex &&
+          integritySignatureHex == other.integritySignatureHex &&
+          challengeHex == other.challengeHex;
 }

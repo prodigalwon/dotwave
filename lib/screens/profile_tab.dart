@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'name_registration_screen.dart';
+import 'zkpki_spoof_defense_test_screen.dart';
 
 class ProfileTab extends StatelessWidget {
   final String address;
@@ -125,6 +127,26 @@ class ProfileTab extends StatelessWidget {
             label: 'About Dotwave',
             onTap: () {},
           ),
+
+          // Debug-only entry point for the cross-platform spoof defense
+          // smoke test. kDebugMode is a Flutter-provided compile-time
+          // constant that's `false` in release builds, so this tile is
+          // tree-shaken out of anything the user actually installs.
+          if (kDebugMode) ...[
+            const SizedBox(height: 16),
+            _SectionHeader(label: 'Debug'),
+            _SettingsTile(
+              icon: Icons.shield_outlined,
+              label: 'Spoof Defense Test',
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ZkPkiSpoofDefenseTestScreen(),
+                  ),
+                );
+              },
+            ),
+          ],
 
           const SizedBox(height: 16),
           _SettingsTile(

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'referendum_detail_screen.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
+import '../config/rpc_endpoints.dart';
 
 // ─── Filter ────────────────────────────────────────────────────────────────
 
@@ -33,7 +34,11 @@ extension _FilterExt on _Filter {
 
 class GovernanceScreen extends StatefulWidget {
   final String? initialQuery;
-  const GovernanceScreen({super.key, this.initialQuery});
+  /// When true, eagerly fetches every page so the full history is searchable.
+  final bool loadAll;
+  /// When set, the AppBar back arrow deep-pops to the root GovernanceScreen.
+  final VoidCallback? onPopToRoot;
+  const GovernanceScreen({super.key, this.initialQuery, this.loadAll = false, this.onPopToRoot});
 
   @override
   State<GovernanceScreen> createState() => _GovernanceScreenState();
@@ -87,6 +92,7 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
   }
 
   void _onScroll() {
+    if (widget.loadAll) return; // everything already loaded
     if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 300 &&
         !_loadingMore &&
         _hasMore) {
@@ -102,13 +108,56 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
       _allPosts.clear();
       _hasMore = true;
     });
+    if (widget.loadAll) {
+      await _loadAllPages();
+    } else {
+      try {
+        final posts = await _fetchPage(0, _pageSize);
+        if (mounted) {
+          setState(() {
+            _allPosts.addAll(posts);
+            _loading = false;
+            _hasMore = posts.length == _pageSize;
+          });
+        }
+      } catch (e) {
+        if (mounted) setState(() { _loading = false; _error = 'Error: client appears to be offline'; });
+      }
+    }
+  }
+
+  Future<void> _loadAllPages() async {
+    const maxPages = 10; // cap: 10 × 25 = 250 items max in parallel
     try {
-      final posts = await _fetch(0);
+      // Page 0 gives us total so we know how many parallel fetches to fire
+      final body0 = await _fetchBody(0, _pageSize);
+      final total = (body0['total'] as num?)?.toInt() ?? 0;
+      final firstItems = _parseItems(body0);
+
+      final seen = <int>{};
+      final buffer = <ReferendumPost>[];
+      for (final p in firstItems) {
+        if (seen.add(p.postId)) buffer.add(p);
+      }
+
+      if (total > _pageSize) {
+        final pageCount = ((total / _pageSize).ceil()).clamp(1, maxPages);
+        final rest = await Future.wait([
+          for (int p = 1; p < pageCount; p++)
+            _fetchPage(p, _pageSize),
+        ]);
+        for (final posts in rest) {
+          for (final p in posts) {
+            if (seen.add(p.postId)) buffer.add(p);
+          }
+        }
+      }
+
       if (mounted) {
         setState(() {
-          _allPosts.addAll(posts);
+          _allPosts.addAll(buffer);
           _loading = false;
-          _hasMore = posts.length == _pageSize;
+          _hasMore = false;
         });
       }
     } catch (e) {
@@ -120,7 +169,7 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
     setState(() => _loadingMore = true);
     try {
       final next = _page + 1;
-      final posts = await _fetch(next);
+      final posts = await _fetchPage(next, _pageSize);
       if (mounted) {
         setState(() {
           _page = next;
@@ -134,22 +183,27 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
     }
   }
 
-  Future<List<ReferendumPost>> _fetch(int page) async {
-    final uri = Uri.parse(
-      'https://polkadot-api.subsquare.io/gov2/referendums'
-      '?page=$page&page_size=$_pageSize',
-    );
+  Future<Map<String, dynamic>> _fetchBody(int page, int pageSize) async {
+    final uri = Uri.https('polkadot-api.subsquare.io', '/gov2/referendums', {
+      'page': '$page',
+      'page_size': '$pageSize',
+    });
     final res = await http
         .get(uri, headers: {'Content-Type': 'application/json'})
         .timeout(const Duration(seconds: 15));
-
     if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
 
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
+  List<ReferendumPost> _parseItems(Map<String, dynamic> body) {
     final items = (body['items'] as List?) ?? [];
     return items
         .map((e) => ReferendumPost.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<List<ReferendumPost>> _fetchPage(int page, int pageSize) async {
+    return _parseItems(await _fetchBody(page, pageSize));
   }
 
   @override
@@ -161,8 +215,12 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
         foregroundColor: Colors.white,
-        title: const Text('Governance',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        leading: widget.onPopToRoot != null
+            ? BackButton(onPressed: widget.onPopToRoot)
+            : null,
+        title: Text(
+            widget.loadAll ? 'Proposer History' : 'Governance',
+            style: const TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(56),
@@ -235,9 +293,18 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
         ),
       ),
       body: _loading
-          ? const Center(
-              child:
-                  CircularProgressIndicator(color: Color(0xFFE6007A)))
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(color: Color(0xFFE6007A)),
+                  if (widget.loadAll) ...[
+                    const SizedBox(height: 16),
+                    const Text('Loading all proposals…',
+                        style: TextStyle(color: Colors.white38, fontSize: 13)),
+                  ],
+                ],
+              ))
           : _error != null
               ? _ErrorView(error: _error!, onRetry: _load)
               : visible.isEmpty
@@ -266,22 +333,29 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
                             );
                           }
                           return _PostCard(
+                            key: ValueKey(visible[i].postId),
                             post: visible[i],
                             query: _query,
-                            onTap: () async {
-                              final addr = await Navigator.push<String>(
+                            onTap: () {
+                              VoidCallback popToRoot;
+                              if (widget.loadAll) {
+                                // Already in history chain — forward existing root callback
+                                popToRoot = widget.onPopToRoot!;
+                              } else {
+                                // First entry into the chain — capture this screen's route
+                                final rootRoute = ModalRoute.of(context)!;
+                                popToRoot = () => Navigator.of(context)
+                                    .popUntil((r) => r == rootRoute);
+                              }
+                              Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => ReferendumDetailScreen(
-                                      post: visible[i]),
+                                    post: visible[i],
+                                    onPopToRoot: popToRoot,
+                                  ),
                                 ),
                               );
-                              if (addr != null && mounted) {
-                                setState(() {
-                                  _query = addr;
-                                  _searchCtrl.text = addr;
-                                });
-                              }
                             },
                           );
                         },
@@ -473,14 +547,14 @@ class _PostCard extends StatefulWidget {
   final VoidCallback onTap;
 
   const _PostCard(
-      {required this.post, required this.query, required this.onTap});
+      {super.key, required this.post, required this.query, required this.onTap});
 
   @override
   State<_PostCard> createState() => _PostCardState();
 }
 
 class _PostCardState extends State<_PostCard> {
-  static const _rpcUrl = 'ws://172.24.112.1:9944';
+  static const _rpcUrl = RpcEndpoints.pnsNode;
   String? _resolvedName;
 
   @override

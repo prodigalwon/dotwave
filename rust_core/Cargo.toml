@@ -6,17 +6,45 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.102"
 argon2 = "0.5.3"
+base32 = "0.5.1"
 bip39 = "2.2.2"
 chacha20poly1305 = "0.10.1"
 flutter_rust_bridge = "=2.11.1"
 getrandom = "0.4.2"
+libc = "0.2.183"
 rand = "0.10.0"
 rand_core = "0.10.0"
+ring = "0.17.14"
 sp-core = { version = "39.0.0", features = ["full_crypto"] }
 subxt = { version = "0.50", default-features = false, features = ["jsonrpsee", "native", "runtime"] }
+# Direct dep on scale-info so `paseo_config.rs` can name `PortableRegistry`
+# without going through subxt's transitive re-export (subxt 0.50 doesn't
+# expose it under `subxt::ext`).
+scale-info = { version = "2.11", default-features = false }
+# Native Rostro client. Path-deps the rostro-client crate from the Rostro
+# workspace; the read-side surface (storage + runtime API) goes through this
+# instead of subxt's dynamic API. See Phase 3 / dotwave-port plan.
+rostro-client = { path = "/home/coder/Rostro/substrate/utils/rostro-client" }
+scale-value = "0.18.2"
+frame-metadata = { version = "23.0.1", features = ["current"] }
+parity-scale-codec = { version = "3.7.5", features = ["derive"] }
 tokio = { version = "1.50.0", features = ["rt", "macros"] }
-zeroize = "1.8.2"
+zeroize = { version = "1.8.2", features = ["zeroize_derive"] }
 zxcvbn = "3.1.0"
 
+# Stage 2 PoC: on-device Groth16 proving via ark-circom. Not production —
+# real rapidsnark (C++ FFI) is the production path if this benchmark
+# confirms the approach is viable but needs more speed. ark-circom
+# pulls ark-groth16, ark-bn254, ark-std, and wasmer (for Circom
+# wasm witness generation) transitively. Adds non-trivial binary
+# size to librust_core.so — acceptable for the PoC debug build.
+ark-circom = "0.5"
+ark-bn254 = { version = "0.5", default-features = false }
+ark-groth16 = { version = "0.5", default-features = false }
+ark-snark = { version = "0.5", default-features = false }
+ark-std = { version = "0.5", default-features = false }
+ark-serialize = { version = "0.5", default-features = false }
+sha2 = "0.10"
+
 [lib]
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]

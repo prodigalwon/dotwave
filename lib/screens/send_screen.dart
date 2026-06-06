@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../bridge/bridge_generated.dart/core.dart';
+import '../config/rpc_endpoints.dart';
 import '../widgets/transaction_blade.dart';
 
 class SendScreen extends StatefulWidget {
@@ -13,7 +14,7 @@ class SendScreen extends StatefulWidget {
 }
 
 class _SendScreenState extends State<SendScreen> {
-  static const _rpcUrl = 'ws://172.24.112.1:9944';
+  static const _rpcUrl = RpcEndpoints.pnsNode;
   static const _dotDecimals = 12;
 
   final _recipientController = TextEditingController();

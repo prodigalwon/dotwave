@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../bridge/bridge_generated.dart/core.dart';
+import '../config/rpc_endpoints.dart';
 import '../widgets/transaction_blade.dart';
 import '../home_shell.dart';
 
@@ -25,7 +26,7 @@ class NameRegistrationScreen extends StatefulWidget {
 }
 
 class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
-  static const _rpcUrl = 'ws://172.24.112.1:9944';
+  static const _rpcUrl = RpcEndpoints.pnsNode;
 
   final _searchController = TextEditingController();
   bool _searchingName = false;
@@ -274,7 +275,14 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
     }
   }
 
-  void _goHome() {
+  Future<void> _goHome() async {
+    // Reached only from the onboarding flow. Mark onboarding as
+    // fully complete BEFORE navigating, so splash on next launch
+    // sees `onboarding_complete` and drops straight into HomeShell
+    // instead of routing the user back through TOTP / name picking.
+    const storage = FlutterSecureStorage();
+    await storage.write(key: 'onboarding_complete', value: 'true');
+    if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => HomeShell(address: widget.address)),

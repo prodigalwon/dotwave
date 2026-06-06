@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'governance_screen.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
+import '../config/rpc_endpoints.dart';
 import '../widgets/transaction_blade.dart';
 
 // ─── Models ────────────────────────────────────────────────────────────────
@@ -46,7 +47,10 @@ class _Comment {
 
 class ReferendumDetailScreen extends StatefulWidget {
   final ReferendumPost post;
-  const ReferendumDetailScreen({super.key, required this.post});
+  /// When set, the AppBar back arrow deep-pops to the root GovernanceScreen
+  /// instead of popping just one screen. Physical back button is unaffected.
+  final VoidCallback? onPopToRoot;
+  const ReferendumDetailScreen({super.key, required this.post, this.onPopToRoot});
 
   @override
   State<ReferendumDetailScreen> createState() =>
@@ -60,7 +64,7 @@ bool _isActiveReferendum(String status) {
 
 class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
   static const _base = 'https://polkadot-api.subsquare.io';
-  static const _mainnetRpc = 'wss://rpc.polkadot.io';
+  static const _mainnetRpc = RpcEndpoints.polkadotMainnet;
 
   String? _body;
   List<_Comment> _comments = [];
@@ -190,6 +194,9 @@ class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
         foregroundColor: Colors.white,
+        leading: widget.onPopToRoot != null
+            ? BackButton(onPressed: widget.onPopToRoot)
+            : null,
         title: Text('#${post.postId}',
             style: const TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
@@ -316,7 +323,16 @@ class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
                   ),
                   const SizedBox(width: 12),
                   GestureDetector(
-                    onTap: () => Navigator.pop(context, post.proposer),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => GovernanceScreen(
+                          initialQuery: post.proposer,
+                          loadAll: true,
+                          onPopToRoot: widget.onPopToRoot,
+                        ),
+                      ),
+                    ),
                     child: const Text(
                       'History',
                       style: TextStyle(

@@ -98,6 +98,64 @@ flutter build apk --debug
 
 **Account recovery:** Enter passphrase → choose backup provider → download encrypted blob → decrypt → restore keypair → home screen
 
+## Android Screen Lock Requirement
+
+When Dotwave is first installed on Android, the system may prompt the
+user to configure device security (PIN, pattern, biometric, or none).
+If the user selects no screen lock, the StrongBox ceremony can still
+complete technically — StrongBox keypair generation does not require
+screen lock to be set. However the security objective is weakened:
+
+- Without screen lock, physical access to an unlocked device is
+  sufficient to use the `cert_ec` keypair for signing operations
+- The TOTP secret in the authenticator app is also accessible without
+  screen lock
+- The hardware guarantee (private key never leaves StrongBox) is
+  preserved — screen lock does not affect key exportability
+- What is lost is the **user presence guarantee** — the assumption
+  that a signing operation requires a live human to authenticate
+
+Dotwave **SHOULD** enforce that a screen lock is configured before
+allowing the ZK-PKI genesis ceremony to proceed. The Android
+`KeyguardManager` API can check whether a secure screen lock (PIN,
+pattern, or biometric) is set:
+
+```kotlin
+val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE)
+    as KeyguardManager
+val isSecure = keyguardManager.isDeviceSecure
+```
+
+If `isDeviceSecure` returns false, Dotwave should block the ceremony
+and present a clear explanation: *"A PIN, pattern, or biometric lock
+is required to use ZK-PKI. Please configure device security in your
+Android settings before continuing."*
+
+This is a **Dotwave client enforcement** — not a pallet enforcement.
+The pallet cannot detect screen lock status from the attestation
+chain. Screen lock state is not attested in the Android Key
+Attestation `AuthorizationList` for StrongBox keys unless the key
+was created with `userAuthenticationRequired = true`. Dotwave should
+create the `cert_ec` key with `userAuthenticationRequired = true`
+and an appropriate `userAuthenticationValidityDurationSeconds`,
+ensuring that the OS enforces authentication before each signing
+operation.
+
+Selecting "none" for screen lock at app install time is a user
+operational risk, not a protocol flaw. The hardware binding
+guarantee is intact. The user presence guarantee is weakened.
+
+### FAQ — What happens if I set up my phone with no PIN or biometric?
+
+Your ZK-PKI certificate is still hardware-bound — your private key
+never leaves your device's secure hardware regardless of screen lock
+settings. However without a screen lock anyone with physical access
+to your unlocked phone could use your certificate to sign
+transactions. Dotwave requires a PIN, pattern, or biometric to be
+configured before the certificate ceremony. If you later remove
+your screen lock, your certificate remains valid but we strongly
+recommend re-enabling device security.
+
 ## Known Limitations & TODOs
 
 ### Name Registration Pricing

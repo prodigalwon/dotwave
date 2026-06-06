@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
-import '../keystore.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import 'package:flutter/foundation.dart';
 
@@ -196,7 +195,11 @@ class _TransactionBladeState extends State<TransactionBlade> {
     setState(() { _state = _BladeState.submitting; _errorMessage = null; });
 
     try {
-      // Decrypt the stored phrase (two-layer: Argon2 outer → Keystore inner)
+      // Single-layer passphrase decrypt (Argon2 + ChaCha20-Poly1305).
+      // The previous code had a second Android Keystore layer; that
+      // broke cross-device restore because the outer wrap was bound
+      // to one device's hardware key. Reverted at onboarding; the
+      // stored blob is now passphrase-only.
       const storage = FlutterSecureStorage();
       final hex = await storage.read(key: 'encrypted_phrase');
       if (hex == null) throw 'No account found in storage';
@@ -204,13 +207,10 @@ class _TransactionBladeState extends State<TransactionBlade> {
       final bytes = Uint8List.fromList(
         List.generate(hex.length ~/ 2, (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16)),
       );
-      final innerStr = await RustLib.instance.api.crateCoreDecryptPhrase(
+      final phrase = await RustLib.instance.api.crateCoreDecryptPhrase(
         blob: bytes,
         passphrase: passphrase,
       );
-      final keystoreBytes = Uint8List.fromList(innerStr.codeUnits);
-      final phraseBytes = await AndroidKeystore.decrypt(keystoreBytes);
-      final phrase = String.fromCharCodes(phraseBytes);
 
       await widget.onConfirm(phrase);
 

@@ -8,7 +8,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'frb_generated.dart';
+import 'mime_wrap_client.dart';
+import 'mime_wrap_prover.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart';
+import 'personhood.dart';
+import 'totp_enrollment.dart';
 
 abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RustLibApiImplPlatform({
@@ -25,13 +29,37 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
+  AccountDashboardInfo dco_decode_account_dashboard_info(dynamic raw);
+
+  @protected
   bool dco_decode_bool(dynamic raw);
+
+  @protected
+  LivenessInputsFields dco_decode_box_autoadd_liveness_inputs_fields(
+    dynamic raw,
+  );
 
   @protected
   NameListing dco_decode_box_autoadd_name_listing(dynamic raw);
 
   @protected
+  PassportInputsFields dco_decode_box_autoadd_passport_inputs_fields(
+    dynamic raw,
+  );
+
+  @protected
+  PopCertInfo dco_decode_box_autoadd_pop_cert_info(dynamic raw);
+
+  @protected
   ResolvedName dco_decode_box_autoadd_resolved_name(dynamic raw);
+
+  @protected
+  StrongBoxCeremonyBundle dco_decode_box_autoadd_strong_box_ceremony_bundle(
+    dynamic raw,
+  );
+
+  @protected
+  DnsRecord dco_decode_dns_record(dynamic raw);
 
   @protected
   DotAccount dco_decode_dot_account(dynamic raw);
@@ -43,10 +71,31 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
+  List<DnsRecord> dco_decode_list_dns_record(dynamic raw);
+
+  @protected
+  List<int> dco_decode_list_prim_u_32_loose(dynamic raw);
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  LivenessInputsFields dco_decode_liveness_inputs_fields(dynamic raw);
+
+  @protected
+  MimeWrapProofBenchmark dco_decode_mime_wrap_proof_benchmark(dynamic raw);
+
+  @protected
+  MimeWrapProofResult dco_decode_mime_wrap_proof_result(dynamic raw);
+
+  @protected
+  MimeWrapSetupResult dco_decode_mime_wrap_setup_result(dynamic raw);
 
   @protected
   NameAvailability dco_decode_name_availability(dynamic raw);
@@ -61,10 +110,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   NameListing? dco_decode_opt_box_autoadd_name_listing(dynamic raw);
 
   @protected
+  PopCertInfo? dco_decode_opt_box_autoadd_pop_cert_info(dynamic raw);
+
+  @protected
   ResolvedName? dco_decode_opt_box_autoadd_resolved_name(dynamic raw);
 
   @protected
+  OsAttestation dco_decode_os_attestation(dynamic raw);
+
+  @protected
   PassphraseStrength dco_decode_passphrase_strength(dynamic raw);
+
+  @protected
+  PassportInputsFields dco_decode_passport_inputs_fields(dynamic raw);
+
+  @protected
+  PopCertInfo dco_decode_pop_cert_info(dynamic raw);
 
   @protected
   (DotAccount, String) dco_decode_record_dot_account_string(dynamic raw);
@@ -73,7 +134,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ResolvedName dco_decode_resolved_name(dynamic raw);
 
   @protected
+  StrongBoxCeremonyBundle dco_decode_strong_box_ceremony_bundle(dynamic raw);
+
+  @protected
+  int dco_decode_u_16(dynamic raw);
+
+  @protected
   int dco_decode_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw);
 
   @protected
   int dco_decode_u_8(dynamic raw);
@@ -88,15 +158,43 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  AccountDashboardInfo sse_decode_account_dashboard_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
+
+  @protected
+  LivenessInputsFields sse_decode_box_autoadd_liveness_inputs_fields(
+    SseDeserializer deserializer,
+  );
 
   @protected
   NameListing sse_decode_box_autoadd_name_listing(SseDeserializer deserializer);
 
   @protected
+  PassportInputsFields sse_decode_box_autoadd_passport_inputs_fields(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PopCertInfo sse_decode_box_autoadd_pop_cert_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   ResolvedName sse_decode_box_autoadd_resolved_name(
     SseDeserializer deserializer,
   );
+
+  @protected
+  StrongBoxCeremonyBundle sse_decode_box_autoadd_strong_box_ceremony_bundle(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  DnsRecord sse_decode_dns_record(SseDeserializer deserializer);
 
   @protected
   DotAccount sse_decode_dot_account(SseDeserializer deserializer);
@@ -108,10 +206,39 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
+  List<DnsRecord> sse_decode_list_dns_record(SseDeserializer deserializer);
+
+  @protected
+  List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer);
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  LivenessInputsFields sse_decode_liveness_inputs_fields(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  MimeWrapProofBenchmark sse_decode_mime_wrap_proof_benchmark(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  MimeWrapProofResult sse_decode_mime_wrap_proof_result(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  MimeWrapSetupResult sse_decode_mime_wrap_setup_result(
+    SseDeserializer deserializer,
+  );
 
   @protected
   NameAvailability sse_decode_name_availability(SseDeserializer deserializer);
@@ -128,14 +255,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  PopCertInfo? sse_decode_opt_box_autoadd_pop_cert_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   ResolvedName? sse_decode_opt_box_autoadd_resolved_name(
     SseDeserializer deserializer,
   );
 
   @protected
+  OsAttestation sse_decode_os_attestation(SseDeserializer deserializer);
+
+  @protected
   PassphraseStrength sse_decode_passphrase_strength(
     SseDeserializer deserializer,
   );
+
+  @protected
+  PassportInputsFields sse_decode_passport_inputs_fields(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PopCertInfo sse_decode_pop_cert_info(SseDeserializer deserializer);
 
   @protected
   (DotAccount, String) sse_decode_record_dot_account_string(
@@ -146,7 +289,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ResolvedName sse_decode_resolved_name(SseDeserializer deserializer);
 
   @protected
+  StrongBoxCeremonyBundle sse_decode_strong_box_ceremony_bundle(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  int sse_decode_u_16(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
@@ -167,7 +321,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
+  void sse_encode_account_dashboard_info(
+    AccountDashboardInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_liveness_inputs_fields(
+    LivenessInputsFields self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_name_listing(
@@ -176,10 +342,31 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_passport_inputs_fields(
+    PassportInputsFields self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_pop_cert_info(
+    PopCertInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_resolved_name(
     ResolvedName self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_box_autoadd_strong_box_ceremony_bundle(
+    StrongBoxCeremonyBundle self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_dns_record(DnsRecord self, SseSerializer serializer);
 
   @protected
   void sse_encode_dot_account(DotAccount self, SseSerializer serializer);
@@ -191,11 +378,53 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_dns_record(
+    List<DnsRecord> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_32_loose(
+    List<int> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_liveness_inputs_fields(
+    LivenessInputsFields self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_mime_wrap_proof_benchmark(
+    MimeWrapProofBenchmark self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_mime_wrap_proof_result(
+    MimeWrapProofResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_mime_wrap_setup_result(
+    MimeWrapSetupResult self,
     SseSerializer serializer,
   );
 
@@ -218,16 +447,34 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_pop_cert_info(
+    PopCertInfo? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_resolved_name(
     ResolvedName? self,
     SseSerializer serializer,
   );
 
   @protected
+  void sse_encode_os_attestation(OsAttestation self, SseSerializer serializer);
+
+  @protected
   void sse_encode_passphrase_strength(
     PassphraseStrength self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_passport_inputs_fields(
+    PassportInputsFields self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_pop_cert_info(PopCertInfo self, SseSerializer serializer);
 
   @protected
   void sse_encode_record_dot_account_string(
@@ -239,7 +486,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_resolved_name(ResolvedName self, SseSerializer serializer);
 
   @protected
+  void sse_encode_strong_box_ceremony_bundle(
+    StrongBoxCeremonyBundle self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_u_16(int self, SseSerializer serializer);
+
+  @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);
