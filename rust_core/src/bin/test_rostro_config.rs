@@ -1,11 +1,11 @@
-//! Standalone smoke test for PaseoConfig (mirrored from
-//! src/paseo_config.rs to avoid the cdylib-vs-bin lib-link issue).
+//! Standalone smoke test for RostroConfig (mirrored from
+//! src/rostro_config.rs to avoid the cdylib-vs-bin lib-link issue).
 //!
 //! Submits `balances.transfer_keep_alive(//Bob, 1 UNIT)` signed by `//Alice`
 //! and waits for tx-pool acceptance. If the wedge is closed, this returns
 //! a tx hash. If still wedged, this hangs or returns `BadProof`.
 //!
-//! Run with: `cargo run --bin test_paseo_config`
+//! Run with: `cargo run --bin test_rostro_config`
 
 use scale_info::PortableRegistry;
 use sp_core::{sr25519, Pair};
@@ -27,9 +27,9 @@ use subxt::utils::{AccountId32, MultiAddress, MultiSignature};
 use subxt::{OnlineClient};
 
 #[derive(Clone, Debug, Default)]
-pub struct PaseoConfig;
+pub struct RostroConfig;
 
-impl Config for PaseoConfig {
+impl Config for RostroConfig {
     type AccountId = AccountId32;
     type Address = MultiAddress<AccountId32, ()>;
     type Signature = MultiSignature;
@@ -97,11 +97,11 @@ pub mod polkadot {}
 
 struct Sr25519Signer(sr25519::Pair);
 
-impl subxt::tx::Signer<PaseoConfig> for Sr25519Signer {
-    fn account_id(&self) -> <PaseoConfig as Config>::AccountId {
+impl subxt::tx::Signer<RostroConfig> for Sr25519Signer {
+    fn account_id(&self) -> <RostroConfig as Config>::AccountId {
         AccountId32::from(self.0.public().0)
     }
-    fn sign(&self, payload: &[u8]) -> <PaseoConfig as Config>::Signature {
+    fn sign(&self, payload: &[u8]) -> <RostroConfig as Config>::Signature {
         let sig = <sr25519::Pair as Pair>::sign(&self.0, payload);
         MultiSignature::Sr25519(sig.0)
     }
@@ -126,9 +126,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("[1] connecting to {url} via Legacy backend...");
     std::io::stderr().flush().ok();
     let rpc_client = subxt::rpcs::RpcClient::from_insecure_url(url).await?;
-    let backend: LegacyBackend<PaseoConfig> =
+    let backend: LegacyBackend<RostroConfig> =
         LegacyBackendBuilder::new().build(rpc_client.clone());
-    let api: OnlineClient<PaseoConfig> =
+    let api: OnlineClient<RostroConfig> =
         OnlineClient::from_backend(Arc::new(backend)).await?;
     eprintln!("[2] connected");
 
@@ -156,7 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (), // CheckSpecVersion
         (), // CheckTxVersion
         (), // CheckGenesis
-        CheckMortalityParams::<PaseoConfig>::immortal(),
+        CheckMortalityParams::<RostroConfig>::immortal(),
         CheckNonceParams::with_nonce(nonce),
         (), // CheckWeightShim
         ChargeTransactionPaymentParams::no_tip(),
@@ -174,6 +174,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("[7] submitting...");
     let hash = signed.submit().await?;
     eprintln!("[8] ✅ submitted. Tx hash: {hash:?}");
-    println!("PaseoConfig wedge is CLOSED — extrinsic accepted by chain.");
+    println!("RostroConfig wedge is CLOSED — extrinsic accepted by chain.");
     Ok(())
 }

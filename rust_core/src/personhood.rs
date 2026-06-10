@@ -30,10 +30,10 @@
 //!   AccountId from `Personhood.PopCerts` storage.
 
 use crate::core::{
-	connect_paseo_with_rpc, decode_hex_32, decode_hex_bytes, decode_hex_n, fetch_best_nonce,
-	paseo_tx_params, BINDING_PROOF_CONTEXT, Sr25519Signer, StrongBoxCeremonyBundle,
+	connect_rostro_with_rpc, decode_hex_32, decode_hex_bytes, decode_hex_n, fetch_best_nonce,
+	rostro_tx_params, BINDING_PROOF_CONTEXT, Sr25519Signer, StrongBoxCeremonyBundle,
 };
-use crate::paseo_config::PaseoConfig;
+use crate::rostro_config::RostroConfig;
 use sp_core::{sr25519, Pair};
 use std::str::FromStr;
 use subxt::dynamic::Value;
@@ -198,15 +198,15 @@ fn submit_personhood_call(
 		.build()
 		.map_err(|e| e.to_string())?;
 	rt.block_on(async {
-		let (api, rpc) = connect_paseo_with_rpc(rpc_url).await?;
+		let (api, rpc) = connect_rostro_with_rpc(rpc_url).await?;
 		let signer = Sr25519Signer(pair);
 		let account =
-			<Sr25519Signer as subxt::tx::Signer<PaseoConfig>>::account_id(&signer);
+			<Sr25519Signer as subxt::tx::Signer<RostroConfig>>::account_id(&signer);
 		let nonce = fetch_best_nonce(&rpc, &account).await?;
 		let tx = subxt::dynamic::tx("Personhood", call_name, fields);
 		let tx_client = api.tx().await.map_err(|e| e.to_string())?;
 		let mut signable = tx_client
-			.create_signable(&tx, &account, paseo_tx_params(nonce))
+			.create_signable(&tx, &account, rostro_tx_params(nonce))
 			.await
 			.map_err(|e| e.to_string())?;
 		let signed = signable.sign(&signer).map_err(|e| e.to_string())?;

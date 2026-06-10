@@ -1,9 +1,9 @@
-//! `PaseoConfig` — a `subxt::Config` impl that matches paseo-runtime's 11-tuple
-//! `TxExtension`. Closes the wedge where `subxt::PolkadotConfig`'s 9-tuple
-//! `DefaultTransactionExtensions` causes silent hangs / `BadProof` against
-//! stable2603 runtimes.
+//! `RostroConfig` — a `subxt::Config` impl that matches the Rostro
+//! (gemini-runtime) 11-element `TxExtension`. Closes the wedge where
+//! `subxt::PolkadotConfig`'s 9-element `DefaultTransactionExtensions`
+//! causes silent hangs / `BadProof` against the Rostro runtime.
 //!
-//! The runtime's 11-tuple (from `paseo-node/runtime/src/lib.rs`):
+//! The runtime's `TxExtension` (from `substrate/runtime/gemini/src/lib.rs`):
 //!
 //! ```text
 //!   AuthorizeCall, CheckNonZeroSender, CheckSpecVersion, CheckTxVersion,
@@ -13,7 +13,6 @@
 //!
 //! subxt 0.50 ships impls for the 7 in the middle. The 4 here
 //! (`AuthorizeCall`, `CheckNonZeroSender`, `CheckWeight`, `WeightReclaim`)
-//! are stable2603 additions that haven't been picked up upstream yet. They
 //! validate at `pre_dispatch` against runtime state, not against signed
 //! payload bytes — so empty extra + empty implicit is the correct wire
 //! representation. The signed extrinsic's wire format only cares about
@@ -31,9 +30,9 @@ use subxt::ext::frame_decode;
 use subxt::utils::{AccountId32, MultiAddress, MultiSignature};
 
 #[derive(Clone, Debug, Default)]
-pub struct PaseoConfig;
+pub struct RostroConfig;
 
-impl Config for PaseoConfig {
+impl Config for RostroConfig {
     type AccountId = AccountId32;
     type Address = MultiAddress<AccountId32, ()>;
     type Signature = MultiSignature;

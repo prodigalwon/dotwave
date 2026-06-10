@@ -17,7 +17,7 @@ rand_core = "0.10.0"
 ring = "0.17.14"
 sp-core = { version = "39.0.0", features = ["full_crypto"] }
 subxt = { version = "0.50", default-features = false, features = ["jsonrpsee", "native", "runtime"] }
-# Direct dep on scale-info so `paseo_config.rs` can name `PortableRegistry`
+# Direct dep on scale-info so `rostro_config.rs` can name `PortableRegistry`
 # without going through subxt's transitive re-export (subxt 0.50 doesn't
 # expose it under `subxt::ext`).
 scale-info = { version = "2.11", default-features = false }

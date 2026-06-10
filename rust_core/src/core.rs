@@ -7,33 +7,33 @@ use zeroize::Zeroize;
 use zxcvbn::zxcvbn;
 use subxt::{OnlineClient, Config};
 use subxt::backend::{LegacyBackend, LegacyBackendBuilder};
-use crate::paseo_config::PaseoConfig;
+use crate::rostro_config::RostroConfig;
 use subxt::utils::{AccountId32, MultiAddress, MultiSignature};
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// Connect to a paseo-runtime node via the Legacy backend.
+/// Connect to a Rostro (gemini-node) RPC endpoint via the Legacy backend.
 ///
 /// We avoid `OnlineClient::from_insecure_url` because that constructs
-/// `CombinedBackend`, which tries `chainHead_v1_*` first. paseo-node
-/// stable2603's RPC server doesn't expose those methods, so the
-/// CombinedBackend's `latest_finalized_block_ref` silently hangs
-/// forever waiting for `chainHead` events that never arrive.
-async fn connect_paseo(rpc_url: &str) -> Result<OnlineClient<PaseoConfig>, String> {
-    connect_paseo_with_rpc(rpc_url).await.map(|(api, _)| api)
+/// `CombinedBackend`, which tries `chainHead_v1_*` first. The gemini-node
+/// RPC server doesn't serve those methods, so the CombinedBackend's
+/// `latest_finalized_block_ref` silently hangs forever waiting for
+/// `chainHead` events that never arrive.
+async fn connect_rostro(rpc_url: &str) -> Result<OnlineClient<RostroConfig>, String> {
+    connect_rostro_with_rpc(rpc_url).await.map(|(api, _)| api)
 }
 
-/// Same as `connect_paseo` but also returns the underlying RpcClient
+/// Same as `connect_rostro` but also returns the underlying RpcClient
 /// handle. Needed when we want to make raw JSON-RPC calls (e.g.
 /// `system_accountNextIndex` to dodge subxt's at-finalized nonce-fetch
 /// model on stalled-finality dev nodes).
-pub(crate) async fn connect_paseo_with_rpc(
+pub(crate) async fn connect_rostro_with_rpc(
     rpc_url: &str,
-) -> Result<(OnlineClient<PaseoConfig>, subxt::rpcs::RpcClient), String> {
+) -> Result<(OnlineClient<RostroConfig>, subxt::rpcs::RpcClient), String> {
     let rpc_client = subxt::rpcs::RpcClient::from_insecure_url(rpc_url)
         .await
         .map_err(|e| e.to_string())?;
-    let backend: LegacyBackend<PaseoConfig> =
+    let backend: LegacyBackend<RostroConfig> =
         LegacyBackendBuilder::new().build(rpc_client.clone());
     let api = OnlineClient::from_backend(Arc::new(backend))
         .await
@@ -43,12 +43,12 @@ pub(crate) async fn connect_paseo_with_rpc(
 
 pub(crate) struct Sr25519Signer(pub(crate) sr25519::Pair);
 
-impl subxt::tx::Signer<PaseoConfig> for Sr25519Signer {
-    fn account_id(&self) -> <PaseoConfig as Config>::AccountId {
+impl subxt::tx::Signer<RostroConfig> for Sr25519Signer {
+    fn account_id(&self) -> <RostroConfig as Config>::AccountId {
         AccountId32::from(self.0.public().0)
     }
 
-    fn sign(&self, payload: &[u8]) -> <PaseoConfig as Config>::Signature {
+    fn sign(&self, payload: &[u8]) -> <RostroConfig as Config>::Signature {
         let sig = <sr25519::Pair as Pair>::sign(&self.0, payload);
         MultiSignature::Sr25519(sig.0)
     }
@@ -56,24 +56,24 @@ impl subxt::tx::Signer<PaseoConfig> for Sr25519Signer {
 
 /// Sign and submit a dynamic extrinsic. Used by all PNS extrinsic wrappers
 /// to avoid repeating the keypair→signer→submit boilerplate.
-fn submit_dynamic_tx(
+
+/// Sign and submit a *typed* extrinsic built from the `polkadot::tx()` macro.
+/// Typed counterpart to `submit_dynamic_tx`: the RNS wrappers use this because
+/// the dynamic encoder is incompatible with Rostro's metadata lineage, whereas
+/// the typed macro codegen produces byte-exact SCALE. `from_string` accepts
+/// both BIP39 mnemonics and SURIs (`//Alice`).
+fn submit_typed<Call: subxt::tx::Payload>(
     phrase: &str,
     rpc_url: &str,
-    pallet: &str,
-    call: &str,
-    fields: Vec<(String, subxt::dynamic::Value)>,
+    tx: Call,
 ) -> Result<String, String> {
-    // `from_string` accepts both BIP39 mnemonics AND substrate SURI
-    // (`//Alice`, `//Bob`, derivation paths) — `from_phrase` would
-    // reject the dev-mode `//Alice` default the Stage 4c panel ships.
     let pair = <sr25519::Pair as Pair>::from_string(phrase, None)
         .map_err(|e| format!("Keypair error: {:?}", e))?;
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async {
-        let api = connect_paseo(rpc_url).await?;
+        let api = connect_rostro(rpc_url).await?;
         let signer = Sr25519Signer(pair);
-        let tx = subxt::dynamic::tx(pallet, call, fields);
         let hash = api.tx().await.map_err(|e| e.to_string())?
             .sign_and_submit_default(&tx, &signer).await.map_err(|e| e.to_string())?;
         Ok(format!("{:?}", hash))
@@ -199,7 +199,7 @@ pub fn vote_on_referendum(
         .map_err(|e| e.to_string())?;
 
     rt.block_on(async {
-        let api = connect_paseo(&rpc_url).await?;
+        let api = connect_rostro(&rpc_url).await?;
 
         let signer = Sr25519Signer(pair);
 
@@ -378,7 +378,7 @@ pub fn send_dot(
 
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async {
-        let api = connect_paseo(&rpc_url).await?;
+        let api = connect_rostro(&rpc_url).await?;
 
         let signer = Sr25519Signer(pair);
         let tx = polkadot::tx()
@@ -438,11 +438,8 @@ pub fn fetch_asset_balance(
 
 /// Buy a listed name from the PNS marketplace (direct purchase, no gift).
 pub fn buy_name(name: String, phrase: String, rpc_url: String) -> Result<String, String> {
-    use subxt::dynamic::Value;
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsMarketplace", "buy_name", vec![
-        ("name".to_string(), Value::from_bytes(name.as_bytes())),
-        ("recipient".to_string(), Value::unnamed_variant("None", vec![])),
-    ])
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_marketplace().buy_name(name.into_bytes(), None))
 }
 
 /// Buy a listed name and gift it to a recipient. The recipient must call
@@ -453,47 +450,22 @@ pub fn buy_name_for(
     phrase: String,
     rpc_url: String,
 ) -> Result<String, String> {
-    use subxt::dynamic::Value;
     let dest = AccountId32::from_str(&recipient)
         .map_err(|e| format!("Invalid recipient: {}", e))?;
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsMarketplace", "buy_name", vec![
-        ("name".to_string(), Value::from_bytes(name.as_bytes())),
-        ("recipient".to_string(), Value::unnamed_variant("Some", vec![
-            Value::from_bytes(AsRef::<[u8]>::as_ref(&dest)),
-        ])),
-    ])
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_marketplace().buy_name(name.into_bytes(), Some(dest)))
 }
 
 /// Register a name on behalf of someone else — the signer pays, but `recipient` is set as owner.
-pub fn register_name_for(name: String, phrase: String, recipient: String, rpc_url: String) -> Result<String, String> {
-    let (pair, _) = sr25519::Pair::from_phrase(&phrase, None)
-        .map_err(|e| format!("Keypair error: {:?}", e))?;
-
-    let recipient_id = AccountId32::from_str(&recipient)
-        .map_err(|e| format!("Invalid recipient address: {}", e))?;
-
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
-    rt.block_on(async {
-        let api = connect_paseo(&rpc_url).await?;
-
-        let signer = Sr25519Signer(pair);
-        let owner = MultiAddress::Id(recipient_id);
-        let name_bytes = name.into_bytes();
-
-        let tx = polkadot::tx()
-            .pns_registrar()
-            .register(name_bytes, owner, None);
-
-        let hash = api
-            .tx()
-            .await
-            .map_err(|e| e.to_string())?
-            .sign_and_submit_default(&tx, &signer)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        Ok(format!("{:?}", hash))
-    })
+pub fn register_name_for(_name: String, _phrase: String, _recipient: String, _rpc_url: String) -> Result<String, String> {
+    // The Rostro RnsRegistrar.register extrinsic dropped its `owner` argument:
+    // a registration is now always owned by the signer. There is no single-call
+    // way to register a fresh name directly into someone else's account. The
+    // equivalent flow is register-then-transfer (RnsRegistrar.transfer) or, for
+    // a listed name, the marketplace gift path (buy_name with a recipient).
+    Err("register_name_for is unsupported: RnsRegistrar.register no longer takes \
+         an owner. Register to yourself then transfer, or use the marketplace \
+         gift flow to place a name in another account.".to_string())
 }
 
 /// Query the on-chain RnsPriceOracle for the registration fee.
@@ -529,15 +501,17 @@ pub fn register_name(name: String, phrase: String, rpc_url: String) -> Result<St
 
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async {
-        let api = connect_paseo(&rpc_url).await?;
+        let api = connect_rostro(&rpc_url).await?;
 
         let signer = Sr25519Signer(pair);
-        let owner = MultiAddress::Id(AccountId32::from(signer.0.public().0));
         let name_bytes = name.into_bytes();
 
+        // RnsRegistrar.register(name, reject_offer): owner is always the signer
+        // now (the runtime dropped the explicit-owner arg). `None` = don't reject
+        // any pending offered name first.
         let tx = polkadot::tx()
-            .pns_registrar()
-            .register(name_bytes, owner, None);
+            .rns_registrar()
+            .register(name_bytes, None);
 
         let hash = api
             .tx()
@@ -749,26 +723,22 @@ fn decode_record_type_to_iana(value: &scale_value::Value<()>) -> Result<u32, Str
 /// Release (burn) the caller's canonical name. Fails if the name has active
 /// subdomains — revoke them first.
 pub fn release_name(phrase: String, rpc_url: String) -> Result<String, String> {
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsRegistrar", "release_name", vec![])
+    submit_typed(&phrase, &rpc_url, polkadot::tx().rns_registrar().release_name())
 }
 
 /// Renew the caller's canonical name. Resets expiry to now + 365 days.
 /// Must be called before the 30-day grace period ends.
 pub fn renew_name(phrase: String, rpc_url: String) -> Result<String, String> {
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsRegistrar", "renew", vec![])
+    submit_typed(&phrase, &rpc_url, polkadot::tx().rns_registrar().renew())
 }
 
 /// Transfer the caller's canonical name to another account.
 /// The recipient must not already own a name or hold a subdomain.
 pub fn transfer_name(to_address: String, phrase: String, rpc_url: String) -> Result<String, String> {
-    use subxt::dynamic::Value;
     let dest = AccountId32::from_str(&to_address)
         .map_err(|e| format!("Invalid address: {}", e))?;
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsRegistrar", "transfer", vec![
-        ("to".to_string(), Value::unnamed_variant("Id", vec![
-            Value::from_bytes(AsRef::<[u8]>::as_ref(&dest)),
-        ])),
-    ])
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_registrar().transfer(MultiAddress::Id(dest)))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -784,17 +754,14 @@ pub fn create_listing(
     phrase: String,
     rpc_url: String,
 ) -> Result<String, String> {
-    use subxt::dynamic::Value;
     let price: u128 = price_planck.parse().map_err(|_| "Invalid price".to_string())?;
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsMarketplace", "create_listing", vec![
-        ("price".to_string(), Value::u128(price)),
-        ("expires_at".to_string(), Value::u128(expires_at_ms as u128)),
-    ])
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_marketplace().create_listing(price, expires_at_ms))
 }
 
 /// Cancel the caller's active marketplace listing.
 pub fn cancel_listing(phrase: String, rpc_url: String) -> Result<String, String> {
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsMarketplace", "cancel_listing", vec![])
+    submit_typed(&phrase, &rpc_url, polkadot::tx().rns_marketplace().cancel_listing())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -814,13 +781,28 @@ pub fn set_record(
     phrase: String,
     rpc_url: String,
 ) -> Result<String, String> {
-    use subxt::dynamic::Value;
-    let rt_val = Value::unnamed_variant(&record_type, vec![]);
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsResolvers", "set_record", vec![
-        ("name".to_string(), Value::from_bytes(name.as_bytes())),
-        ("record_type".to_string(), rt_val),
-        ("content".to_string(), Value::from_bytes(&content)),
-    ])
+    use polkadot::runtime_types::rns_types::ddns::codec_type::RecordType;
+    use polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec;
+    let rt = match record_type.as_str() {
+        "SS58" => RecordType::SS58,
+        "RPC" => RecordType::RPC,
+        "VALIDATOR" => RecordType::VALIDATOR,
+        "PUBKEY1" => RecordType::PUBKEY1,
+        "AVATAR" => RecordType::AVATAR,
+        "CONTRACT" => RecordType::CONTRACT,
+        "PUBKEY2" => RecordType::PUBKEY2,
+        "PUBKEY3" => RecordType::PUBKEY3,
+        "ORIGIN" => RecordType::ORIGIN,
+        "IPFS" => RecordType::IPFS,
+        "CONTENT" => RecordType::CONTENT,
+        "A" => RecordType::A,
+        "AAAA" => RecordType::AAAA,
+        "CNAME" => RecordType::CNAME,
+        "TXT" => RecordType::TXT,
+        other => return Err(format!("unknown record_type: {other}")),
+    };
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_resolvers().set_record(name.into_bytes(), rt, BoundedVec(content)))
 }
 
 /// Set a text metadata record on a name you own.
@@ -835,13 +817,22 @@ pub fn set_text(
     phrase: String,
     rpc_url: String,
 ) -> Result<String, String> {
-    use subxt::dynamic::Value;
-    let kind_val = Value::unnamed_variant(&kind, vec![]);
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsResolvers", "set_text", vec![
-        ("name".to_string(), Value::from_bytes(name.as_bytes())),
-        ("kind".to_string(), kind_val),
-        ("content".to_string(), Value::from_bytes(content.as_bytes())),
-    ])
+    use polkadot::runtime_types::pallet_rns_resolvers::resolvers::pallet::TextKind;
+    use polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec;
+    let k = match kind.as_str() {
+        "Email" => TextKind::Email,
+        "Url" => TextKind::Url,
+        "Avatar" => TextKind::Avatar,
+        "Description" => TextKind::Description,
+        "Notice" => TextKind::Notice,
+        "Keywords" => TextKind::Keywords,
+        "Twitter" => TextKind::Twitter,
+        "Github" => TextKind::Github,
+        "Ipfs" => TextKind::Ipfs,
+        other => return Err(format!("unknown text kind: {other}")),
+    };
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_resolvers().set_text(name.into_bytes(), k, BoundedVec(content.into_bytes())))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -857,15 +848,10 @@ pub fn offer_subdomain(
     phrase: String,
     rpc_url: String,
 ) -> Result<String, String> {
-    use subxt::dynamic::Value;
     let target = AccountId32::from_str(&target_address)
         .map_err(|e| format!("Invalid target address: {}", e))?;
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsRegistrar", "offer_subdomain", vec![
-        ("label".to_string(), Value::from_bytes(label.as_bytes())),
-        ("target".to_string(), Value::unnamed_variant("Id", vec![
-            Value::from_bytes(AsRef::<[u8]>::as_ref(&target)),
-        ])),
-    ])
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_registrar().offer_subdomain(label.into_bytes(), MultiAddress::Id(target)))
 }
 
 /// Accept a subdomain offer. Caller must be the target of the offer.
@@ -877,11 +863,8 @@ pub fn accept_subdomain(
     phrase: String,
     rpc_url: String,
 ) -> Result<String, String> {
-    use subxt::dynamic::Value;
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsRegistrar", "accept_subdomain", vec![
-        ("parent".to_string(), Value::from_bytes(parent.as_bytes())),
-        ("label".to_string(), Value::from_bytes(label.as_bytes())),
-    ])
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_registrar().accept_subdomain(parent.into_bytes(), label.into_bytes()))
 }
 
 /// Reject a subdomain offer. Caller must be the target of the offer.
@@ -891,19 +874,14 @@ pub fn reject_subdomain(
     phrase: String,
     rpc_url: String,
 ) -> Result<String, String> {
-    use subxt::dynamic::Value;
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsRegistrar", "reject_subdomain", vec![
-        ("parent".to_string(), Value::from_bytes(parent.as_bytes())),
-        ("label".to_string(), Value::from_bytes(label.as_bytes())),
-    ])
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_registrar().reject_subdomain(parent.into_bytes(), label.into_bytes()))
 }
 
 /// Revoke a subdomain you issued. Caller must own the parent name.
 pub fn revoke_subdomain(label: String, phrase: String, rpc_url: String) -> Result<String, String> {
-    use subxt::dynamic::Value;
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsRegistrar", "revoke_subdomain", vec![
-        ("label".to_string(), Value::from_bytes(label.as_bytes())),
-    ])
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_registrar().revoke_subdomain(label.into_bytes()))
 }
 
 /// Release a subdomain you hold. Caller must be the subdomain holder.
@@ -913,11 +891,8 @@ pub fn release_subdomain(
     phrase: String,
     rpc_url: String,
 ) -> Result<String, String> {
-    use subxt::dynamic::Value;
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsRegistrar", "release_subdomain", vec![
-        ("parent".to_string(), Value::from_bytes(parent.as_bytes())),
-        ("label".to_string(), Value::from_bytes(label.as_bytes())),
-    ])
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_registrar().release_subdomain(parent.into_bytes(), label.into_bytes()))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -928,10 +903,8 @@ pub fn release_subdomain(
 /// Must be called within 90 days of the purchase. Sets the name as your
 /// canonical name.
 pub fn accept_offered_name(name: String, phrase: String, rpc_url: String) -> Result<String, String> {
-    use subxt::dynamic::Value;
-    submit_dynamic_tx(&phrase, &rpc_url, "PnsRegistrar", "accept_offered_name", vec![
-        ("name".to_string(), Value::from_bytes(name.as_bytes())),
-    ])
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_registrar().accept_offered_name(name.into_bytes()))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1138,7 +1111,7 @@ pub struct PassphraseStrength {
 /// 2. Replace the stub body with a pattern mirroring [`fetch_balance`]:
 ///
 ///    ```ignore
-///    let api = connect_paseo(&rpc_url).await.map_err(|e| anyhow::anyhow!(e))?;
+///    let api = connect_rostro(&rpc_url).await.map_err(|e| anyhow::anyhow!(e))?;
 ///    let user_id = AccountId32::from_str(&user)?;
 ///    let issuer_id = AccountId32::from_str(&issuer)?;
 ///    let query = zkpki::storage().zk_pki().contract_offers(user_id, issuer_id);
@@ -1354,7 +1327,7 @@ pub fn attest_runtime_os(expected: String) -> Result<OsAttestation, String> {
 // Stage 5e: ZK-PKI integrated-pallet extrinsics (StrongBox / MimeWrap)
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// Wrappers around the integrated `ZkPki` pallet on paseo-node. The mime-wrap
+// Wrappers around the integrated `ZkPki` pallet on rostro-node. The mime-wrap
 // surface is now folded into the cert lifecycle: commitments are recorded at
 // `mint_cert` time and consumed at PoP-assertion time.
 //
@@ -1387,7 +1360,7 @@ pub(crate) const BINDING_PROOF_CONTEXT: &[u8] = b"zkpki-binding-proof-v1";
 /// `system_accountNextIndex`. subxt's default `sign_and_submit_default`
 /// queries at the finalized head, which on dev nodes with stalled GRANDPA
 /// finality is block 0 — so it returns 0 instead of the real best-block
-/// nonce. On real Paseo testnet with multi-validator finality keeping pace,
+/// nonce. On real Rostro testnet with multi-validator finality keeping pace,
 /// the default path would work; this helper is robust for both.
 pub(crate) async fn fetch_best_nonce(
     rpc: &subxt::rpcs::RpcClient,
@@ -1401,12 +1374,12 @@ pub(crate) async fn fetch_best_nonce(
     Ok(nonce)
 }
 
-/// Build the full 11-tuple TransactionExtensions::Params matching paseo-runtime
-/// stable2603's TxExtension order. Immortal era + explicit nonce so we don't
+/// Build the full 11-tuple TransactionExtensions::Params matching the Rostro
+/// (gemini-runtime) TxExtension order. Immortal era + explicit nonce so we don't
 /// depend on subxt's at-finalized model on stalled-finality dev nodes.
-pub(crate) fn paseo_tx_params(nonce: u64) -> (
+pub(crate) fn rostro_tx_params(nonce: u64) -> (
     (), (), (), (), (),
-    CheckMortalityParams<PaseoConfig>,
+    CheckMortalityParams<RostroConfig>,
     CheckNonceParams,
     (),
     ChargeTransactionPaymentParams,
@@ -1419,7 +1392,7 @@ pub(crate) fn paseo_tx_params(nonce: u64) -> (
         (), // CheckSpecVersion
         (), // CheckTxVersion
         (), // CheckGenesis
-        CheckMortalityParams::<PaseoConfig>::immortal(),
+        CheckMortalityParams::<RostroConfig>::immortal(),
         CheckNonceParams::with_nonce(nonce),
         (), // CheckWeightShim
         ChargeTransactionPaymentParams::no_tip(),
@@ -1445,14 +1418,14 @@ pub fn submit_set_mime_wrap_vk(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async {
-        let (api, rpc) = connect_paseo_with_rpc(&rpc_url).await?;
+        let (api, rpc) = connect_rostro_with_rpc(&rpc_url).await?;
         let signer = Sr25519Signer(pair);
-        let account = <Sr25519Signer as subxt::tx::Signer<PaseoConfig>>::account_id(&signer);
+        let account = <Sr25519Signer as subxt::tx::Signer<RostroConfig>>::account_id(&signer);
         let nonce = fetch_best_nonce(&rpc, &account).await?;
         let tx = polkadot::tx().zk_pki().set_mime_wrap_vk(vk_bytes);
         let mut tx_client = api.tx().await.map_err(|e| e.to_string())?;
         let mut signable = tx_client
-            .create_signable(&tx, &account, paseo_tx_params(nonce))
+            .create_signable(&tx, &account, rostro_tx_params(nonce))
             .await.map_err(|e| e.to_string())?;
         let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
         let hash = signed.submit().await.map_err(|e| e.to_string())?;
@@ -1496,7 +1469,7 @@ pub struct StrongBoxCeremonyBundle {
 /// (cert recipient) after an issuer has called `offer_contract` for them.
 ///
 /// The chain re-derives `ec_key_pub` from the verified `cert_ec` SEC1
-/// pubkey and asserts equality with `ec_key_pub_claimed_hex` (Paseo
+/// pubkey and asserts equality with `ec_key_pub_claimed_hex` (Rostro
 /// tripwire / option B). On mainnet, the same value will be chain-derived
 /// only.
 ///
@@ -1564,9 +1537,9 @@ pub fn submit_mint_cert_strongbox(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async {
-        let (api, rpc) = connect_paseo_with_rpc(&rpc_url).await?;
+        let (api, rpc) = connect_rostro_with_rpc(&rpc_url).await?;
         let signer = Sr25519Signer(pair);
-        let account = <Sr25519Signer as subxt::tx::Signer<PaseoConfig>>::account_id(&signer);
+        let account = <Sr25519Signer as subxt::tx::Signer<RostroConfig>>::account_id(&signer);
         let nonce = fetch_best_nonce(&rpc, &account).await?;
         let tx = polkadot::tx().zk_pki().mint_cert(
             contract_nonce,
@@ -1578,7 +1551,7 @@ pub fn submit_mint_cert_strongbox(
         );
         let mut tx_client = api.tx().await.map_err(|e| e.to_string())?;
         let mut signable = tx_client
-            .create_signable(&tx, &account, paseo_tx_params(nonce))
+            .create_signable(&tx, &account, rostro_tx_params(nonce))
             .await.map_err(|e| e.to_string())?;
         let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
         let hash = signed.submit().await.map_err(|e| e.to_string())?;
@@ -1655,9 +1628,9 @@ pub fn submit_self_discard_cert_mime_wrap(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async {
-        let (api, rpc) = connect_paseo_with_rpc(&rpc_url).await?;
+        let (api, rpc) = connect_rostro_with_rpc(&rpc_url).await?;
         let signer = Sr25519Signer(pair);
-        let account = <Sr25519Signer as subxt::tx::Signer<PaseoConfig>>::account_id(&signer);
+        let account = <Sr25519Signer as subxt::tx::Signer<RostroConfig>>::account_id(&signer);
         let nonce = fetch_best_nonce(&rpc, &account).await?;
         let tx = polkadot::tx().zk_pki().self_discard_cert(
             cert_thumbprint,
@@ -1665,7 +1638,7 @@ pub fn submit_self_discard_cert_mime_wrap(
         );
         let mut tx_client = api.tx().await.map_err(|e| e.to_string())?;
         let mut signable = tx_client
-            .create_signable(&tx, &account, paseo_tx_params(nonce))
+            .create_signable(&tx, &account, rostro_tx_params(nonce))
             .await.map_err(|e| e.to_string())?;
         let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
         let hash = signed.submit().await.map_err(|e| e.to_string())?;
@@ -1821,5 +1794,39 @@ mod os_attestation_tests {
         assert_eq!(r1.expected, r2.expected);
         assert_eq!(r2.expected, r3.expected);
         assert_eq!(r1.expected, "linux");
+    }
+}
+
+/// End-to-end proof that the typed write path lands on a live `gemini-node --dev`.
+/// Drives the same `submit_typed` + `polkadot::tx()` codegen path the app uses,
+/// seeded from `//Alice` (genesis-funded). Requires a block-producing node on
+/// ws://127.0.0.1:9944. Run: `cargo test typed_writes -- --ignored --nocapture`.
+#[cfg(test)]
+mod typed_writes {
+    use super::*;
+
+    const NODE: &str = "ws://127.0.0.1:9944";
+
+    #[test]
+    #[ignore]
+    fn alice_transfer_to_bob_lands() {
+        const AMOUNT: u128 = 1_000_000_000_000;
+        let bob = AccountId32::from(sr25519::Pair::from_string("//Bob", None).unwrap().public().0);
+        let bob_ss58 = bob.to_string();
+        let before: u128 = fetch_balance(bob_ss58.clone(), NODE.into()).unwrap().parse().unwrap();
+
+        let hash = submit_typed("//Alice", NODE,
+            polkadot::tx().balances().transfer_keep_alive(MultiAddress::Id(bob), AMOUNT))
+            .expect("transfer submitted");
+        println!("transfer tx: {hash}");
+
+        let mut after = before;
+        for _ in 0..40 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            after = fetch_balance(bob_ss58.clone(), NODE.into()).unwrap().parse().unwrap();
+            if after > before { break; }
+        }
+        assert_eq!(after - before, AMOUNT, "Bob should receive exactly AMOUNT");
+        println!("Bob +{AMOUNT} confirmed on-chain");
     }
 }
