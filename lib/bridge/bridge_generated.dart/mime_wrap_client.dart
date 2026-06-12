@@ -101,7 +101,7 @@ class MimeWrapProofResult {
 }
 
 /// Shape surfaced to Dart from the one-time setup call. `vk_bytes_hex`
-/// is the compressed Groth16 VK that Tony installs on paseo-node via
+/// is the compressed Groth16 VK that Tony installs on rostro-node via
 /// sudo `set_verifying_key` (one-time, per chain).
 class MimeWrapSetupResult {
   final bool success;

@@ -525,6 +525,236 @@ pub fn register_name(name: String, phrase: String, rpc_url: String) -> Result<St
     })
 }
 
+// ─── Phase 1: chat-identity record (RNS PUBKEY1) ────────────────────────────
+
+/// Curve-agnostic, scheme-tagged chat identity published under a user's RNS name
+/// in the PUBKEY1 slot ("Public key slot 1 for encrypted messaging"). Phase 1
+/// fills the outer Ed25519 key; the hardware content key (Phase 3) goes in
+/// `inner_content_key`, and PQ (v1.1) is just a new `scheme` tag. The record is
+/// general so secret-squirrel/secure-messenger reuses the same slot.
+#[derive(parity_scale_codec::Encode, parity_scale_codec::Decode, Clone)]
+pub(crate) struct ChatIdentityRecord {
+    /// Scheme tag. 0 = v1.0 (outer Ed25519 + P-256/P-384 inner + SPK).
+    pub scheme: u8,
+    /// Outer sealed-sender key (Ed25519). Used now.
+    pub outer_ed25519: [u8; 32],
+    /// Recipient's silicon content key (P-256/P-384/PQ).
+    pub inner_content_key: Vec<u8>,
+    /// X3DH signed prekey (X25519), Phase 5. Senders DH against it to
+    /// make their FIRST message forward-secret. Rotated by republish.
+    pub spk_x25519: [u8; 32],
+    /// Identity Ed25519 signature over the SPK
+    /// (`rostro_chat_dr::spk_preimage`) — an unsigned prekey would let
+    /// an active attacker MITM every new conversation.
+    pub spk_signature: [u8; 64],
+}
+
+/// FRB-facing resolved chat identity for a `.rst` name.
+pub struct ResolvedChatIdentity {
+    pub found: bool,
+    pub scheme: u8,
+    pub ed25519_pubkey_hex: String,
+    pub inner_content_key_hex: String,
+    pub spk_x25519_hex: String,
+    pub spk_signature_hex: String,
+}
+
+/// Publish this device's chat identity under `name` (which the signer must own)
+/// into the PUBKEY1 record. `identity_seed_hex` is the device's chat-identity
+/// Ed25519 seed — the SEED, not the pubkey, because the record carries the
+/// X3DH signed prekey (Phase 5), which is derived from and signed by it.
+/// `inner_content_key_hex` is the device's silicon content key (hex of the
+/// SCALE curve-tagged `ContentPublicKey` from `chat::chat_gen_content_key` —
+/// Phase 3, REQUIRED: senders seal content to it).
+pub fn chat_publish_identity(
+    name: String,
+    phrase: String,
+    rpc_url: String,
+    identity_seed_hex: String,
+    inner_content_key_hex: String,
+) -> Result<String, String> {
+    use parity_scale_codec::Encode;
+    let seed: [u8; 32] = hex::decode(identity_seed_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("bad identity seed hex: {e}"))?
+        .try_into()
+        .map_err(|_| "identity seed must be 32 bytes".to_string())?;
+    let signing = ed25519_zebra::SigningKey::from(seed);
+    let outer_ed25519: [u8; 32] = ed25519_zebra::VerificationKey::from(&signing).into();
+    let inner_content_key = hex::decode(inner_content_key_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("bad content key hex: {e}"))?;
+    if inner_content_key.is_empty() {
+        return Err("inner_content_key_hex is required (Phase 3): publish the \
+                    device content key from chat_gen_content_key"
+            .to_string());
+    }
+    // Phase 5: derive + sign the X3DH signed prekey.
+    let spk_secret = crate::chat_dr::spk_secret_from_identity_seed(&seed);
+    let spk_pub = x25519_dalek::PublicKey::from(&spk_secret);
+    let spk_signature = rostro_chat_dr::sign_spk(&spk_pub, &signing);
+    let record = ChatIdentityRecord {
+        scheme: 0,
+        outer_ed25519,
+        inner_content_key,
+        spk_x25519: *spk_pub.as_bytes(),
+        spk_signature,
+    };
+    let content = record.encode();
+    submit_typed(
+        &phrase,
+        &rpc_url,
+        polkadot::tx().rns_resolvers().set_record(
+            name.into_bytes(),
+            polkadot::runtime_types::rns_types::ddns::codec_type::RecordType::PUBKEY1,
+            polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec(content),
+        ),
+    )
+}
+
+/// Resolve `name` → its published chat identity (PUBKEY1). Forward resolution —
+/// the recipient's name-display is "resolve the claimed name, verify the key
+/// matches the signed sender," never a reverse directory lookup.
+pub fn chat_resolve_identity(name: String, rpc_url: String) -> Result<ResolvedChatIdentity, String> {
+    use parity_scale_codec::{Decode, Encode};
+    use scale_value::{Composite, ValueDef};
+
+    // RecordType discriminants must match rns_types::ddns: SS58,RPC,VALIDATOR,PUBKEY1…
+    #[derive(Encode)]
+    enum RtWire {
+        Ss58,
+        Rpc,
+        Validator,
+        Pubkey1,
+    }
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let (client, metadata) = crate::rostro_client::connect(&rpc_url).await?;
+        let args = (name.into_bytes(), vec![RtWire::Pubkey1]).encode();
+        let value = client
+            .call_runtime_api(&metadata, "PnsStorageApi", "lookup_by_name", &args)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // value : Vec<(RecordType, Vec<u8>)>
+        let items = match &value.value {
+            ValueDef::Composite(Composite::Unnamed(items)) => items,
+            _ => return Err("lookup_by_name did not return a list".to_string()),
+        };
+        for item in items {
+            let rt_val = crate::rostro_client::at(item, 0)
+                .ok_or_else(|| "record tuple missing type".to_string())?;
+            let bytes_val = crate::rostro_client::at(item, 1)
+                .ok_or_else(|| "record tuple missing content".to_string())?;
+            if let ValueDef::Variant(v) = &rt_val.value {
+                if v.name == "PUBKEY1" {
+                    let bytes = crate::rostro_client::as_bytes(bytes_val)
+                        .ok_or_else(|| "PUBKEY1 content not bytes".to_string())?;
+                    let record = ChatIdentityRecord::decode(&mut &bytes[..])
+                        .map_err(|e| format!("decode ChatIdentityRecord: {e}"))?;
+                    return Ok(ResolvedChatIdentity {
+                        found: true,
+                        scheme: record.scheme,
+                        ed25519_pubkey_hex: hex::encode(record.outer_ed25519),
+                        inner_content_key_hex: hex::encode(&record.inner_content_key),
+                        spk_x25519_hex: hex::encode(record.spk_x25519),
+                        spk_signature_hex: hex::encode(record.spk_signature),
+                    });
+                }
+            }
+        }
+        Ok(ResolvedChatIdentity {
+            found: false,
+            scheme: 0,
+            ed25519_pubkey_hex: String::new(),
+            inner_content_key_hex: String::new(),
+            spk_x25519_hex: String::new(),
+            spk_signature_hex: String::new(),
+        })
+    })
+}
+
+/// FRB-facing onboarding result.
+pub struct ChatSetupOutcome {
+    pub name: String,
+    pub registered: bool,
+    pub published: bool,
+    pub register_tx: String,
+    pub publish_tx: String,
+}
+
+/// One-step "set up messaging": register `name` and publish this device's chat
+/// identity (outer key + Phase-3 content key) under it. Tolerant — if the name
+/// is already registered to the signer, registration is effectively a no-op and
+/// publish proceeds.
+pub fn chat_setup_messaging(
+    name: String,
+    phrase: String,
+    rpc_url: String,
+    identity_seed_hex: String,
+    inner_content_key_hex: String,
+) -> Result<ChatSetupOutcome, String> {
+    use std::time::Duration;
+    // 1. Register the name (submit). A dispatch failure (e.g. already owned) is
+    //    tolerated — step 2 confirms via on-chain state.
+    let register_tx = submit_typed(
+        &phrase,
+        &rpc_url,
+        polkadot::tx().rns_registrar().register(name.clone().into_bytes(), None),
+    )
+    .unwrap_or_default();
+    // 2. Wait until the name is registered.
+    let mut registered = false;
+    for _ in 0..40 {
+        std::thread::sleep(Duration::from_secs(1));
+        if let Ok(a) = check_name_availability(name.clone(), rpc_url.clone()) {
+            if !a.available {
+                registered = true;
+                break;
+            }
+        }
+    }
+    if !registered {
+        return Err(format!(
+            "'{name}' did not register — taken by another, or the chain isn't producing blocks"
+        ));
+    }
+    // 3. Publish the chat identity (retry past the back-to-back nonce race).
+    let mut publish_tx = String::new();
+    let mut published = false;
+    for _ in 0..12 {
+        match chat_publish_identity(
+            name.clone(),
+            phrase.clone(),
+            rpc_url.clone(),
+            identity_seed_hex.clone(),
+            inner_content_key_hex.clone(),
+        ) {
+            Ok(tx) => {
+                publish_tx = tx;
+                published = true;
+                break;
+            }
+            Err(_) => std::thread::sleep(Duration::from_secs(2)),
+        }
+    }
+    // 4. Wait until the chat key resolves.
+    if published {
+        for _ in 0..30 {
+            std::thread::sleep(Duration::from_secs(1));
+            if chat_resolve_identity(name.clone(), rpc_url.clone())
+                .map(|r| r.found)
+                .unwrap_or(false)
+            {
+                break;
+            }
+        }
+    }
+    Ok(ChatSetupOutcome { name, registered, published, register_tx, publish_tx })
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // New return types for PNS queries
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1646,6 +1876,114 @@ pub fn submit_self_discard_cert_mime_wrap(
     })
 }
 
+/// Deterministic P-256 cert seed for a dev account phrase. One seed
+/// per account, always: `chat_mint_test_cert` is idempotent against
+/// the on-chain `Roots` entry, so re-minting the same account with a
+/// *different* seed would silently return a thumbprint bound to the
+/// old pubkey and every subsequent auth signature would fail. Deriving
+/// the seed from the phrase makes that mismatch unrepresentable.
+pub fn dev_cert_seed_hex(phrase: String) -> String {
+    hex::encode(sp_core::hashing::blake2_256(
+        format!("rostro-dev-chat-cert/{phrase}").as_bytes(),
+    ))
+}
+
+/// Phase-2 chat-auth dev mint: register a software P-256 device key as
+/// a root cert via `register_root` and return the cert thumbprint the
+/// chat-auth layer signs under.
+///
+/// Dev-box stand-in for the real StrongBox/TPM mint: gemini wires
+/// `TpmTestAttestationVerifier` (ignores the attestation bytes) and
+/// `NoopProxyValidator` (proxy check always passes), so one extrinsic
+/// from a funded dev account mints an Active cert whose
+/// `cert_ec_pubkey` is exactly the P-256 key `chat_send` signs with.
+///
+/// Idempotent: an account can hold at most one root, so if `Roots`
+/// already has an entry for the signer the existing thumbprint is
+/// returned instead of re-submitting.
+pub fn chat_mint_test_cert(
+    rpc_url: String,
+    phrase: String,
+    cert_seed_hex: String,
+    ttl_blocks: u32,
+) -> Result<String, String> {
+    use polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec;
+    use polkadot::runtime_types::zk_pki_primitives::crypto::{
+        DevicePublicKey as TypedDevicePublicKey, KeyAlgorithm as TypedKeyAlgorithm,
+    };
+
+    let sec1 = hex::decode(crate::chat::chat_cert_pubkey(cert_seed_hex)?)
+        .map_err(|e| format!("cert pubkey hex: {e}"))?;
+    let pair = sr25519::Pair::from_string(&phrase, None)
+        .map_err(|e| format!("Keypair error: {:?}", e))?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all().build().map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let (api, rpc) = connect_rostro_with_rpc(&rpc_url).await?;
+        let signer = Sr25519Signer(pair);
+        let account = <Sr25519Signer as subxt::tx::Signer<RostroConfig>>::account_id(&signer);
+
+        if let Some(tp) = fetch_root_thumbprint(&rpc_url, &account).await? {
+            return Ok(hex::encode(tp));
+        }
+
+        let nonce = fetch_best_nonce(&rpc, &account).await?;
+        let device_pubkey = TypedDevicePublicKey {
+            algorithm: TypedKeyAlgorithm::EcdsaP256,
+            key_bytes: BoundedVec(sec1),
+        };
+        let tx = polkadot::tx().zk_pki().register_root(
+            account.clone(), // proxy — NoopProxyValidator admits any value
+            device_pubkey,
+            BoundedVec(b"dev-test-attestation".to_vec()), // ignored by the test verifier
+            ttl_blocks,
+            BoundedVec(vec![]), // no capability EKUs
+        );
+        let mut tx_client = api.tx().await.map_err(|e| e.to_string())?;
+        let mut signable = tx_client
+            .create_signable(&tx, &account, rostro_tx_params(nonce))
+            .await.map_err(|e| e.to_string())?;
+        let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
+        signed.submit().await.map_err(|e| e.to_string())?;
+
+        // Poll until the mint lands in best state (dev chain: ~1 block).
+        for _ in 0..30 {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            if let Some(tp) = fetch_root_thumbprint(&rpc_url, &account).await? {
+                return Ok(hex::encode(tp));
+            }
+        }
+        Err("register_root submitted but Roots entry never appeared (30 polls)".into())
+    })
+}
+
+/// Read `ZkPki::Roots(account).cert_thumbprint` from chain storage, or
+/// `None` if the account holds no root cert.
+async fn fetch_root_thumbprint(
+    rpc_url: &str,
+    account: &AccountId32,
+) -> Result<Option<[u8; 32]>, String> {
+    use parity_scale_codec::Encode;
+    let (client, metadata) = crate::rostro_client::connect(rpc_url).await?;
+    let key = account.0.encode();
+    let record = client
+        .fetch_storage(&metadata, "ZkPki", "Roots", &[&key])
+        .await
+        .map_err(|e| format!("ZkPki.Roots fetch: {e}"))?;
+    match record {
+        None => Ok(None),
+        Some(v) => {
+            let tp = crate::rostro_client::field(&v, "cert_thumbprint")
+                .and_then(crate::rostro_client::as_bytes)
+                .ok_or("RootRecord missing cert_thumbprint bytes")?;
+            let tp: [u8; 32] = tp
+                .try_into()
+                .map_err(|_| "cert_thumbprint is not 32 bytes".to_string())?;
+            Ok(Some(tp))
+        }
+    }
+}
+
 /// Extract the 65-byte SEC1 P-256 public key from an X.509 leaf cert's
 /// SubjectPublicKeyInfo. The Stage 4c ceremony emits `attest_ec_chain[0]`
 /// as DER but doesn't separately surface the SEC1 attest pubkey; this
@@ -1828,5 +2166,394 @@ mod typed_writes {
         }
         assert_eq!(after - before, AMOUNT, "Bob should receive exactly AMOUNT");
         println!("Bob +{AMOUNT} confirmed on-chain");
+    }
+
+    /// R1 end-to-end: `register` must EXECUTE now that genesis initializes the
+    /// RNS registry (Official + minted base node). Before R1 this failed
+    /// OfficialNotInitiated → NotExist. Uses the same typed
+    /// `rns_registrar().register(name, None)` path the app uses, signed by
+    /// genesis-funded `//Alice`. Requires a block-producing R1 dev validator.
+    #[test]
+    #[ignore]
+    fn alice_register_name_lands() {
+        let name = "rostdemo";
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let outcome: Result<String, String> = rt.block_on(async {
+            // Register as //Bob — a normal genesis-funded user. (//Alice is the
+            // registry Official who OWNS the base node, so registering a subname
+            // as Alice trips CannotOwnSubnameUnderOwnDomain — itself proof the
+            // base node exists + is owned, i.e. R1 init ran.)
+            let api = connect_rostro(NODE).await?;
+            let pair = sr25519::Pair::from_string("//Charlie", None).map_err(|e| format!("{e:?}"))?;
+            let signer = Sr25519Signer(pair);
+            let tx = polkadot::tx().rns_registrar().register(name.as_bytes().to_vec(), None);
+            let progress = api
+                .tx()
+                .await
+                .map_err(|e| e.to_string())?
+                .sign_and_submit_then_watch_default(&tx, &signer)
+                .await
+                .map_err(|e| e.to_string())?;
+            // Err here carries the DECODED dispatch error (pallet::Error name).
+            match progress.wait_for_finalized_success().await {
+                Ok(_ev) => Ok("finalized OK".to_string()),
+                Err(e) => Err(format!("{e}")),
+            }
+        });
+        match outcome {
+            Ok(loc) => println!("✅ register EXECUTED ({loc}). R1 end-to-end CONFIRMED."),
+            Err(e) => panic!("register dispatch FAILED: {e}"),
+        }
+    }
+
+    /// Phase 1+3: publish a chat-identity (outer key + content key) under a
+    /// name and resolve both back.
+    /// Charlie owns "rostdemo" (from the register test), so he can set its record.
+    #[test]
+    #[ignore]
+    fn chat_identity_publish_resolve() {
+        let name = "rostdemo";
+        let identity_seed = "11".repeat(32);
+        let expected_pubkey = crate::chat::chat_gen_identity(identity_seed.clone())
+            .expect("derive identity")
+            .ed25519_pubkey_hex;
+        let content_key = crate::chat::chat_gen_content_key(0, "77".repeat(32))
+            .expect("gen content key");
+        let hash = chat_publish_identity(
+            name.into(),
+            "//Charlie".into(),
+            NODE.into(),
+            identity_seed.clone(),
+            content_key.clone(),
+        )
+        .expect("publish chat identity");
+        println!("published chat identity: {hash}");
+        for i in 0..30 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let r = chat_resolve_identity(name.into(), NODE.into()).expect("resolve");
+            if r.found {
+                assert_eq!(r.ed25519_pubkey_hex, expected_pubkey, "resolved key mismatch");
+                assert_eq!(r.scheme, 0);
+                assert_eq!(r.inner_content_key_hex, content_key, "resolved content key mismatch");
+                // Phase 5: the record carries a VERIFIABLE signed prekey.
+                let expected_prekeys =
+                    crate::chat_dr::chat_dr_gen_prekeys(identity_seed.clone(), 0, 0)
+                        .expect("derive prekeys");
+                assert_eq!(r.spk_x25519_hex, expected_prekeys.spk_pubkey_hex, "SPK mismatch");
+                assert!(!r.spk_signature_hex.is_empty(), "SPK signature missing");
+                println!(
+                    "✅ resolved {name} → chat key + content key + signed prekey (scheme {}, ~{i}s). Phase-1+3+5 record works.",
+                    r.scheme
+                );
+                return;
+            }
+        }
+        panic!("chat identity never resolved");
+    }
+
+    /// Phase 1 end-to-end: NAME-ADDRESSED messaging. Bob's account (//Dave)
+    /// registers "bobchat" and publishes his chat key; Alice resolves the NAME
+    /// (no hex), sends to the resolved key via the relays, Bob recovers it.
+    /// Chain ops via the validator (9944); chat via the relays (9954/9956).
+    #[test]
+    #[ignore]
+    fn name_addressed_message_lands() {
+        use crate::chat::{
+            chat_fetch, chat_gen_content_key, chat_gen_identity, chat_read_content, chat_send,
+        };
+        let validator = "ws://127.0.0.1:9944";
+        let relay_send = "ws://127.0.0.1:9954";
+        let relay_fetch = "ws://127.0.0.1:9956";
+        let name = "bobchat";
+        let bob_seed = "22".repeat(32);
+        let alice_seed = "11".repeat(32);
+        let bob_id = chat_gen_identity(bob_seed.clone()).expect("bob identity");
+        // Phase 3: Bob's (software) P-256 content key, published in the record.
+        let bob_content_seed = "88".repeat(32);
+        let bob_content_key =
+            chat_gen_content_key(0, bob_content_seed.clone()).expect("gen content key");
+
+        // 1. Bob's account (//Dave) registers the name.
+        submit_typed(
+            "//Dave",
+            validator,
+            polkadot::tx().rns_registrar().register(name.as_bytes().to_vec(), None),
+        )
+        .expect("register submitted");
+        let mut registered = false;
+        for _ in 0..40 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            if !check_name_availability(name.into(), validator.into()).unwrap().available {
+                registered = true;
+                break;
+            }
+        }
+        assert!(registered, "name never registered");
+        println!("registered {name}");
+
+        // 2. Publish Bob's chat key under the name. Retry past the transient
+        // back-to-back-tx nonce race (register→publish from one account).
+        let mut published = false;
+        for _ in 0..12 {
+            if chat_publish_identity(
+                name.into(),
+                "//Dave".into(),
+                validator.into(),
+                bob_seed.clone(),
+                bob_content_key.clone(),
+            )
+            .is_ok()
+            {
+                published = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+        assert!(published, "publish never submitted");
+        let mut resolved = None;
+        for _ in 0..40 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let r = chat_resolve_identity(name.into(), validator.into()).unwrap();
+            if r.found {
+                resolved = Some(r);
+                break;
+            }
+        }
+        let resolved = resolved.expect("chat identity never resolved");
+        assert_eq!(resolved.ed25519_pubkey_hex, bob_id.ed25519_pubkey_hex, "resolved key mismatch");
+        println!("resolved {name} → {}", resolved.ed25519_pubkey_hex);
+
+        // 3. Alice sends to the RESOLVED key — no hex pasted, derived from
+        // the name. Phase 2: the send is cert-gated; mint (idempotent)
+        // //Dave's dev cert.
+        let cert_seed = dev_cert_seed_hex("//Dave".into());
+        let thumbprint =
+            chat_mint_test_cert(validator.into(), "//Dave".into(), cert_seed.clone(), 600_000)
+                .expect("mint test cert");
+        let body = "name-addressed hello".to_string();
+        // Phase 3+5: content sealed to the RESOLVED record's content key
+        // AND the DR bootstrapped from the RESOLVED record's signed
+        // prekey — the full record-driven path (nothing out-of-band).
+        let init = crate::chat_dr::chat_dr_initiate(
+            alice_seed.clone(),
+            resolved.ed25519_pubkey_hex.clone(),
+            resolved.spk_x25519_hex.clone(),
+            resolved.spk_signature_hex.clone(),
+            None,
+            None,
+        )
+        .expect("x3dh initiate from resolved record");
+        let outcome = chat_send(
+            relay_send.into(),
+            alice_seed.clone(),
+            resolved.ed25519_pubkey_hex.clone(),
+            resolved.inner_content_key_hex.clone(),
+            body.clone(),
+            String::new(), // sender_name — item-2 test exercises this separately
+            5,
+            init.session_state_hex,
+            Some(init.x3dh_init_hex),
+            Some(thumbprint),
+            Some(cert_seed),
+        )
+        .expect("send");
+        println!("sent via name → msg {}", outcome.message_id_hex);
+
+        // 4. Bob recovers it cross-node — at rest, then explicit read.
+        let mut got = None;
+        for _ in 0..20 {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let msgs = chat_fetch(relay_fetch.into(), bob_seed.clone(), None).expect("fetch");
+            if let Some(m) = msgs.into_iter().find(|m| m.message_id_hex == outcome.message_id_hex) {
+                got = Some(m);
+                break;
+            }
+        }
+        let m = got.expect("message never recovered");
+        let alice_id = chat_gen_identity(alice_seed).unwrap();
+        assert_eq!(m.sender_pubkey_hex, alice_id.ed25519_pubkey_hex, "sender mismatch");
+        let read = chat_read_content(
+            m.sealed_content_hex.clone(),
+            0,
+            bob_content_seed,
+            None, // new conversation — X3DH bootstrap from the message
+            bob_seed.clone(),
+            Vec::new(),
+        )
+        .expect("content read");
+        assert_eq!(read.plaintext, body, "plaintext mismatch");
+        assert!(read.ratcheted, "1:1 content must be ratcheted");
+        println!(
+            "✅ alice → resolve('{name}') → record-driven X3DH → send → bob read '{}'. Phase-1+3+5 name-addressed send works.",
+            read.plaintext
+        );
+    }
+
+    /// Phase 1 item 2: SENDER NAME on receive via forward-resolve-and-verify.
+    /// Alice (//Eve) registers "alicechat" + publishes her chat key, then sends
+    /// to Bob WITH her name claim inside the signed inner. Bob recovers, reads
+    /// the claimed name, forward-resolves it, and verifies its published key
+    /// equals the verified sender pubkey. No reverse directory lookup.
+    #[test]
+    #[ignore]
+    fn sender_name_verified_on_receive() {
+        use crate::chat::{chat_fetch, chat_gen_identity, chat_send};
+        use std::time::Duration;
+        let validator = "ws://127.0.0.1:9944";
+        let relay_send = "ws://127.0.0.1:9954";
+        let relay_fetch = "ws://127.0.0.1:9956";
+        let alice_name = "alicechat";
+        let alice_seed = "33".repeat(32);
+        let bob_seed = "44".repeat(32);
+        let alice_id = chat_gen_identity(alice_seed.clone()).expect("alice id");
+        let bob_id = chat_gen_identity(bob_seed.clone()).expect("bob id");
+        // Phase 3 CROSS-PLATFORM: Bob is the "TPM laptop" — his content
+        // key is P-384 (curve tag 1, 48-byte seed); the sender follows
+        // the recipient's curve. The other chat tests use P-256, so the
+        // live fabric exercises both curves end-to-end.
+        let alice_content_key = crate::chat::chat_gen_content_key(0, "99".repeat(32))
+            .expect("alice content key");
+        let bob_content_seed = "aa".repeat(48);
+        let bob_content_key = crate::chat::chat_gen_content_key(1, bob_content_seed.clone())
+            .expect("bob P-384 content key");
+
+        // Alice's account (//Eve) registers the name + publishes her chat key.
+        submit_typed(
+            "//Eve",
+            validator,
+            polkadot::tx().rns_registrar().register(alice_name.as_bytes().to_vec(), None),
+        )
+        .expect("register submitted");
+        let mut reg = false;
+        for _ in 0..40 {
+            std::thread::sleep(Duration::from_secs(1));
+            if !check_name_availability(alice_name.into(), validator.into()).unwrap().available {
+                reg = true;
+                break;
+            }
+        }
+        assert!(reg, "alicechat not registered");
+        let mut pubd = false;
+        for _ in 0..12 {
+            if chat_publish_identity(alice_name.into(), "//Eve".into(), validator.into(), alice_seed.clone(), alice_content_key.clone()).is_ok() {
+                pubd = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_secs(2));
+        }
+        assert!(pubd, "publish failed");
+        let mut resolvable = false;
+        for _ in 0..40 {
+            std::thread::sleep(Duration::from_secs(1));
+            if chat_resolve_identity(alice_name.into(), validator.into()).unwrap().found {
+                resolvable = true;
+                break;
+            }
+        }
+        assert!(resolvable, "alicechat key not resolvable");
+
+        // Alice sends to Bob WITH her name claim in the signed inner.
+        // Phase 2: the send is cert-gated; mint (idempotent) //Eve's dev cert.
+        let cert_seed = dev_cert_seed_hex("//Eve".into());
+        let thumbprint =
+            chat_mint_test_cert(validator.into(), "//Eve".into(), cert_seed.clone(), 600_000)
+                .expect("mint test cert");
+        let body = "hi from a named sender".to_string();
+        // Phase 5: SPK-only bootstrap (Bob has no published record in
+        // this test; the record-driven X3DH is covered by
+        // name_addressed_message_lands).
+        let bob_prekeys = crate::chat_dr::chat_dr_gen_prekeys(bob_seed.clone(), 0, 0)
+            .expect("bob prekeys");
+        let init = crate::chat_dr::chat_dr_initiate(
+            alice_seed.clone(),
+            bob_id.ed25519_pubkey_hex.clone(),
+            bob_prekeys.spk_pubkey_hex,
+            bob_prekeys.spk_signature_hex,
+            None,
+            None,
+        )
+        .expect("x3dh initiate");
+        let outcome = chat_send(
+            relay_send.into(),
+            alice_seed.clone(),
+            bob_id.ed25519_pubkey_hex.clone(),
+            bob_content_key,
+            body.clone(),
+            alice_name.to_string(),
+            5,
+            init.session_state_hex,
+            Some(init.x3dh_init_hex),
+            Some(thumbprint),
+            Some(cert_seed),
+        )
+        .expect("send");
+
+        // Bob recovers (at rest) + reads via his P-384 key.
+        let mut got = None;
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_secs(2));
+            let msgs = chat_fetch(relay_fetch.into(), bob_seed.clone(), None).expect("fetch");
+            if let Some(m) = msgs.into_iter().find(|m| m.message_id_hex == outcome.message_id_hex) {
+                got = Some(m);
+                break;
+            }
+        }
+        let m = got.expect("not recovered");
+        let read = crate::chat::chat_read_content(
+            m.sealed_content_hex.clone(),
+            1,
+            bob_content_seed,
+            None,
+            bob_seed.clone(),
+            Vec::new(),
+        )
+        .expect("P-384 content read");
+        assert_eq!(read.plaintext, body, "plaintext mismatch");
+        assert_eq!(read.claimed_sender_name, alice_name, "claimed name not carried");
+
+        // FORWARD-RESOLVE-AND-VERIFY: the claimed name's published key must equal
+        // the verified sender pubkey, else it's an impersonation attempt.
+        let resolved = chat_resolve_identity(read.claimed_sender_name.clone(), validator.into())
+            .expect("resolve claimed name");
+        assert!(resolved.found, "claimed name does not resolve");
+        assert_eq!(
+            resolved.ed25519_pubkey_hex, m.sender_pubkey_hex,
+            "claimed name's key != signed sender — IMPERSONATION"
+        );
+        println!(
+            "✅ message from '{}' verified + read via P-384 content key (cross-curve). Phase-1+3 sender-name works.",
+            read.claimed_sender_name
+        );
+    }
+
+    /// Phase 1 item 3: one-step onboarding — register a name AND publish the chat
+    /// identity in a single call (//Ferdie, fresh + endowed).
+    #[test]
+    #[ignore]
+    fn chat_setup_messaging_onboards() {
+        use crate::chat::{chat_gen_content_key, chat_gen_identity};
+        let validator = "ws://127.0.0.1:9944";
+        let name = "ferdiechat";
+        let seed = "55".repeat(32);
+        let id = chat_gen_identity(seed.clone()).expect("identity");
+        let content_key = chat_gen_content_key(0, "bb".repeat(32)).expect("content key");
+        let out = chat_setup_messaging(
+            name.into(),
+            "//Ferdie".into(),
+            validator.into(),
+            seed.clone(),
+            content_key.clone(),
+        )
+        .expect("setup");
+        assert!(out.registered, "name not registered");
+        assert!(out.published, "chat identity not published");
+        let r = chat_resolve_identity(name.into(), validator.into()).expect("resolve");
+        assert!(r.found, "chat key not resolvable after onboarding");
+        assert_eq!(r.ed25519_pubkey_hex, id.ed25519_pubkey_hex);
+        assert_eq!(r.inner_content_key_hex, content_key, "content key not in record");
+        println!(
+            "✅ onboarded '{name}' → registered + published chat key {}. Phase-1 onboarding works.",
+            r.ed25519_pubkey_hex
+        );
     }
 }

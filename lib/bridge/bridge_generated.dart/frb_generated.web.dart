@@ -6,6 +6,7 @@
 // Static analysis wrongly picks the IO variant, thus ignore this
 // ignore_for_file: argument_type_not_assignable
 
+import 'chat.dart';
 import 'core.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -61,6 +62,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+
+  @protected
+  ChatIdentity dco_decode_chat_identity(dynamic raw);
+
+  @protected
+  ChatSendOutcome dco_decode_chat_send_outcome(dynamic raw);
+
+  @protected
   DnsRecord dco_decode_dns_record(dynamic raw);
 
   @protected
@@ -86,6 +96,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  List<RecoveredMessage> dco_decode_list_recovered_message(dynamic raw);
 
   @protected
   LivenessInputsFields dco_decode_liveness_inputs_fields(dynamic raw);
@@ -118,6 +131,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ResolvedName? dco_decode_opt_box_autoadd_resolved_name(dynamic raw);
 
   @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
+
+  @protected
   OsAttestation dco_decode_os_attestation(dynamic raw);
 
   @protected
@@ -131,6 +147,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   (DotAccount, String) dco_decode_record_dot_account_string(dynamic raw);
+
+  @protected
+  RecoveredMessage dco_decode_recovered_message(dynamic raw);
+
+  @protected
+  ResolvedChatIdentity dco_decode_resolved_chat_identity(dynamic raw);
 
   @protected
   ResolvedName dco_decode_resolved_name(dynamic raw);
@@ -196,6 +218,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
+  ChatIdentity sse_decode_chat_identity(SseDeserializer deserializer);
+
+  @protected
+  ChatSendOutcome sse_decode_chat_send_outcome(SseDeserializer deserializer);
+
+  @protected
   DnsRecord sse_decode_dns_record(SseDeserializer deserializer);
 
   @protected
@@ -221,6 +252,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  List<RecoveredMessage> sse_decode_list_recovered_message(
+    SseDeserializer deserializer,
+  );
 
   @protected
   LivenessInputsFields sse_decode_liveness_inputs_fields(
@@ -267,6 +303,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
   OsAttestation sse_decode_os_attestation(SseDeserializer deserializer);
 
   @protected
@@ -284,6 +323,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   (DotAccount, String) sse_decode_record_dot_account_string(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RecoveredMessage sse_decode_recovered_message(SseDeserializer deserializer);
+
+  @protected
+  ResolvedChatIdentity sse_decode_resolved_chat_identity(
     SseDeserializer deserializer,
   );
 
@@ -368,6 +415,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_chat_identity(ChatIdentity self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_chat_send_outcome(
+    ChatSendOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_dns_record(DnsRecord self, SseSerializer serializer);
 
   @protected
@@ -403,6 +462,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_recovered_message(
+    List<RecoveredMessage> self,
     SseSerializer serializer,
   );
 
@@ -461,6 +526,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_os_attestation(OsAttestation self, SseSerializer serializer);
 
   @protected
@@ -481,6 +549,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_record_dot_account_string(
     (DotAccount, String) self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_recovered_message(
+    RecoveredMessage self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_resolved_chat_identity(
+    ResolvedChatIdentity self,
     SseSerializer serializer,
   );
 

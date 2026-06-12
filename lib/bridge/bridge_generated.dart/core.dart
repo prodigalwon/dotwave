@@ -6,9 +6,9 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `connect_paseo_with_rpc`, `connect_paseo`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `encode_record_type`, `fetch_best_nonce`, `hex_encode_lower`, `paseo_tx_params`, `submit_dynamic_tx`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Sr25519Signer`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `fmt`, `sign`
+// These functions are ignored because they are not marked as `pub`: `connect_rostro_with_rpc`, `connect_rostro`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `encode_record_type`, `fetch_best_nonce`, `hex_encode_lower`, `rostro_tx_params`, `submit_typed`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatIdentityRecord`, `Sr25519Signer`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `clone`, `fmt`, `sign`
 
 Future<String> fetchBalance({
   required String address,
@@ -169,6 +169,31 @@ Future<String> registerName({
 }) => RustLib.instance.api.crateCoreRegisterName(
   name: name,
   phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Publish this device's chat identity under `name` (which the signer must own)
+/// into the PUBKEY1 record. `ed25519_pubkey_hex` is the device's outer chat key.
+Future<String> chatPublishIdentity({
+  required String name,
+  required String phrase,
+  required String rpcUrl,
+  required String ed25519PubkeyHex,
+}) => RustLib.instance.api.crateCoreChatPublishIdentity(
+  name: name,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+  ed25519PubkeyHex: ed25519PubkeyHex,
+);
+
+/// Resolve `name` → its published chat identity (PUBKEY1). Forward resolution —
+/// the recipient's name-display is "resolve the claimed name, verify the key
+/// matches the signed sender," never a reverse directory lookup.
+Future<ResolvedChatIdentity> chatResolveIdentity({
+  required String name,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreChatResolveIdentity(
+  name: name,
   rpcUrl: rpcUrl,
 );
 
@@ -415,7 +440,7 @@ PassphraseStrength checkPassphraseStrength({required String passphrase}) =>
 /// 2. Replace the stub body with a pattern mirroring [`fetch_balance`]:
 ///
 ///    ```ignore
-///    let api = connect_paseo(&rpc_url).await.map_err(|e| anyhow::anyhow!(e))?;
+///    let api = connect_rostro(&rpc_url).await.map_err(|e| anyhow::anyhow!(e))?;
 ///    let user_id = AccountId32::from_str(&user)?;
 ///    let issuer_id = AccountId32::from_str(&issuer)?;
 ///    let query = zkpki::storage().zk_pki().contract_offers(user_id, issuer_id);
@@ -488,7 +513,7 @@ Future<String> submitSetMimeWrapVk({
 /// (cert recipient) after an issuer has called `offer_contract` for them.
 ///
 /// The chain re-derives `ec_key_pub` from the verified `cert_ec` SEC1
-/// pubkey and asserts equality with `ec_key_pub_claimed_hex` (Paseo
+/// pubkey and asserts equality with `ec_key_pub_claimed_hex` (Rostro
 /// tripwire / option B). On mainnet, the same value will be chain-derived
 /// only.
 ///
@@ -726,6 +751,38 @@ class PassphraseStrength {
           warning == other.warning &&
           suggestions == other.suggestions &&
           guessesLog10 == other.guessesLog10;
+}
+
+/// FRB-facing resolved chat identity for a `.rst` name.
+class ResolvedChatIdentity {
+  final bool found;
+  final int scheme;
+  final String ed25519PubkeyHex;
+  final String innerContentKeyHex;
+
+  const ResolvedChatIdentity({
+    required this.found,
+    required this.scheme,
+    required this.ed25519PubkeyHex,
+    required this.innerContentKeyHex,
+  });
+
+  @override
+  int get hashCode =>
+      found.hashCode ^
+      scheme.hashCode ^
+      ed25519PubkeyHex.hashCode ^
+      innerContentKeyHex.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ResolvedChatIdentity &&
+          runtimeType == other.runtimeType &&
+          found == other.found &&
+          scheme == other.scheme &&
+          ed25519PubkeyHex == other.ed25519PubkeyHex &&
+          innerContentKeyHex == other.innerContentKeyHex;
 }
 
 class ResolvedName {

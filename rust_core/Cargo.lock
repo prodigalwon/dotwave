@@ -1969,6 +1969,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "115531babc129696a58c64a4fef0a8bf9e9698629fb97e9e40767d235cfbcd53"
 dependencies = [
  "pkcs8",
+ "serde",
  "signature",
 ]
 
@@ -1997,6 +1998,7 @@ dependencies = [
  "hashbrown 0.15.5",
  "pkcs8",
  "rand_core 0.6.4",
+ "serde",
  "sha2 0.10.9",
  "subtle",
  "zeroize",
@@ -2032,6 +2034,8 @@ dependencies = [
  "ff",
  "generic-array",
  "group",
+ "hkdf",
+ "pem-rfc7468",
  "pkcs8",
  "rand_core 0.6.4",
  "sec1",
@@ -2856,6 +2860,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fda06d18ac606267c40c04e41b9947729bf8b9efe74bd4e82b61a5f26a510b9f"
 dependencies = [
  "arrayvec 0.7.6",
+]
+
+[[package]]
+name = "hkdf"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b5f8eb2ad728638ea2c7d47a21db23b7b58a72ed6a38256b8a1849f15fbbdf7"
+dependencies = [
+ "hmac 0.12.1",
 ]
 
 [[package]]
@@ -4099,6 +4112,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d"
 
 [[package]]
+name = "p256"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9863ad85fa8f4460f9c48cb909d38a0d689dba1f6f6988a5e3e0d31071bcd4b"
+dependencies = [
+ "ecdsa",
+ "elliptic-curve",
+ "primeorder",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "p384"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe42f1670a52a47d448f14b6a5c61dd78fce51856e68edaa38f7ae3a46b8d6b6"
+dependencies = [
+ "ecdsa",
+ "elliptic-curve",
+ "primeorder",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "parity-scale-codec"
 version = "3.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4386,6 +4423,15 @@ checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "primeorder"
+version = "0.13.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "353e1ca18966c16d9deb1c69278edbc5f194139612772bd9537af60ac231e1e6"
+dependencies = [
+ "elliptic-curve",
 ]
 
 [[package]]
@@ -4988,6 +5034,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "rostro-chat-content-seal"
+version = "0.1.0"
+dependencies = [
+ "chacha20poly1305",
+ "hkdf",
+ "p256",
+ "p384",
+ "parity-scale-codec",
+ "rand_core 0.6.4",
+ "sha2 0.10.9",
+ "zeroize",
+]
+
+[[package]]
+name = "rostro-chat-dr"
+version = "0.1.0"
+dependencies = [
+ "chacha20poly1305",
+ "ed25519-zebra",
+ "hkdf",
+ "parity-scale-codec",
+ "rand_core 0.6.4",
+ "sha2 0.10.9",
+ "x25519-dalek",
+ "zeroize",
+]
+
+[[package]]
+name = "rostro-chat-primitives"
+version = "0.1.0"
+dependencies = [
+ "curve25519-dalek",
+ "ed25519-zebra",
+ "parity-scale-codec",
+ "rand_core 0.6.4",
+ "sha2 0.10.9",
+ "sp-crypto-hashing 0.1.0",
+]
+
+[[package]]
+name = "rostro-chat-sealed-sender"
+version = "0.1.0"
+dependencies = [
+ "chacha20poly1305",
+ "hkdf",
+ "parity-scale-codec",
+ "rand_core 0.6.4",
+ "sha2 0.10.9",
+ "x25519-dalek",
+ "zeroize",
+]
+
+[[package]]
 name = "rostro-client"
 version = "0.1.0"
 dependencies = [
@@ -5019,21 +5118,31 @@ dependencies = [
  "base32",
  "bip39",
  "chacha20poly1305",
+ "ed25519-zebra",
  "flutter_rust_bridge",
  "frame-metadata",
  "getrandom 0.4.2",
+ "hex",
  "libc",
+ "p256",
  "parity-scale-codec",
  "rand 0.10.0",
  "rand_core 0.10.0",
+ "rand_core 0.6.4",
  "ring",
+ "rostro-chat-content-seal",
+ "rostro-chat-dr",
+ "rostro-chat-primitives",
+ "rostro-chat-sealed-sender",
  "rostro-client",
  "scale-info",
  "scale-value",
+ "serde",
  "sha2 0.10.9",
  "sp-core 39.0.0",
  "subxt",
  "tokio",
+ "x25519-dalek",
  "zeroize",
  "zxcvbn",
 ]

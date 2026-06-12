@@ -26,6 +26,14 @@ class RpcEndpoints {
   /// via an environment flag if we ever add one.
   static const pnsNode = 'wss://rpc.substrate.icu';
 
+  /// Chat relay node — the gemini-node this device dispatches encrypted
+  /// envelopes through (`chat_send_envelope`) and pulls shares from
+  /// (`chat_fetch_shares`). The same node serves chain + chat RPC, so
+  /// this defaults to [pnsNode]; in the lab it's overridden per-device
+  /// to a LAN node laptop's address via the in-app node setting
+  /// (`ChatStore.nodeRpc`).
+  static const chatNode = pnsNode;
+
   /// Polkadot Asset Hub — non-DOT asset balances (USDT, USDC, etc.).
   /// Not PNS-related; a pure Polkadot ecosystem lookup.
   ///

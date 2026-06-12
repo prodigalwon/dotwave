@@ -25,6 +25,29 @@ scale-info = { version = "2.11", default-features = false }
 # workspace; the read-side surface (storage + runtime API) goes through this
 # instead of subxt's dynamic API. See Phase 3 / dotwave-port plan.
 rostro-client = { path = "/home/coder/Rostro/substrate/utils/rostro-client" }
+# On-device chat. Cross-repo path-deps the proven Rostro chat crates
+# (same pattern as rostro-client). chat.rs ports rostro-chat-cli's
+# send/recover flow; the node sees only ciphertext + routing metadata.
+rostro-chat-primitives = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-primitives" }
+rostro-chat-sealed-sender = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-sealed-sender" }
+# Phase 3: inner content sealed to the recipient's silicon content key
+# (P-256 StrongBox / P-384 TPM; software stand-in on the dev box).
+rostro-chat-content-seal = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-content-seal" }
+# Phase 5: Double Ratchet + full X3DH for forward-secret 1:1.
+rostro-chat-dr = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-dr" }
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+# Matched to the Rostro workspace so the chat-crate types unify.
+ed25519-zebra = "4.0.3"
+# Phase 2 chat-auth: software P-256 ECDSA stand-in for the StrongBox/TPM
+# cert key on the dev box. Same crate + version the node's
+# `DevicePublicKey::verify_signature` uses, so sign/verify stay symmetric.
+p256 = { version = "0.13", features = ["ecdsa"] }
+hex = "0.4.3"
+serde = { version = "1.0.214", features = ["derive"] }
+# rand_core 0.6 ALIAS — the chat crates bind `R: rand_core 0.6
+# RngCore + CryptoRng`; rust_core's other code is on rand_core 0.10
+# (incompatible major). The chat layer uses this 0.6 OsRng only.
+rand_core_06 = { package = "rand_core", version = "0.6.2", features = ["getrandom"] }
 scale-value = "0.18.2"
 frame-metadata = { version = "23.0.1", features = ["current"] }
 parity-scale-codec = { version = "3.7.5", features = ["derive"] }

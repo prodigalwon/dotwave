@@ -23,7 +23,7 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     _tabs = [
       HomeTab(address: widget.address),
-      const MessagesTab(),
+      MessagesTab(address: widget.address),
       const ExploreTab(),
       ProfileTab(address: widget.address),
     ];

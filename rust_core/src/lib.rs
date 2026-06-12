@@ -1,4 +1,6 @@
 mod frb_generated; /* AUTO INJECTED BY flutter_rust_bridge. This line may not be accurate, and you can change it according to your needs. */
+pub mod chat;
+pub mod chat_dr;
 pub mod core;
 pub mod mime_wrap_client;
 pub mod mime_wrap_prover;
