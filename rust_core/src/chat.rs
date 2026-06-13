@@ -52,6 +52,8 @@ use rostro_chat_content_seal::{
     ContentPublicKey, ContentSealed, SoftwareContentKey,
 };
 use rostro_chat_sealed_sender::{seal as ss_seal, unseal as ss_unseal, SealedOutput};
+use rostro_chat_onion::{wrap_onion, OnionDeliverPayload};
+use rostro_node_identity::NodeIdentity;
 
 /// Domain-separation prefix for chat-auth signatures. MUST stay
 /// byte-identical to `CHAT_AUTH_DOMAIN` in gemini-node's `chat_rpc.rs`
@@ -481,6 +483,210 @@ pub(crate) fn chat_send_plain(
     )
 }
 
+/// Query a node's chat identity (its Ed25519 node pubkey, hex) via the
+/// `chat_nodeInfo` RPC. The phone uses this to learn its connected
+/// node's identity so it can seal an onion layer to it as the guard.
+pub fn chat_node_info(node_rpc: String) -> Result<String, String> {
+    #[derive(serde::Deserialize)]
+    struct ChatNodeInfoRpc {
+        node_pubkey_ed25519_hex: String,
+    }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("tokio runtime: {e}"))?;
+    rt.block_on(async move {
+        let rpc = subxt::rpcs::RpcClient::from_insecure_url(&node_rpc)
+            .await
+            .map_err(|e| format!("connecting to {node_rpc}: {e}"))?;
+        let info: ChatNodeInfoRpc = rpc
+            .request("chat_nodeInfo", subxt::rpcs::rpc_params![])
+            .await
+            .map_err(|e| format!("chat_nodeInfo RPC failed: {e}"))?;
+        Ok(info.node_pubkey_ed25519_hex)
+    })
+}
+
+/// Send a message through a **one-hop onion** to `guard_pubkey_hex`
+/// (the connected node's Ed25519 identity, e.g. from `chat_nodeInfo`).
+/// The guard peels the onion and injects the recipient-sealed envelope
+/// into the normal distribution — it forwards a drop without learning
+/// the sender↔recipient link beyond "a drop passed through."
+///
+/// Phase-4 transport: uses `Plain` content (no DR session) so the
+/// recipient reads it via `chat_read_content`'s Plain branch. The
+/// Ratcheted (forward-secret) onion send composes identically once the
+/// DR session is threaded through.
+pub fn chat_send_onion(
+    node_rpc: String,
+    guard_pubkey_hex: String,
+    sender_seed_hex: String,
+    recipient_pubkey_hex: String,
+    recipient_content_key_hex: String,
+    message: String,
+    sender_name: String,
+    total_shares: u8,
+    auth_cert_thumbprint_hex: Option<String>,
+    auth_cert_seed_hex: Option<String>,
+) -> Result<ChatSendOutcome, String> {
+    let content = ContentPayload::Plain(InnerPayload {
+        sender_name: sender_name.into_bytes(),
+        body: message.into_bytes(),
+    })
+    .encode();
+    send_content_onion(
+        node_rpc,
+        &guard_pubkey_hex,
+        &sender_seed_hex,
+        &recipient_pubkey_hex,
+        &recipient_content_key_hex,
+        content,
+        total_shares,
+        auth_cert_thumbprint_hex,
+        auth_cert_seed_hex,
+    )
+}
+
+/// Build the SealedEnvelope (content-seal → sign → sealed-sender) for a
+/// pairwise send. Shared by the direct (`send_content`) and onion
+/// (`send_content_onion`) dispatch paths. Returns the envelope + the
+/// recipient's raw Ed25519 pubkey.
+fn build_sealed_envelope(
+    sender_seed_hex: &str,
+    recipient_pubkey_hex: &str,
+    recipient_content_key_hex: &str,
+    content_payload_bytes: &[u8],
+) -> Result<(SealedEnvelope, [u8; 32]), String> {
+    let sender_seed = decode_hex32(sender_seed_hex)?;
+    let recipient_ed = decode_hex32(recipient_pubkey_hex)?;
+    let recipient_x = ed25519_to_x25519_pubkey(&recipient_ed)
+        .ok_or_else(|| "recipient pubkey not on Edwards curve".to_string())?;
+
+    let signing = ed25519_zebra::SigningKey::from(sender_seed);
+
+    let mut message_id_bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut message_id_bytes);
+    let message_id = MessageId(message_id_bytes);
+
+    let recipient_content_key_bytes =
+        hex::decode(recipient_content_key_hex.trim_start_matches("0x"))
+            .map_err(|e| format!("recipient content key hex: {e}"))?;
+    let recipient_content_key =
+        ContentPublicKey::decode(&mut &recipient_content_key_bytes[..])
+            .map_err(|e| format!("recipient ContentPublicKey decode: {e}"))?;
+    let inner_ciphertext = content_seal(&recipient_content_key, content_payload_bytes, &mut OsRng)
+        .map_err(|e| format!("content seal: {e:?}"))?
+        .encode();
+
+    let unsealed = sign_inner(inner_ciphertext, &message_id, &signing);
+    let unsealed_encoded = unsealed.encode();
+    let mut rng = OsRng;
+    let sealed = ss_seal(&recipient_x, &unsealed_encoded, &mut rng);
+
+    let envelope = SealedEnvelope {
+        kind: EnvelopeKind::Pairwise,
+        outer_ciphertext: sealed.ciphertext,
+        ephemeral_pubkey: sealed.ephemeral_pub,
+        message_id,
+    };
+    Ok((envelope, recipient_ed))
+}
+
+/// Build the (thumbprint, ts, sig) cert-auth triple over `signed_bytes`
+/// — the envelope for a direct send, the onion packet for an onion
+/// send. The node recomputes the same digest and verifies against the
+/// cert's device pubkey.
+fn build_cert_auth(
+    signed_bytes: &[u8],
+    auth_cert_thumbprint_hex: Option<String>,
+    auth_cert_seed_hex: Option<String>,
+) -> Result<(Option<String>, Option<u64>, Option<String>), String> {
+    match (auth_cert_thumbprint_hex, auth_cert_seed_hex) {
+        (Some(thumbprint), Some(cert_seed)) => {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| format!("system clock before epoch: {e}"))?
+                .as_secs();
+            let sig = chat_auth_sign(&cert_seed, signed_bytes, ts)?;
+            Ok((Some(thumbprint), Some(ts), Some(sig)))
+        }
+        (None, None) => Ok((None, None, None)),
+        _ => Err("auth_cert_thumbprint_hex and auth_cert_seed_hex must be passed \
+                  together (or both omitted for the unauthenticated dev path)"
+            .to_string()),
+    }
+}
+
+/// Onion send core (Phase 4): build the same recipient-sealed envelope,
+/// then wrap it in a one-hop onion sealed to the `guard` node identity
+/// and dispatch via `chat_send_onion`. The guard peels it and injects
+/// the envelope into the normal distribution; cert-auth is over the
+/// onion packet bytes (what the node verifies). `guard_pubkey_hex` is
+/// the guard's Ed25519 node identity (e.g. from `chat_nodeInfo`).
+fn send_content_onion(
+    node_rpc: String,
+    guard_pubkey_hex: &str,
+    sender_seed_hex: &str,
+    recipient_pubkey_hex: &str,
+    recipient_content_key_hex: &str,
+    content_payload_bytes: Vec<u8>,
+    total_shares: u8,
+    auth_cert_thumbprint_hex: Option<String>,
+    auth_cert_seed_hex: Option<String>,
+) -> Result<ChatSendOutcome, String> {
+    let (envelope, recipient_ed) = build_sealed_envelope(
+        sender_seed_hex,
+        recipient_pubkey_hex,
+        recipient_content_key_hex,
+        &content_payload_bytes,
+    )?;
+
+    // 1-hop onion: Deliver{recipient + envelope} sealed to the guard.
+    let guard_ed = decode_hex32(guard_pubkey_hex)?;
+    let guard = NodeIdentity::from_ed25519_pubkey(guard_ed);
+    let deliver = OnionDeliverPayload {
+        recipient_chat_pubkey: recipient_ed,
+        envelope_bytes: envelope.encode(),
+    };
+    let packet = wrap_onion(&[guard], &deliver.encode(), &mut OsRng)
+        .map_err(|e| format!("onion wrap: {e:?}"))?;
+    let packet_bytes = packet.encode();
+    let packet_hex = hex::encode(&packet_bytes);
+
+    // Cert-auth (Phase 2) over the ONION PACKET bytes.
+    let (auth_thumbprint_hex, auth_timestamp_secs, auth_sig_hex) =
+        build_cert_auth(&packet_bytes, auth_cert_thumbprint_hex, auth_cert_seed_hex)?;
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("tokio runtime: {e}"))?;
+    rt.block_on(async move {
+        let rpc = subxt::rpcs::RpcClient::from_insecure_url(&node_rpc)
+            .await
+            .map_err(|e| format!("connecting to {node_rpc}: {e}"))?;
+        let result: ChatSendResultRpc = rpc
+            .request(
+                "chat_send_onion",
+                subxt::rpcs::rpc_params![
+                    packet_hex,
+                    total_shares,
+                    auth_thumbprint_hex,
+                    auth_timestamp_secs,
+                    auth_sig_hex
+                ],
+            )
+            .await
+            .map_err(|e| format!("chat_send_onion RPC failed: {e}"))?;
+        Ok(ChatSendOutcome {
+            message_id_hex: result.message_id_hex,
+            share_count: result.share_count,
+            recipient_pickup_key_hex: result.recipient_pickup_key_hex,
+            new_session_state_hex: String::new(),
+        })
+    })
+}
+
 /// Shared send core: content-seal the payload to the recipient's
 /// silicon content key, sign, sealed-sender-wrap, cert-auth, dispatch.
 fn send_content(
@@ -493,71 +699,18 @@ fn send_content(
     auth_cert_thumbprint_hex: Option<String>,
     auth_cert_seed_hex: Option<String>,
 ) -> Result<ChatSendOutcome, String> {
-    let sender_seed = decode_hex32(sender_seed_hex)?;
-    let recipient_ed = decode_hex32(recipient_pubkey_hex)?;
-    let recipient_x = ed25519_to_x25519_pubkey(&recipient_ed)
-        .ok_or_else(|| "recipient pubkey not on Edwards curve".to_string())?;
-
-    let signing = ed25519_zebra::SigningKey::from(sender_seed);
-
-    // Fresh per-send MessageId.
-    let mut message_id_bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut message_id_bytes);
-    let message_id = MessageId(message_id_bytes);
-
-    // SEAL to the recipient's silicon content key (Phase 3). The
-    // encoded ContentSealed is what the sender signs and what sits
-    // encrypted at rest on the recipient's device.
-    let recipient_content_key_bytes =
-        hex::decode(recipient_content_key_hex.trim_start_matches("0x"))
-            .map_err(|e| format!("recipient content key hex: {e}"))?;
-    let recipient_content_key =
-        ContentPublicKey::decode(&mut &recipient_content_key_bytes[..])
-            .map_err(|e| format!("recipient ContentPublicKey decode: {e}"))?;
-    let inner_ciphertext =
-        content_seal(&recipient_content_key, &content_payload_bytes, &mut OsRng)
-            .map_err(|e| format!("content seal: {e:?}"))?
-            .encode();
-
-    // Sign UnsealedInner on-device, then sealed-sender-seal to the
-    // recipient's X25519 pubkey.
-    let unsealed = sign_inner(inner_ciphertext, &message_id, &signing);
-    let unsealed_encoded = unsealed.encode();
-    let mut rng = OsRng;
-    let sealed = ss_seal(&recipient_x, &unsealed_encoded, &mut rng);
-
-    let envelope = SealedEnvelope {
-        kind: EnvelopeKind::Pairwise,
-        outer_ciphertext: sealed.ciphertext,
-        ephemeral_pubkey: sealed.ephemeral_pub,
-        message_id,
-    };
+    let (envelope, recipient_ed) = build_sealed_envelope(
+        sender_seed_hex,
+        recipient_pubkey_hex,
+        recipient_content_key_hex,
+        &content_payload_bytes,
+    )?;
     let envelope_bytes = envelope.encode();
     let envelope_hex = hex::encode(&envelope_bytes);
 
-    // Cert-auth: timestamp + P-256 signature over the auth digest.
-    // The node recomputes the same digest and verifies against the
-    // cert's device pubkey from `CertLookupCold`.
+    // Cert-auth (Phase 2) over the envelope bytes.
     let (auth_thumbprint_hex, auth_timestamp_secs, auth_sig_hex) =
-        match (auth_cert_thumbprint_hex, auth_cert_seed_hex) {
-            (Some(thumbprint), Some(cert_seed)) => {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_err(|e| format!("system clock before epoch: {e}"))?
-                    .as_secs();
-                let sig = chat_auth_sign(&cert_seed, &envelope_bytes, ts)?;
-                (Some(thumbprint), Some(ts), Some(sig))
-            }
-            (None, None) => (None, None, None),
-            _ => {
-                return Err(
-                    "auth_cert_thumbprint_hex and auth_cert_seed_hex must be \
-                     passed together (or both omitted for the unauthenticated \
-                     dev path)"
-                        .to_string(),
-                );
-            }
-        };
+        build_cert_auth(&envelope_bytes, auth_cert_thumbprint_hex, auth_cert_seed_hex)?;
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()

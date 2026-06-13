@@ -5062,6 +5062,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rostro-chat-onion"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "rand_core 0.6.4",
+ "rostro-chat-sealed-sender",
+ "rostro-node-identity",
+ "zeroize",
+]
+
+[[package]]
 name = "rostro-chat-primitives"
 version = "0.1.0"
 dependencies = [
@@ -5104,6 +5115,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rostro-node-identity"
+version = "0.1.0"
+dependencies = [
+ "curve25519-dalek",
+ "ed25519-zebra",
+ "sha2 0.10.9",
+ "zeroize",
+]
+
+[[package]]
 name = "rust_core"
 version = "0.1.0"
 dependencies = [
@@ -5132,9 +5153,11 @@ dependencies = [
  "ring",
  "rostro-chat-content-seal",
  "rostro-chat-dr",
+ "rostro-chat-onion",
  "rostro-chat-primitives",
  "rostro-chat-sealed-sender",
  "rostro-client",
+ "rostro-node-identity",
  "scale-info",
  "scale-value",
  "serde",
