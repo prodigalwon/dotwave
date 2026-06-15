@@ -6,7 +6,7 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `connect_rostro_with_rpc`, `connect_rostro`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `encode_record_type`, `fetch_best_nonce`, `hex_encode_lower`, `rostro_tx_params`, `submit_typed`
+// These functions are ignored because they are not marked as `pub`: `connect_rostro_with_rpc`, `connect_rostro`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `encode_record_type`, `fetch_best_nonce`, `fetch_root_thumbprint`, `hex_encode_lower`, `rostro_tx_params`, `submit_typed`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatIdentityRecord`, `Sr25519Signer`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `clone`, `fmt`, `sign`
 
@@ -173,17 +173,24 @@ Future<String> registerName({
 );
 
 /// Publish this device's chat identity under `name` (which the signer must own)
-/// into the PUBKEY1 record. `ed25519_pubkey_hex` is the device's outer chat key.
+/// into the PUBKEY1 record. `identity_seed_hex` is the device's chat-identity
+/// Ed25519 seed — the SEED, not the pubkey, because the record carries the
+/// X3DH signed prekey (Phase 5), which is derived from and signed by it.
+/// `inner_content_key_hex` is the device's silicon content key (hex of the
+/// SCALE curve-tagged `ContentPublicKey` from `chat::chat_gen_content_key` —
+/// Phase 3, REQUIRED: senders seal content to it).
 Future<String> chatPublishIdentity({
   required String name,
   required String phrase,
   required String rpcUrl,
-  required String ed25519PubkeyHex,
+  required String identitySeedHex,
+  required String innerContentKeyHex,
 }) => RustLib.instance.api.crateCoreChatPublishIdentity(
   name: name,
   phrase: phrase,
   rpcUrl: rpcUrl,
-  ed25519PubkeyHex: ed25519PubkeyHex,
+  identitySeedHex: identitySeedHex,
+  innerContentKeyHex: innerContentKeyHex,
 );
 
 /// Resolve `name` → its published chat identity (PUBKEY1). Forward resolution —
@@ -195,6 +202,24 @@ Future<ResolvedChatIdentity> chatResolveIdentity({
 }) => RustLib.instance.api.crateCoreChatResolveIdentity(
   name: name,
   rpcUrl: rpcUrl,
+);
+
+/// One-step "set up messaging": register `name` and publish this device's chat
+/// identity (outer key + Phase-3 content key) under it. Tolerant — if the name
+/// is already registered to the signer, registration is effectively a no-op and
+/// publish proceeds.
+Future<ChatSetupOutcome> chatSetupMessaging({
+  required String name,
+  required String phrase,
+  required String rpcUrl,
+  required String identitySeedHex,
+  required String innerContentKeyHex,
+}) => RustLib.instance.api.crateCoreChatSetupMessaging(
+  name: name,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+  identitySeedHex: identitySeedHex,
+  innerContentKeyHex: innerContentKeyHex,
 );
 
 /// Fetch the full PNS portfolio for an account: primary name, subnames,
@@ -567,6 +592,40 @@ Future<String> submitSelfDiscardCertMimeWrap({
   rpcUrl: rpcUrl,
 );
 
+/// Deterministic P-256 cert seed for a dev account phrase. One seed
+/// per account, always: `chat_mint_test_cert` is idempotent against
+/// the on-chain `Roots` entry, so re-minting the same account with a
+/// *different* seed would silently return a thumbprint bound to the
+/// old pubkey and every subsequent auth signature would fail. Deriving
+/// the seed from the phrase makes that mismatch unrepresentable.
+Future<String> devCertSeedHex({required String phrase}) =>
+    RustLib.instance.api.crateCoreDevCertSeedHex(phrase: phrase);
+
+/// Phase-2 chat-auth dev mint: register a software P-256 device key as
+/// a root cert via `register_root` and return the cert thumbprint the
+/// chat-auth layer signs under.
+///
+/// Dev-box stand-in for the real StrongBox/TPM mint: gemini wires
+/// `TpmTestAttestationVerifier` (ignores the attestation bytes) and
+/// `NoopProxyValidator` (proxy check always passes), so one extrinsic
+/// from a funded dev account mints an Active cert whose
+/// `cert_ec_pubkey` is exactly the P-256 key `chat_send` signs with.
+///
+/// Idempotent: an account can hold at most one root, so if `Roots`
+/// already has an entry for the signer the existing thumbprint is
+/// returned instead of re-submitting.
+Future<String> chatMintTestCert({
+  required String rpcUrl,
+  required String phrase,
+  required String certSeedHex,
+  required int ttlBlocks,
+}) => RustLib.instance.api.crateCoreChatMintTestCert(
+  rpcUrl: rpcUrl,
+  phrase: phrase,
+  certSeedHex: certSeedHex,
+  ttlBlocks: ttlBlocks,
+);
+
 /// Extract the 65-byte SEC1 P-256 public key from an X.509 leaf cert's
 /// SubjectPublicKeyInfo. The Stage 4c ceremony emits `attest_ec_chain[0]`
 /// as DER but doesn't separately surface the SEC1 attest pubkey; this
@@ -611,6 +670,42 @@ class AccountDashboardInfo {
           subnameHashes == other.subnameHashes &&
           pendingSubnameOffers == other.pendingSubnameOffers &&
           pendingNameOffers == other.pendingNameOffers;
+}
+
+/// FRB-facing onboarding result.
+class ChatSetupOutcome {
+  final String name;
+  final bool registered;
+  final bool published;
+  final String registerTx;
+  final String publishTx;
+
+  const ChatSetupOutcome({
+    required this.name,
+    required this.registered,
+    required this.published,
+    required this.registerTx,
+    required this.publishTx,
+  });
+
+  @override
+  int get hashCode =>
+      name.hashCode ^
+      registered.hashCode ^
+      published.hashCode ^
+      registerTx.hashCode ^
+      publishTx.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ChatSetupOutcome &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          registered == other.registered &&
+          published == other.published &&
+          registerTx == other.registerTx &&
+          publishTx == other.publishTx;
 }
 
 class DnsRecord {
@@ -759,12 +854,16 @@ class ResolvedChatIdentity {
   final int scheme;
   final String ed25519PubkeyHex;
   final String innerContentKeyHex;
+  final String spkX25519Hex;
+  final String spkSignatureHex;
 
   const ResolvedChatIdentity({
     required this.found,
     required this.scheme,
     required this.ed25519PubkeyHex,
     required this.innerContentKeyHex,
+    required this.spkX25519Hex,
+    required this.spkSignatureHex,
   });
 
   @override
@@ -772,7 +871,9 @@ class ResolvedChatIdentity {
       found.hashCode ^
       scheme.hashCode ^
       ed25519PubkeyHex.hashCode ^
-      innerContentKeyHex.hashCode;
+      innerContentKeyHex.hashCode ^
+      spkX25519Hex.hashCode ^
+      spkSignatureHex.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -782,7 +883,9 @@ class ResolvedChatIdentity {
           found == other.found &&
           scheme == other.scheme &&
           ed25519PubkeyHex == other.ed25519PubkeyHex &&
-          innerContentKeyHex == other.innerContentKeyHex;
+          innerContentKeyHex == other.innerContentKeyHex &&
+          spkX25519Hex == other.spkX25519Hex &&
+          spkSignatureHex == other.spkSignatureHex;
 }
 
 class ResolvedName {

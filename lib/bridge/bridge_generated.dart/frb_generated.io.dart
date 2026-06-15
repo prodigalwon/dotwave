@@ -4,6 +4,7 @@
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
 import 'chat.dart';
+import 'chat_dr.dart';
 import 'core.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -33,6 +34,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AccountDashboardInfo dco_decode_account_dashboard_info(dynamic raw);
 
   @protected
+  AtRestMessage dco_decode_at_rest_message(dynamic raw);
+
+  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
@@ -60,7 +64,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+  int dco_decode_box_autoadd_u_32(dynamic raw);
 
   @protected
   ChatIdentity dco_decode_chat_identity(dynamic raw);
@@ -69,10 +73,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ChatSendOutcome dco_decode_chat_send_outcome(dynamic raw);
 
   @protected
+  ChatSetupOutcome dco_decode_chat_setup_outcome(dynamic raw);
+
+  @protected
   DnsRecord dco_decode_dns_record(dynamic raw);
 
   @protected
   DotAccount dco_decode_dot_account(dynamic raw);
+
+  @protected
+  DrFetchedOpk dco_decode_dr_fetched_opk(dynamic raw);
+
+  @protected
+  DrInitiation dco_decode_dr_initiation(dynamic raw);
+
+  @protected
+  DrOpkSecret dco_decode_dr_opk_secret(dynamic raw);
+
+  @protected
+  DrPrekeySetup dco_decode_dr_prekey_setup(dynamic raw);
 
   @protected
   double dco_decode_f_64(dynamic raw);
@@ -81,7 +100,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
+  List<AtRestMessage> dco_decode_list_at_rest_message(dynamic raw);
+
+  @protected
   List<DnsRecord> dco_decode_list_dns_record(dynamic raw);
+
+  @protected
+  List<DrOpkSecret> dco_decode_list_dr_opk_secret(dynamic raw);
 
   @protected
   List<int> dco_decode_list_prim_u_32_loose(dynamic raw);
@@ -94,9 +119,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
-
-  @protected
-  List<RecoveredMessage> dco_decode_list_recovered_message(dynamic raw);
 
   @protected
   LivenessInputsFields dco_decode_liveness_inputs_fields(dynamic raw);
@@ -129,7 +151,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ResolvedName? dco_decode_opt_box_autoadd_resolved_name(dynamic raw);
 
   @protected
-  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
   OsAttestation dco_decode_os_attestation(dynamic raw);
@@ -144,10 +166,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PopCertInfo dco_decode_pop_cert_info(dynamic raw);
 
   @protected
-  (DotAccount, String) dco_decode_record_dot_account_string(dynamic raw);
+  ReadMessage dco_decode_read_message(dynamic raw);
 
   @protected
-  RecoveredMessage dco_decode_recovered_message(dynamic raw);
+  (DotAccount, String) dco_decode_record_dot_account_string(dynamic raw);
 
   @protected
   ResolvedChatIdentity dco_decode_resolved_chat_identity(dynamic raw);
@@ -185,6 +207,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  AtRestMessage sse_decode_at_rest_message(SseDeserializer deserializer);
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
@@ -216,7 +241,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
   ChatIdentity sse_decode_chat_identity(SseDeserializer deserializer);
@@ -225,10 +250,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ChatSendOutcome sse_decode_chat_send_outcome(SseDeserializer deserializer);
 
   @protected
+  ChatSetupOutcome sse_decode_chat_setup_outcome(SseDeserializer deserializer);
+
+  @protected
   DnsRecord sse_decode_dns_record(SseDeserializer deserializer);
 
   @protected
   DotAccount sse_decode_dot_account(SseDeserializer deserializer);
+
+  @protected
+  DrFetchedOpk sse_decode_dr_fetched_opk(SseDeserializer deserializer);
+
+  @protected
+  DrInitiation sse_decode_dr_initiation(SseDeserializer deserializer);
+
+  @protected
+  DrOpkSecret sse_decode_dr_opk_secret(SseDeserializer deserializer);
+
+  @protected
+  DrPrekeySetup sse_decode_dr_prekey_setup(SseDeserializer deserializer);
 
   @protected
   double sse_decode_f_64(SseDeserializer deserializer);
@@ -237,7 +277,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
+  List<AtRestMessage> sse_decode_list_at_rest_message(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<DnsRecord> sse_decode_list_dns_record(SseDeserializer deserializer);
+
+  @protected
+  List<DrOpkSecret> sse_decode_list_dr_opk_secret(SseDeserializer deserializer);
 
   @protected
   List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer);
@@ -250,11 +298,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
-
-  @protected
-  List<RecoveredMessage> sse_decode_list_recovered_message(
-    SseDeserializer deserializer,
-  );
 
   @protected
   LivenessInputsFields sse_decode_liveness_inputs_fields(
@@ -301,7 +344,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
   OsAttestation sse_decode_os_attestation(SseDeserializer deserializer);
@@ -320,12 +363,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PopCertInfo sse_decode_pop_cert_info(SseDeserializer deserializer);
 
   @protected
+  ReadMessage sse_decode_read_message(SseDeserializer deserializer);
+
+  @protected
   (DotAccount, String) sse_decode_record_dot_account_string(
     SseDeserializer deserializer,
   );
-
-  @protected
-  RecoveredMessage sse_decode_recovered_message(SseDeserializer deserializer);
 
   @protected
   ResolvedChatIdentity sse_decode_resolved_chat_identity(
@@ -374,6 +417,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_at_rest_message(AtRestMessage self, SseSerializer serializer);
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
@@ -413,7 +459,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_chat_identity(ChatIdentity self, SseSerializer serializer);
@@ -425,10 +471,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_chat_setup_outcome(
+    ChatSetupOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_dns_record(DnsRecord self, SseSerializer serializer);
 
   @protected
   void sse_encode_dot_account(DotAccount self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_dr_fetched_opk(DrFetchedOpk self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_dr_initiation(DrInitiation self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_dr_opk_secret(DrOpkSecret self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_dr_prekey_setup(DrPrekeySetup self, SseSerializer serializer);
 
   @protected
   void sse_encode_f_64(double self, SseSerializer serializer);
@@ -437,8 +501,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_at_rest_message(
+    List<AtRestMessage> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_dns_record(
     List<DnsRecord> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_dr_opk_secret(
+    List<DrOpkSecret> self,
     SseSerializer serializer,
   );
 
@@ -460,12 +536,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_list_recovered_message(
-    List<RecoveredMessage> self,
     SseSerializer serializer,
   );
 
@@ -524,7 +594,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
   void sse_encode_os_attestation(OsAttestation self, SseSerializer serializer);
@@ -545,14 +615,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_pop_cert_info(PopCertInfo self, SseSerializer serializer);
 
   @protected
-  void sse_encode_record_dot_account_string(
-    (DotAccount, String) self,
-    SseSerializer serializer,
-  );
+  void sse_encode_read_message(ReadMessage self, SseSerializer serializer);
 
   @protected
-  void sse_encode_recovered_message(
-    RecoveredMessage self,
+  void sse_encode_record_dot_account_string(
+    (DotAccount, String) self,
     SseSerializer serializer,
   );
 

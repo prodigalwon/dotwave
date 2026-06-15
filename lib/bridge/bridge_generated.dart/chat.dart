@@ -3,48 +3,181 @@
 
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
+import 'chat_dr.dart';
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `decode_hex32`, `identity_from_seed`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatFetchedShareRaw`, `ChatSendResultRpc`, `ChatShareDescriptorRpc`, `InnerPayload`
+// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `identity_from_seed`, `p256_signing_key`, `send_content_onion`, `send_content`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatFetchedShareRaw`, `ChatSendResultRpc`, `ChatShareDescriptorRpc`, `ContentPayload`, `InnerPayload`
 
 /// Derive a chat identity from a deterministic 32-byte seed (hex).
 ChatIdentity chatGenIdentity({required String seedHex}) =>
     RustLib.instance.api.crateChatChatGenIdentity(seedHex: seedHex);
 
+/// Derive the publishable content key for a software content seed:
+/// returns the hex of the SCALE-encoded curve-tagged `ContentPublicKey`
+/// — exactly the bytes that go in the RNS record's `inner_content_key`
+/// and that senders pass to [`chat_send`]. Dev-box stand-in for the
+/// StrongBox/TPM keypair (`curve`: 0 = P-256 / 32-byte seed,
+/// 1 = P-384 / 48-byte seed).
+Future<String> chatGenContentKey({
+  required int curve,
+  required String contentSeedHex,
+}) => RustLib.instance.api.crateChatChatGenContentKey(
+  curve: curve,
+  contentSeedHex: contentSeedHex,
+);
+
+/// Decrypt an at-rest sealed blob ([`AtRestMessage::sealed_content_hex`])
+/// with the device's content key. THE biometric/silicon seam: on real
+/// hardware the ECDH inside runs in StrongBox/TPM behind a biometric
+/// prompt and this fn takes a keystore handle instead of a seed;
+/// the software seed path is the dev-box stand-in. Plaintext is
+/// returned transiently — the amnesiac app must not persist it.
+Future<ReadMessage> chatReadContent({
+  required String sealedContentHex,
+  required int curve,
+  required String contentSeedHex,
+  String? drSessionStateHex,
+  required String identitySeedHex,
+  required List<DrOpkSecret> opkSecrets,
+}) => RustLib.instance.api.crateChatChatReadContent(
+  sealedContentHex: sealedContentHex,
+  curve: curve,
+  contentSeedHex: contentSeedHex,
+  drSessionStateHex: drSessionStateHex,
+  identitySeedHex: identitySeedHex,
+  opkSecrets: opkSecrets,
+);
+
+/// Derive the uncompressed SEC1 public key (65 bytes, hex) for a
+/// software P-256 cert secret. This is the `device_pubkey` registered
+/// on-chain via `register_root` and the key `verify_chat_auth` checks
+/// drops against. Dev-box stand-in for the StrongBox/TPM keypair.
+Future<String> chatCertPubkey({required String certSeedHex}) =>
+    RustLib.instance.api.crateChatChatCertPubkey(certSeedHex: certSeedHex);
+
 /// Build + sign + sealed-sender-seal a pairwise message on-device, then
 /// dispatch it through the named node via `chat_send_envelope`.
 ///
-/// `auth_thumbprint_hex` / `auth_timestamp_secs` / `auth_sig_hex` are
-/// the cert-auth seam: pass `None` for the node's v0.1 demo path, or
-/// real values once HW-attested cert signing is wired.
+/// `recipient_content_key_hex` is the recipient's published content key
+/// (hex of the SCALE curve-tagged `ContentPublicKey`, from the resolved
+/// RNS record's `inner_content_key` / [`chat_gen_content_key`]). The
+/// inner payload is SEALED to it (Phase 3) — content is encrypted at
+/// rest on the recipient device and only their silicon key opens it.
+/// REQUIRED: there is no plaintext-inner path.
+///
+/// `auth_cert_thumbprint_hex` + `auth_cert_seed_hex` are the Phase-2
+/// cert-auth layer: the zkpki cert thumbprint (from
+/// `chat_mint_test_cert` / the on-chain `Roots` record) and the P-256
+/// cert secret. When present, `chat_send` timestamps the envelope and
+/// signs the auth digest so the node's `verify_chat_auth` admits the
+/// drop. Pass both or neither — `None` is the unauthenticated dev
+/// path, which a production (flipped) node rejects.
 Future<ChatSendOutcome> chatSend({
   required String nodeRpc,
   required String senderSeedHex,
   required String recipientPubkeyHex,
+  required String recipientContentKeyHex,
   required String message,
   required String senderName,
   required int totalShares,
-  String? authThumbprintHex,
-  BigInt? authTimestampSecs,
-  String? authSigHex,
+  required String drSessionStateHex,
+  String? x3DhInitHex,
+  String? authCertThumbprintHex,
+  String? authCertSeedHex,
 }) => RustLib.instance.api.crateChatChatSend(
   nodeRpc: nodeRpc,
   senderSeedHex: senderSeedHex,
   recipientPubkeyHex: recipientPubkeyHex,
+  recipientContentKeyHex: recipientContentKeyHex,
   message: message,
   senderName: senderName,
   totalShares: totalShares,
-  authThumbprintHex: authThumbprintHex,
-  authTimestampSecs: authTimestampSecs,
-  authSigHex: authSigHex,
+  drSessionStateHex: drSessionStateHex,
+  x3DhInitHex: x3DhInitHex,
+  authCertThumbprintHex: authCertThumbprintHex,
+  authCertSeedHex: authCertSeedHex,
 );
 
-/// Fetch shares for the recipient, then reconstruct + unseal + verify
-/// any complete message stripes on-device. Returns the recovered,
-/// sender-verified messages.
-Future<List<RecoveredMessage>> chatFetch({
+/// Query a node's chat identity (its Ed25519 node pubkey, hex) via the
+/// `chat_nodeInfo` RPC. The phone uses this to learn its connected
+/// node's identity so it can seal an onion layer to it as the guard.
+Future<String> chatNodeInfo({required String nodeRpc}) =>
+    RustLib.instance.api.crateChatChatNodeInfo(nodeRpc: nodeRpc);
+
+/// Send a message through a **one-hop onion** to `guard_pubkey_hex`
+/// (the connected node's Ed25519 identity, e.g. from `chat_nodeInfo`).
+/// The guard peels the onion and injects the recipient-sealed envelope
+/// into the normal distribution — it forwards a drop without learning
+/// the sender↔recipient link beyond "a drop passed through."
+///
+/// Phase-4 transport: uses `Plain` content (no DR session) so the
+/// recipient reads it via `chat_read_content`'s Plain branch. The
+/// Ratcheted (forward-secret) onion send composes identically once the
+/// DR session is threaded through.
+Future<ChatSendOutcome> chatSendOnion({
+  required String nodeRpc,
+  required String guardPubkeyHex,
+  required String senderSeedHex,
+  required String recipientPubkeyHex,
+  required String recipientContentKeyHex,
+  required String message,
+  required String senderName,
+  required int totalShares,
+  String? authCertThumbprintHex,
+  String? authCertSeedHex,
+}) => RustLib.instance.api.crateChatChatSendOnion(
+  nodeRpc: nodeRpc,
+  guardPubkeyHex: guardPubkeyHex,
+  senderSeedHex: senderSeedHex,
+  recipientPubkeyHex: recipientPubkeyHex,
+  recipientContentKeyHex: recipientContentKeyHex,
+  message: message,
+  senderName: senderName,
+  totalShares: totalShares,
+  authCertThumbprintHex: authCertThumbprintHex,
+  authCertSeedHex: authCertSeedHex,
+);
+
+/// Two-hop onion send (Phase 4 slice 2). Same as [`chat_send_onion`] but
+/// wraps the drop in a 2-hop path: guard → relay-2 → (stripe). The guard
+/// peels and FORWARDS the inner packet directly to relay-2 over
+/// `/rostro/chat-onion-forward/1`; relay-2 peels and delivers. A single
+/// relay sees sender-or-bucket, never both. `relay2_pubkey_hex` is
+/// relay-2's Ed25519 node identity (distinct from the guard; obtained
+/// from `chat_nodeInfo` on a different relay).
+Future<ChatSendOutcome> chatSendOnion2Hop({
+  required String nodeRpc,
+  required String guardPubkeyHex,
+  required String relay2PubkeyHex,
+  required String senderSeedHex,
+  required String recipientPubkeyHex,
+  required String recipientContentKeyHex,
+  required String message,
+  required String senderName,
+  required int totalShares,
+  String? authCertThumbprintHex,
+  String? authCertSeedHex,
+}) => RustLib.instance.api.crateChatChatSendOnion2Hop(
+  nodeRpc: nodeRpc,
+  guardPubkeyHex: guardPubkeyHex,
+  relay2PubkeyHex: relay2PubkeyHex,
+  senderSeedHex: senderSeedHex,
+  recipientPubkeyHex: recipientPubkeyHex,
+  recipientContentKeyHex: recipientContentKeyHex,
+  message: message,
+  senderName: senderName,
+  totalShares: totalShares,
+  authCertThumbprintHex: authCertThumbprintHex,
+  authCertSeedHex: authCertSeedHex,
+);
+
+/// Fetch shares for the recipient, then reconstruct, OUTER-unseal and
+/// sender-verify any complete message stripes on-device. The content
+/// stays SEALED (encrypted at rest) — background-safe, no biometric.
+/// Decrypt individual messages with [`chat_read_content`].
+Future<List<AtRestMessage>> chatFetch({
   required String nodeRpc,
   required String recipientSeedHex,
   String? relayPeer,
@@ -53,6 +186,42 @@ Future<List<RecoveredMessage>> chatFetch({
   recipientSeedHex: recipientSeedHex,
   relayPeer: relayPeer,
 );
+
+/// A message reconstructed, OUTER-unsealed and sender-verified on-device —
+/// with the content still sealed (Phase 3: encrypted at rest). The app
+/// stores `sealed_content_hex` as-is; reading it requires the explicit
+/// [`chat_read_content`] step (biometric → silicon on real hardware).
+class AtRestMessage {
+  final String messageIdHex;
+
+  /// Verified sender chat pubkey (outer-layer signature checked in
+  /// the background — safe to thread/route on without decrypting).
+  final String senderPubkeyHex;
+
+  /// SCALE-encoded `ContentSealed` — the encrypted-at-rest blob.
+  final String sealedContentHex;
+
+  const AtRestMessage({
+    required this.messageIdHex,
+    required this.senderPubkeyHex,
+    required this.sealedContentHex,
+  });
+
+  @override
+  int get hashCode =>
+      messageIdHex.hashCode ^
+      senderPubkeyHex.hashCode ^
+      sealedContentHex.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AtRestMessage &&
+          runtimeType == other.runtimeType &&
+          messageIdHex == other.messageIdHex &&
+          senderPubkeyHex == other.senderPubkeyHex &&
+          sealedContentHex == other.sealedContentHex;
+}
 
 /// Public keys + pickup key derived from a chat-identity seed. The two
 /// parties exchange the Ed25519 pubkey out-of-band (or via RNS) so each
@@ -90,17 +259,24 @@ class ChatSendOutcome {
   final int shareCount;
   final String recipientPickupKeyHex;
 
+  /// Advanced DR session state after this send (Phase 5). The app
+  /// MUST persist it (encrypted) before considering the send done —
+  /// losing it breaks the ratchet. Empty for `Plain` sends.
+  final String newSessionStateHex;
+
   const ChatSendOutcome({
     required this.messageIdHex,
     required this.shareCount,
     required this.recipientPickupKeyHex,
+    required this.newSessionStateHex,
   });
 
   @override
   int get hashCode =>
       messageIdHex.hashCode ^
       shareCount.hashCode ^
-      recipientPickupKeyHex.hashCode;
+      recipientPickupKeyHex.hashCode ^
+      newSessionStateHex.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -109,50 +285,53 @@ class ChatSendOutcome {
           runtimeType == other.runtimeType &&
           messageIdHex == other.messageIdHex &&
           shareCount == other.shareCount &&
-          recipientPickupKeyHex == other.recipientPickupKeyHex;
+          recipientPickupKeyHex == other.recipientPickupKeyHex &&
+          newSessionStateHex == other.newSessionStateHex;
 }
 
-/// A message reconstructed, unsealed and sender-verified on-device.
-class RecoveredMessage {
-  final String messageIdHex;
-
-  /// The verified sender chat-identity Ed25519 pubkey (hex).
-  final String senderPubkeyHex;
-
-  /// The sender's CLAIMED `.rst` name (empty if none). UNVERIFIED here — the
-  /// caller forward-resolves it and checks it maps to `sender_pubkey_hex`.
+/// Decrypted content, produced ONLY by [`chat_read_content`].
+class ReadMessage {
   final String claimedSenderName;
 
   /// UTF-8 plaintext if the body decodes as UTF-8, else empty.
   final String plaintext;
 
-  /// Raw recovered body, always present.
+  /// Raw body, always present.
   final String plaintextHex;
 
-  const RecoveredMessage({
-    required this.messageIdHex,
-    required this.senderPubkeyHex,
+  /// True for `Ratcheted` (normal 1:1) content; false for `Plain`
+  /// one-way payloads (prekey bundles / System messages).
+  final bool ratcheted;
+
+  /// Advanced DR session state after this read. The app MUST
+  /// persist it (encrypted) — feeding a stale state to the next
+  /// read replays the ratchet. Empty for `Plain` content.
+  final String newSessionStateHex;
+
+  const ReadMessage({
     required this.claimedSenderName,
     required this.plaintext,
     required this.plaintextHex,
+    required this.ratcheted,
+    required this.newSessionStateHex,
   });
 
   @override
   int get hashCode =>
-      messageIdHex.hashCode ^
-      senderPubkeyHex.hashCode ^
       claimedSenderName.hashCode ^
       plaintext.hashCode ^
-      plaintextHex.hashCode;
+      plaintextHex.hashCode ^
+      ratcheted.hashCode ^
+      newSessionStateHex.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is RecoveredMessage &&
+      other is ReadMessage &&
           runtimeType == other.runtimeType &&
-          messageIdHex == other.messageIdHex &&
-          senderPubkeyHex == other.senderPubkeyHex &&
           claimedSenderName == other.claimedSenderName &&
           plaintext == other.plaintext &&
-          plaintextHex == other.plaintextHex;
+          plaintextHex == other.plaintextHex &&
+          ratcheted == other.ratcheted &&
+          newSessionStateHex == other.newSessionStateHex;
 }

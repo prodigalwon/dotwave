@@ -16,7 +16,18 @@ class ChatMessage {
   final String id; // message_id_hex (per-message random 32-byte id)
   final String contactPubkey; // the other party's ed25519 chat pubkey (hex)
   final bool outbound;
+
+  /// Cleartext body. For inbound messages this is empty until the explicit
+  /// read step (`chat_read_content`) decrypts [sealedContentHex] — content
+  /// arrives SEALED at rest (Phase 3), never as plaintext on fetch. Wiring
+  /// the read step is F1 (see docs/DOTWAVE-CHAT-FRONTEND-PLAN.md).
   final String text;
+
+  /// SCALE-encoded `ContentSealed` blob (hex) for inbound at-rest messages,
+  /// stored verbatim and decrypted only on demand via the silicon read step.
+  /// Empty for outbound messages (authored locally).
+  final String sealedContentHex;
+
   final int tsMillis; // local stamp (send-time / first-seen)
   final bool verified;
 
@@ -25,17 +36,22 @@ class ChatMessage {
     required this.contactPubkey,
     required this.outbound,
     required this.text,
+    this.sealedContentHex = '',
     required this.tsMillis,
     required this.verified,
   });
 
   DateTime get time => DateTime.fromMillisecondsSinceEpoch(tsMillis);
 
+  /// Inbound, still-sealed (content not yet read off the silicon key).
+  bool get isSealed => !outbound && sealedContentHex.isNotEmpty && text.isEmpty;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'c': contactPubkey,
         'o': outbound,
         't': text,
+        'sc': sealedContentHex,
         'ts': tsMillis,
         'v': verified,
       };
@@ -45,6 +61,7 @@ class ChatMessage {
         contactPubkey: j['c'] as String,
         outbound: j['o'] as bool,
         text: j['t'] as String,
+        sealedContentHex: (j['sc'] as String?) ?? '',
         tsMillis: j['ts'] as int,
         verified: (j['v'] as bool?) ?? false,
       );
@@ -214,10 +231,40 @@ class ChatStore extends ChangeNotifier {
     );
   }
 
+  // ── F1/F2 plug points (the v1.0 data the send path needs) ────────
+  //
+  // The engine's `chat_send` is no longer the old plaintext call — it
+  // requires the recipient's content key + the sender's `.rst` name (F1)
+  // and per-conversation Double Ratchet session state (F2). The store
+  // doesn't hold these yet. Each helper throws at the exact missing piece
+  // so a send fails loudly rather than dispatching a malformed (keyless)
+  // drop. F1/F2 replace these bodies. See docs/DOTWAVE-CHAT-FRONTEND-PLAN.md.
+
+  /// F1: the recipient's published content key (hex of the SCALE
+  /// `ContentPublicKey` from their RNS `MESSAGE` record). The inner
+  /// payload is sealed to it — there is no plaintext-inner path.
+  Future<String> _recipientContentKey(String contactPubkey) async =>
+      throw UnimplementedError(
+          'F1: resolve recipient content key from their RNS MESSAGE record');
+
+  /// F1: this device's sender `.rst` name (claimed in the signed inner;
+  /// the recipient forward-resolves it and checks the published key).
+  Future<String> _senderName(String address) async =>
+      throw UnimplementedError("F1: resolve this account's .rst name");
+
+  /// F2: per-conversation Double Ratchet session state (hex), persisted
+  /// encrypted and advanced on every send/read. Empty bootstraps X3DH.
+  Future<String> _drSessionState(String address, String contactPubkey) async =>
+      throw UnimplementedError('F2: load/persist DR session state');
+
   // ── send / refresh (the RPC-facing surface) ─────────────────────
 
   /// Seal + sign + dispatch a message to [contactPubkey]. Appends the
   /// outbound message locally on success. Throws on RPC failure.
+  ///
+  /// F0: wired to the re-baselined v1.0 `chat_send` binding; the content
+  /// key + sender name (F1) and DR session state (F2) come from the plug
+  /// points above, which throw until their phase lands.
   Future<ChatMessage> send(String address, String contactPubkey, String text) async {
     final seed = await seedHex(address);
     final node = await nodeRpc();
@@ -225,13 +272,17 @@ class ChatStore extends ChangeNotifier {
       nodeRpc: node,
       senderSeedHex: seed,
       recipientPubkeyHex: contactPubkey,
+      recipientContentKeyHex: await _recipientContentKey(contactPubkey), // F1
       message: text,
+      senderName: await _senderName(address), // F1
       totalShares: 5,
-      // Cert-auth seam — filled in step 4 (HW-attested device cert).
-      authThumbprintHex: null,
-      authTimestampSecs: null,
-      authSigHex: null,
+      drSessionStateHex: await _drSessionState(address, contactPubkey), // F2
+      x3DhInitHex: null, // F2: carried on the first message of a conversation
+      authCertThumbprintHex: null, // F1/P2: HW-attested device cert seam
+      authCertSeedHex: null,
     );
+    // F2: outcome.newSessionStateHex MUST be persisted (encrypted) before
+    // the send is considered done — losing it breaks the ratchet.
     final msg = ChatMessage(
       id: outcome.messageIdHex,
       contactPubkey: contactPubkey,
@@ -248,30 +299,33 @@ class ChatStore extends ChangeNotifier {
     return msg;
   }
 
-  /// Pull shares from the relay, reassemble + unseal + verify locally,
-  /// and merge any new inbound messages into their threads. Returns the
-  /// number of newly-seen messages. Unknown senders are auto-added as
+  /// Pull shares from the relay, reassemble + outer-unseal + sender-verify
+  /// on-device, and merge any new inbound messages into their threads as
+  /// SEALED-at-rest blobs. Content stays encrypted (Phase 3); decrypting it
+  /// is the explicit read step (`chat_read_content`), wired in F1. Returns
+  /// the number of newly-seen messages. Unknown senders are auto-added as
   /// contacts so a fresh conversation appears.
   Future<int> refresh(String address) async {
     final seed = await seedHex(address);
     final node = await nodeRpc();
-    final recovered = await chatFetch(
+    final fetched = await chatFetch(
       nodeRpc: node,
       recipientSeedHex: seed,
       relayPeer: null,
     );
     var newCount = 0;
-    for (final r in recovered) {
-      final contactPubkey = r.senderPubkeyHex;
+    for (final m in fetched) {
+      final contactPubkey = m.senderPubkeyHex;
       final list = await messages(address, contactPubkey);
-      if (list.any((m) => m.id == r.messageIdHex)) continue; // dedupe
+      if (list.any((x) => x.id == m.messageIdHex)) continue; // dedupe
       list.add(ChatMessage(
-        id: r.messageIdHex,
+        id: m.messageIdHex,
         contactPubkey: contactPubkey,
         outbound: false,
-        text: r.plaintext,
+        text: '', // content is sealed at rest; decrypt is the F1 read step
+        sealedContentHex: m.sealedContentHex,
         tsMillis: DateTime.now().millisecondsSinceEpoch,
-        verified: true, // verify_sender already passed on-device
+        verified: true, // outer-layer sender signature already checked on-device
       ));
       list.sort((a, b) => a.tsMillis.compareTo(b.tsMillis));
       await _persistThread(address, contactPubkey);
