@@ -537,6 +537,46 @@ pub fn chat_send_onion(
     send_content_onion(
         node_rpc,
         &guard_pubkey_hex,
+        None,
+        &sender_seed_hex,
+        &recipient_pubkey_hex,
+        &recipient_content_key_hex,
+        content,
+        total_shares,
+        auth_cert_thumbprint_hex,
+        auth_cert_seed_hex,
+    )
+}
+
+/// Two-hop onion send (Phase 4 slice 2). Same as [`chat_send_onion`] but
+/// wraps the drop in a 2-hop path: guard → relay-2 → (stripe). The guard
+/// peels and FORWARDS the inner packet directly to relay-2 over
+/// `/rostro/chat-onion-forward/1`; relay-2 peels and delivers. A single
+/// relay sees sender-or-bucket, never both. `relay2_pubkey_hex` is
+/// relay-2's Ed25519 node identity (distinct from the guard; obtained
+/// from `chat_nodeInfo` on a different relay).
+pub fn chat_send_onion_2hop(
+    node_rpc: String,
+    guard_pubkey_hex: String,
+    relay2_pubkey_hex: String,
+    sender_seed_hex: String,
+    recipient_pubkey_hex: String,
+    recipient_content_key_hex: String,
+    message: String,
+    sender_name: String,
+    total_shares: u8,
+    auth_cert_thumbprint_hex: Option<String>,
+    auth_cert_seed_hex: Option<String>,
+) -> Result<ChatSendOutcome, String> {
+    let content = ContentPayload::Plain(InnerPayload {
+        sender_name: sender_name.into_bytes(),
+        body: message.into_bytes(),
+    })
+    .encode();
+    send_content_onion(
+        node_rpc,
+        &guard_pubkey_hex,
+        Some(&relay2_pubkey_hex),
         &sender_seed_hex,
         &recipient_pubkey_hex,
         &recipient_content_key_hex,
@@ -626,6 +666,7 @@ fn build_cert_auth(
 fn send_content_onion(
     node_rpc: String,
     guard_pubkey_hex: &str,
+    relay2_pubkey_hex: Option<&str>,
     sender_seed_hex: &str,
     recipient_pubkey_hex: &str,
     recipient_content_key_hex: &str,
@@ -641,14 +682,20 @@ fn send_content_onion(
         &content_payload_bytes,
     )?;
 
-    // 1-hop onion: Deliver{recipient + envelope} sealed to the guard.
-    let guard_ed = decode_hex32(guard_pubkey_hex)?;
-    let guard = NodeIdentity::from_ed25519_pubkey(guard_ed);
+    // Onion path: [guard] (1-hop) or [guard, relay-2] (2-hop). The
+    // innermost Deliver{recipient + envelope} is sealed to the LAST hop;
+    // each preceding hop gets a Forward to the next. The guard peels its
+    // layer and either delivers (1-hop) or forwards to relay-2 (2-hop).
+    let guard = NodeIdentity::from_ed25519_pubkey(decode_hex32(guard_pubkey_hex)?);
     let deliver = OnionDeliverPayload {
         recipient_chat_pubkey: recipient_ed,
         envelope_bytes: envelope.encode(),
     };
-    let packet = wrap_onion(&[guard], &deliver.encode(), &mut OsRng)
+    let path: Vec<NodeIdentity> = match relay2_pubkey_hex {
+        Some(r2) => vec![guard, NodeIdentity::from_ed25519_pubkey(decode_hex32(r2)?)],
+        None => vec![guard],
+    };
+    let packet = wrap_onion(&path, &deliver.encode(), &mut OsRng)
         .map_err(|e| format!("onion wrap: {e:?}"))?;
     let packet_bytes = packet.encode();
     let packet_hex = hex::encode(&packet_bytes);
