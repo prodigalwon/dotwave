@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../bridge/bridge_generated.dart/chat.dart';
+import '../bridge/bridge_generated.dart/core.dart'
+    show chatResolveIdentity, chatSetupMessaging, ChatSetupOutcome;
 import '../config/rpc_endpoints.dart';
 
 /// One end-to-end-encrypted message in a thread.
@@ -72,20 +74,44 @@ class ChatMessage {
 /// or a user-set nickname for now).
 class ChatContact {
   final String pubkey; // ed25519 chat-identity pubkey (hex)
+
+  /// The resolved `.rst` name this contact was reached by (F1: conversations
+  /// start by name, not pasted hex). Empty for inbound-discovered contacts
+  /// until their claimed sender name is forward-resolve-verified.
+  final String name;
+
+  /// The contact's published content key (MESSAGE record), hex of the
+  /// curve-tagged ContentPublicKey. Cached from resolution so sends can seal
+  /// the inner content to it without re-resolving. Empty = dead-drop / unknown.
+  final String contentKeyHex;
+
   final String? label;
 
-  const ChatContact({required this.pubkey, this.label});
+  const ChatContact({
+    required this.pubkey,
+    this.name = '',
+    this.contentKeyHex = '',
+    this.label,
+  });
 
-  /// Short, human-glanceable handle when no label is set.
+  /// Short, human-glanceable handle when no name/label is set.
   String get shortPubkey =>
       pubkey.length <= 12 ? pubkey : '${pubkey.substring(0, 6)}…${pubkey.substring(pubkey.length - 4)}';
 
-  String get display => (label != null && label!.isNotEmpty) ? label! : shortPubkey;
+  String get display => name.isNotEmpty
+      ? name
+      : (label != null && label!.isNotEmpty)
+          ? label!
+          : shortPubkey;
 
-  Map<String, dynamic> toJson() => {'pk': pubkey, 'l': label};
+  Map<String, dynamic> toJson() => {'pk': pubkey, 'n': name, 'ck': contentKeyHex, 'l': label};
 
-  factory ChatContact.fromJson(Map<String, dynamic> j) =>
-      ChatContact(pubkey: j['pk'] as String, label: j['l'] as String?);
+  factory ChatContact.fromJson(Map<String, dynamic> j) => ChatContact(
+        pubkey: j['pk'] as String,
+        name: (j['n'] as String?) ?? '',
+        contentKeyHex: (j['ck'] as String?) ?? '',
+        label: j['l'] as String?,
+      );
 }
 
 /// Device-local chat state: the user's chat identity, contacts, cached
@@ -108,9 +134,15 @@ class ChatStore extends ChangeNotifier {
 
   // ── keys ────────────────────────────────────────────────────────
   String _seedKey(String address) => 'chat_seed_$address';
+  String _contentSeedKey(String address) => 'chat_content_seed_$address';
+  String _myNameKey(String address) => 'chat_my_name_$address';
   String _contactsKey(String address) => 'chat_contacts_$address';
   String _threadKey(String address, String pubkey) => 'chat_msgs_${address}_$pubkey';
   static const _nodeKey = 'chat_node_rpc';
+
+  /// Content-key curve for the dev/software path. 0 = P-256 (StrongBox curve);
+  /// on hardware the seed is replaced by a non-extractable silicon key.
+  static const int _contentCurve = 0;
 
   // ── identity ────────────────────────────────────────────────────
 
@@ -135,6 +167,77 @@ class ChatStore extends ChangeNotifier {
   Future<ChatIdentity> identity(String address) async {
     final seed = await seedHex(address);
     return chatGenIdentity(seedHex: seed);
+  }
+
+  /// The device's content-key seed (hex), created on first use. The hardware
+  /// content key (MESSAGE record) is derived from it. PoC: a software seed in
+  /// secure storage; on real silicon this is a StrongBox/TPM key handle.
+  Future<String> contentSeedHex(String address) async {
+    final existing = await _storage.read(key: _contentSeedKey(address));
+    if (existing != null && existing.length == 64) return existing;
+    final rng = Random.secure();
+    final bytes = List<int>.generate(32, (_) => rng.nextInt(256));
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    await _storage.write(key: _contentSeedKey(address), value: hex);
+    return hex;
+  }
+
+  /// This device's published content key (MESSAGE record value), hex of the
+  /// curve-tagged ContentPublicKey. Senders seal inner content to it.
+  Future<String> contentKey(String address) async {
+    final seed = await contentSeedHex(address);
+    return chatGenContentKey(curve: _contentCurve, contentSeedHex: seed);
+  }
+
+  /// This account's own `.rst` chat name (claimed in the signed inner so the
+  /// recipient can forward-resolve-verify it). Set at onboarding; the chain has
+  /// no reverse name lookup, so the user's name is held locally.
+  Future<String> myName(String address) async =>
+      (await _storage.read(key: _myNameKey(address))) ?? '';
+
+  Future<void> _setMyName(String address, String name) async {
+    await _storage.write(key: _myNameKey(address), value: name);
+  }
+
+  // ── onboarding + resolution (F1) ────────────────────────────────
+
+  /// One-step "set up messaging": register `name` and publish this device's
+  /// typed CHAT (Ed25519 address) + MESSAGE (content key) records under it.
+  /// `phrase` is the account's signing secret. Persists the name locally so it
+  /// can be claimed as the sender name on outbound messages.
+  Future<ChatSetupOutcome> setupMessaging(String address, String name, String phrase) async {
+    final seed = await seedHex(address);
+    final ck = await contentKey(address);
+    final node = await nodeRpc();
+    final outcome = await chatSetupMessaging(
+      name: name,
+      phrase: phrase,
+      rpcUrl: node,
+      identitySeedHex: seed,
+      innerContentKeyHex: ck,
+    );
+    if (outcome.published) {
+      await _setMyName(address, name);
+      notifyListeners();
+    }
+    return outcome;
+  }
+
+  /// Start (or refresh) a conversation by `.rst` name: resolve the name's
+  /// typed CHAT + MESSAGE records, cache the contact's ed25519 pubkey + content
+  /// key, and return it. Throws if the name has no chat identity published.
+  Future<ChatContact> resolveContactByName(String address, String name) async {
+    final node = await nodeRpc();
+    final r = await chatResolveIdentity(name: name, rpcUrl: node);
+    if (!r.found) {
+      throw StateError("'$name' has no published chat identity (no CHAT record)");
+    }
+    return upsertContact(
+      address,
+      r.ed25519PubkeyHex,
+      name: name,
+      contentKeyHex: r.innerContentKeyHex,
+    );
   }
 
   // ── node override ───────────────────────────────────────────────
@@ -174,12 +277,25 @@ class ChatStore extends ChangeNotifier {
     return list;
   }
 
-  Future<ChatContact> upsertContact(String address, String pubkey, {String? label}) async {
+  Future<ChatContact> upsertContact(
+    String address,
+    String pubkey, {
+    String? name,
+    String? contentKeyHex,
+    String? label,
+  }) async {
     final list = await contacts(address);
     final idx = list.indexWhere((c) => c.pubkey == pubkey);
+    final prev = idx >= 0 ? list[idx] : null;
     final contact = ChatContact(
       pubkey: pubkey,
-      label: label ?? (idx >= 0 ? list[idx].label : null),
+      // Keep previously-resolved values when this call doesn't supply them
+      // (e.g. an inbound message upsert shouldn't clobber a resolved name).
+      name: (name != null && name.isNotEmpty) ? name : (prev?.name ?? ''),
+      contentKeyHex: (contentKeyHex != null && contentKeyHex.isNotEmpty)
+          ? contentKeyHex
+          : (prev?.contentKeyHex ?? ''),
+      label: label ?? prev?.label,
     );
     if (idx >= 0) {
       list[idx] = contact;
@@ -189,6 +305,13 @@ class ChatStore extends ChangeNotifier {
     await _persistContacts(address);
     notifyListeners();
     return contact;
+  }
+
+  /// Look up a cached contact by ed25519 pubkey, or null.
+  Future<ChatContact?> contactByPubkey(String address, String pubkey) async {
+    final list = await contacts(address);
+    final idx = list.indexWhere((c) => c.pubkey == pubkey);
+    return idx >= 0 ? list[idx] : null;
   }
 
   Future<void> _persistContacts(String address) async {
@@ -231,31 +354,39 @@ class ChatStore extends ChangeNotifier {
     );
   }
 
-  // ── F1/F2 plug points (the v1.0 data the send path needs) ────────
-  //
-  // The engine's `chat_send` is no longer the old plaintext call — it
-  // requires the recipient's content key + the sender's `.rst` name (F1)
-  // and per-conversation Double Ratchet session state (F2). The store
-  // doesn't hold these yet. Each helper throws at the exact missing piece
-  // so a send fails loudly rather than dispatching a malformed (keyless)
-  // drop. F1/F2 replace these bodies. See docs/DOTWAVE-CHAT-FRONTEND-PLAN.md.
+  // ── send-path inputs (F1 wired; DR session is the last F2 gate) ──
 
-  /// F1: the recipient's published content key (hex of the SCALE
-  /// `ContentPublicKey` from their RNS `MESSAGE` record). The inner
-  /// payload is sealed to it — there is no plaintext-inner path.
-  Future<String> _recipientContentKey(String contactPubkey) async =>
-      throw UnimplementedError(
-          'F1: resolve recipient content key from their RNS MESSAGE record');
+  /// The recipient's published content key (MESSAGE record), from the cached
+  /// contact resolved by name. The inner payload is sealed to it — there is no
+  /// plaintext-inner path, so a contact reached only by raw pubkey (no resolved
+  /// MESSAGE key) can't be sent to until it's resolved by name.
+  Future<String> _recipientContentKey(String address, String contactPubkey) async {
+    final c = await contactByPubkey(address, contactPubkey);
+    final ck = c?.contentKeyHex ?? '';
+    if (ck.isEmpty) {
+      throw StateError(
+          'no content key for this contact — start the conversation by .rst name '
+          'so its MESSAGE record resolves');
+    }
+    return ck;
+  }
 
-  /// F1: this device's sender `.rst` name (claimed in the signed inner;
-  /// the recipient forward-resolves it and checks the published key).
-  Future<String> _senderName(String address) async =>
-      throw UnimplementedError("F1: resolve this account's .rst name");
+  /// This device's sender `.rst` name (claimed in the signed inner; the
+  /// recipient forward-resolves it and checks the published key matches).
+  Future<String> _senderName(String address) async {
+    final name = await myName(address);
+    if (name.isEmpty) {
+      throw StateError('set up messaging first (no .rst name published for this account)');
+    }
+    return name;
+  }
 
   /// F2: per-conversation Double Ratchet session state (hex), persisted
-  /// encrypted and advanced on every send/read. Empty bootstraps X3DH.
+  /// encrypted and advanced on every send/read. Empty bootstraps X3DH. The
+  /// last remaining plug point — forward-secret send needs the recipient SPK,
+  /// whose typed-records home is F2's open decision.
   Future<String> _drSessionState(String address, String contactPubkey) async =>
-      throw UnimplementedError('F2: load/persist DR session state');
+      throw UnimplementedError('F2: load/persist DR session state (needs recipient SPK)');
 
   // ── send / refresh (the RPC-facing surface) ─────────────────────
 
@@ -272,7 +403,7 @@ class ChatStore extends ChangeNotifier {
       nodeRpc: node,
       senderSeedHex: seed,
       recipientPubkeyHex: contactPubkey,
-      recipientContentKeyHex: await _recipientContentKey(contactPubkey), // F1
+      recipientContentKeyHex: await _recipientContentKey(address, contactPubkey), // F1
       message: text,
       senderName: await _senderName(address), // F1
       totalShares: 5,
@@ -334,5 +465,62 @@ class ChatStore extends ChangeNotifier {
     }
     if (newCount > 0) notifyListeners();
     return newCount;
+  }
+
+  /// THE read step: decrypt a sealed inbound message's content (Phase 3 — on
+  /// hardware this is the biometric→silicon gate) and surface the plaintext +
+  /// the forward-resolve-verified sender name. Replaces the sealed blob with
+  /// the decrypted text in the thread.
+  ///
+  /// F1 handles `Plain` content (no DR session). `Ratcheted` content needs the
+  /// per-conversation DR session (F2). Device-seizure / amnesiac-at-rest
+  /// behaviour (don't persist plaintext) is F3.
+  Future<ChatMessage> readMessage(String address, String contactPubkey, String messageId) async {
+    final list = await messages(address, contactPubkey);
+    final idx = list.indexWhere((m) => m.id == messageId);
+    if (idx < 0) throw StateError('message not found');
+    final m = list[idx];
+    if (!m.isSealed) return m; // already read, or nothing sealed
+
+    final read = await chatReadContent(
+      sealedContentHex: m.sealedContentHex,
+      curve: _contentCurve,
+      contentSeedHex: await contentSeedHex(address),
+      drSessionStateHex: null, // F2: Ratcheted content threads the DR session here
+      identitySeedHex: await seedHex(address),
+      opkSecrets: const [],
+    );
+
+    // Forward-resolve-and-verify the claimed sender name (impersonation-
+    // resistant): the claimed name must resolve to THIS exact ed25519 sender
+    // key. A name that doesn't match is dropped, not displayed.
+    var verifiedName = '';
+    if (read.claimedSenderName.isNotEmpty) {
+      try {
+        final r = await chatResolveIdentity(name: read.claimedSenderName, rpcUrl: await nodeRpc());
+        if (r.found && r.ed25519PubkeyHex == contactPubkey) {
+          verifiedName = read.claimedSenderName;
+        }
+      } catch (_) {
+        // resolution failure → leave the name unverified (blank), never spoofable
+      }
+    }
+
+    final updated = ChatMessage(
+      id: m.id,
+      contactPubkey: contactPubkey,
+      outbound: false,
+      text: read.plaintext,
+      sealedContentHex: '', // consumed
+      tsMillis: m.tsMillis,
+      verified: true,
+    );
+    list[idx] = updated;
+    await _persistThread(address, contactPubkey);
+    if (verifiedName.isNotEmpty) {
+      await upsertContact(address, contactPubkey, name: verifiedName);
+    }
+    notifyListeners();
+    return updated;
   }
 }
