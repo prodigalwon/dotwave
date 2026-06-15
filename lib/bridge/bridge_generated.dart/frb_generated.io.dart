@@ -5,6 +5,7 @@
 
 import 'chat.dart';
 import 'chat_dr.dart';
+import 'chat_session.dart';
 import 'core.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -71,6 +72,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ChatSendOutcome dco_decode_chat_send_outcome(dynamic raw);
+
+  @protected
+  ChatSessionKeypair dco_decode_chat_session_keypair(dynamic raw);
+
+  @protected
+  ChatSessionOutcome dco_decode_chat_session_outcome(dynamic raw);
+
+  @protected
+  ChatSessionPrepared dco_decode_chat_session_prepared(dynamic raw);
 
   @protected
   ChatSetupOutcome dco_decode_chat_setup_outcome(dynamic raw);
@@ -248,6 +258,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ChatSendOutcome sse_decode_chat_send_outcome(SseDeserializer deserializer);
+
+  @protected
+  ChatSessionKeypair sse_decode_chat_session_keypair(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ChatSessionOutcome sse_decode_chat_session_outcome(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ChatSessionPrepared sse_decode_chat_session_prepared(
+    SseDeserializer deserializer,
+  );
 
   @protected
   ChatSetupOutcome sse_decode_chat_setup_outcome(SseDeserializer deserializer);
@@ -467,6 +492,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_chat_send_outcome(
     ChatSendOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_chat_session_keypair(
+    ChatSessionKeypair self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_chat_session_outcome(
+    ChatSessionOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_chat_session_prepared(
+    ChatSessionPrepared self,
     SseSerializer serializer,
   );
 
