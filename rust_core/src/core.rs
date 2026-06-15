@@ -525,47 +525,47 @@ pub fn register_name(name: String, phrase: String, rpc_url: String) -> Result<St
     })
 }
 
-// ─── Phase 1: chat-identity record (RNS PUBKEY1) ────────────────────────────
+// ─── Phase 1: chat-identity records (typed RNS CHAT + MESSAGE) ───────────────
+//
+// The chat identity is TWO typed, chain-owned records (rns-chat-v0, the chain
+// migration that retired the opaque PUBKEY1 single-record convention):
+//   * CHAT    (RecordType index 15) — the Ed25519 *mail address* (outer /
+//     sealed-sender layer). Exactly 32 raw bytes; the chain validates the
+//     length (InvalidChatKey). Required to be chat-reachable. Published
+//     EXPLICITLY because an SS58 is scheme-agnostic and may not be Ed25519.
+//   * MESSAGE (RecordType index 16) — the curve-tagged `ContentPublicKey`
+//     (inner / content-at-rest layer). On by default; omit for dead-drop.
+//
+// The X3DH signed prekey (SPK) the OLD PUBKEY1 record bundled has NO home in
+// the 32-byte CHAT record. Forward secrecy (the SPK) is deferred to F2, which
+// owns the decision of where the SPK lives in the typed-records world. F1
+// publishes CHAT + MESSAGE only.
 
-/// Curve-agnostic, scheme-tagged chat identity published under a user's RNS name
-/// in the PUBKEY1 slot ("Public key slot 1 for encrypted messaging"). Phase 1
-/// fills the outer Ed25519 key; the hardware content key (Phase 3) goes in
-/// `inner_content_key`, and PQ (v1.1) is just a new `scheme` tag. The record is
-/// general so secret-squirrel/secure-messenger reuses the same slot.
-#[derive(parity_scale_codec::Encode, parity_scale_codec::Decode, Clone)]
-pub(crate) struct ChatIdentityRecord {
-    /// Scheme tag. 0 = v1.0 (outer Ed25519 + P-256/P-384 inner + SPK).
-    pub scheme: u8,
-    /// Outer sealed-sender key (Ed25519). Used now.
-    pub outer_ed25519: [u8; 32],
-    /// Recipient's silicon content key (P-256/P-384/PQ).
-    pub inner_content_key: Vec<u8>,
-    /// X3DH signed prekey (X25519), Phase 5. Senders DH against it to
-    /// make their FIRST message forward-secret. Rotated by republish.
-    pub spk_x25519: [u8; 32],
-    /// Identity Ed25519 signature over the SPK
-    /// (`rostro_chat_dr::spk_preimage`) — an unsigned prekey would let
-    /// an active attacker MITM every new conversation.
-    pub spk_signature: [u8; 64],
-}
+/// IANA private-use codes for the typed chat records.
+const RT_CHAT_IANA: u32 = 65293;
+const RT_MESSAGE_IANA: u32 = 65294;
 
 /// FRB-facing resolved chat identity for a `.rst` name.
 pub struct ResolvedChatIdentity {
     pub found: bool,
-    pub scheme: u8,
+    /// Outer Ed25519 mail address (CHAT record), hex. The sealed-sender target.
     pub ed25519_pubkey_hex: String,
+    /// Inner content key (MESSAGE record), hex of the curve-tagged
+    /// `ContentPublicKey`. Empty if the name is dead-drop (no MESSAGE record).
     pub inner_content_key_hex: String,
-    pub spk_x25519_hex: String,
-    pub spk_signature_hex: String,
+    /// True if a MESSAGE record is present (content sealing possible); false =
+    /// dead-drop (content key exchanged out-of-band).
+    pub has_message_key: bool,
 }
 
 /// Publish this device's chat identity under `name` (which the signer must own)
-/// into the PUBKEY1 record. `identity_seed_hex` is the device's chat-identity
-/// Ed25519 seed — the SEED, not the pubkey, because the record carries the
-/// X3DH signed prekey (Phase 5), which is derived from and signed by it.
+/// as the typed CHAT + MESSAGE records. `identity_seed_hex` is the device's
+/// chat-identity Ed25519 seed; its public key becomes the CHAT mail address.
 /// `inner_content_key_hex` is the device's silicon content key (hex of the
-/// SCALE curve-tagged `ContentPublicKey` from `chat::chat_gen_content_key` —
-/// Phase 3, REQUIRED: senders seal content to it).
+/// SCALE curve-tagged `ContentPublicKey` from `chat::chat_gen_content_key`) —
+/// published as MESSAGE. An empty content key publishes CHAT only (dead-drop).
+///
+/// Two extrinsics (CHAT then MESSAGE); returns both tx hashes joined by `;`.
 pub fn chat_publish_identity(
     name: String,
     phrase: String,
@@ -573,107 +573,70 @@ pub fn chat_publish_identity(
     identity_seed_hex: String,
     inner_content_key_hex: String,
 ) -> Result<String, String> {
-    use parity_scale_codec::Encode;
     let seed: [u8; 32] = hex::decode(identity_seed_hex.trim_start_matches("0x"))
         .map_err(|e| format!("bad identity seed hex: {e}"))?
         .try_into()
         .map_err(|_| "identity seed must be 32 bytes".to_string())?;
     let signing = ed25519_zebra::SigningKey::from(seed);
     let outer_ed25519: [u8; 32] = ed25519_zebra::VerificationKey::from(&signing).into();
+
+    // 1. CHAT — the 32-byte Ed25519 mail address (required).
+    let chat_tx = submit_typed(
+        &phrase,
+        &rpc_url,
+        polkadot::tx().rns_resolvers().set_record(
+            name.clone().into_bytes(),
+            polkadot::runtime_types::rns_types::ddns::codec_type::RecordType::CHAT,
+            polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec(
+                outer_ed25519.to_vec(),
+            ),
+        ),
+    )?;
+
+    // 2. MESSAGE — the curve-tagged content key (on by default; omit = dead-drop).
     let inner_content_key = hex::decode(inner_content_key_hex.trim_start_matches("0x"))
         .map_err(|e| format!("bad content key hex: {e}"))?;
     if inner_content_key.is_empty() {
-        return Err("inner_content_key_hex is required (Phase 3): publish the \
-                    device content key from chat_gen_content_key"
-            .to_string());
+        return Ok(chat_tx); // dead-drop: CHAT only
     }
-    // Phase 5: derive + sign the X3DH signed prekey.
-    let spk_secret = crate::chat_dr::spk_secret_from_identity_seed(&seed);
-    let spk_pub = x25519_dalek::PublicKey::from(&spk_secret);
-    let spk_signature = rostro_chat_dr::sign_spk(&spk_pub, &signing);
-    let record = ChatIdentityRecord {
-        scheme: 0,
-        outer_ed25519,
-        inner_content_key,
-        spk_x25519: *spk_pub.as_bytes(),
-        spk_signature,
-    };
-    let content = record.encode();
-    submit_typed(
+    let message_tx = submit_typed(
         &phrase,
         &rpc_url,
         polkadot::tx().rns_resolvers().set_record(
             name.into_bytes(),
-            polkadot::runtime_types::rns_types::ddns::codec_type::RecordType::PUBKEY1,
-            polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec(content),
+            polkadot::runtime_types::rns_types::ddns::codec_type::RecordType::MESSAGE,
+            polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec(inner_content_key),
         ),
-    )
+    )?;
+    Ok(format!("{chat_tx};{message_tx}"))
 }
 
-/// Resolve `name` → its published chat identity (PUBKEY1). Forward resolution —
-/// the recipient's name-display is "resolve the claimed name, verify the key
-/// matches the signed sender," never a reverse directory lookup.
+/// Resolve `name` → its published chat identity (typed CHAT + MESSAGE records).
+/// Forward resolution — the recipient's name-display is "resolve the claimed
+/// name, verify the key matches the signed sender," never a reverse lookup.
+/// Built on the existing `lookup_records` machinery (no duplicate runtime-API
+/// call): one query for both typed records, picked out by IANA code.
 pub fn chat_resolve_identity(name: String, rpc_url: String) -> Result<ResolvedChatIdentity, String> {
-    use parity_scale_codec::{Decode, Encode};
-    use scale_value::{Composite, ValueDef};
+    let records = lookup_records(name, vec![RT_CHAT_IANA, RT_MESSAGE_IANA], rpc_url)?;
 
-    // RecordType discriminants must match rns_types::ddns: SS58,RPC,VALIDATOR,PUBKEY1…
-    #[derive(Encode)]
-    enum RtWire {
-        Ss58,
-        Rpc,
-        Validator,
-        Pubkey1,
-    }
+    let chat = records.iter().find(|r| r.record_type == RT_CHAT_IANA);
+    let message = records.iter().find(|r| r.record_type == RT_MESSAGE_IANA);
 
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| e.to_string())?;
-    rt.block_on(async {
-        let (client, metadata) = crate::rostro_client::connect(&rpc_url).await?;
-        let args = (name.into_bytes(), vec![RtWire::Pubkey1]).encode();
-        let value = client
-            .call_runtime_api(&metadata, "PnsStorageApi", "lookup_by_name", &args)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        // value : Vec<(RecordType, Vec<u8>)>
-        let items = match &value.value {
-            ValueDef::Composite(Composite::Unnamed(items)) => items,
-            _ => return Err("lookup_by_name did not return a list".to_string()),
-        };
-        for item in items {
-            let rt_val = crate::rostro_client::at(item, 0)
-                .ok_or_else(|| "record tuple missing type".to_string())?;
-            let bytes_val = crate::rostro_client::at(item, 1)
-                .ok_or_else(|| "record tuple missing content".to_string())?;
-            if let ValueDef::Variant(v) = &rt_val.value {
-                if v.name == "PUBKEY1" {
-                    let bytes = crate::rostro_client::as_bytes(bytes_val)
-                        .ok_or_else(|| "PUBKEY1 content not bytes".to_string())?;
-                    let record = ChatIdentityRecord::decode(&mut &bytes[..])
-                        .map_err(|e| format!("decode ChatIdentityRecord: {e}"))?;
-                    return Ok(ResolvedChatIdentity {
-                        found: true,
-                        scheme: record.scheme,
-                        ed25519_pubkey_hex: hex::encode(record.outer_ed25519),
-                        inner_content_key_hex: hex::encode(&record.inner_content_key),
-                        spk_x25519_hex: hex::encode(record.spk_x25519),
-                        spk_signature_hex: hex::encode(record.spk_signature),
-                    });
-                }
-            }
-        }
-        Ok(ResolvedChatIdentity {
+    match chat {
+        Some(c) if c.content.len() == 32 => Ok(ResolvedChatIdentity {
+            found: true,
+            ed25519_pubkey_hex: hex::encode(&c.content),
+            inner_content_key_hex: message.map(|m| hex::encode(&m.content)).unwrap_or_default(),
+            has_message_key: message.is_some_and(|m| !m.content.is_empty()),
+        }),
+        Some(_) => Err("CHAT record is not a 32-byte Ed25519 key".to_string()),
+        None => Ok(ResolvedChatIdentity {
             found: false,
-            scheme: 0,
             ed25519_pubkey_hex: String::new(),
             inner_content_key_hex: String::new(),
-            spk_x25519_hex: String::new(),
-            spk_signature_hex: String::new(),
-        })
-    })
+            has_message_key: false,
+        }),
+    }
 }
 
 /// FRB-facing onboarding result.
@@ -908,8 +871,11 @@ fn encode_record_type(iana_code: u32, out: &mut Vec<u8>) {
         65290 => 8,  // ORIGIN
         65291 => 9,  // IPFS
         65292 => 10, // CONTENT
+        // 11=A, 12=AAAA, 13=CNAME, 14=TXT have no IANA private-use code.
+        65293 => 15, // CHAT    (Ed25519 mail address, 32 bytes)
+        65294 => 16, // MESSAGE (curve-tagged ContentPublicKey)
         _ => {
-            out.push(15); // Unknown(u16)
+            out.push(17); // Unknown(u16) — index 17 after CHAT(15)/MESSAGE(16)
             out.extend_from_slice(&(iana_code as u16).to_le_bytes());
             return;
         },
@@ -934,6 +900,8 @@ fn decode_record_type_to_iana(value: &scale_value::Value<()>) -> Result<u32, Str
         "ORIGIN" => 65290,
         "IPFS" => 65291,
         "CONTENT" => 65292,
+        "CHAT" => 65293,
+        "MESSAGE" => 65294,
         "Unknown" => match &var.values {
             scale_value::Composite::Unnamed(items) if items.len() == 1 => {
                 crate::rostro_client::as_u32(&items[0])
@@ -2233,17 +2201,14 @@ mod typed_writes {
             let r = chat_resolve_identity(name.into(), NODE.into()).expect("resolve");
             if r.found {
                 assert_eq!(r.ed25519_pubkey_hex, expected_pubkey, "resolved key mismatch");
-                assert_eq!(r.scheme, 0);
                 assert_eq!(r.inner_content_key_hex, content_key, "resolved content key mismatch");
-                // Phase 5: the record carries a VERIFIABLE signed prekey.
-                let expected_prekeys =
-                    crate::chat_dr::chat_dr_gen_prekeys(identity_seed.clone(), 0, 0)
-                        .expect("derive prekeys");
-                assert_eq!(r.spk_x25519_hex, expected_prekeys.spk_pubkey_hex, "SPK mismatch");
-                assert!(!r.spk_signature_hex.is_empty(), "SPK signature missing");
+                assert!(r.has_message_key, "MESSAGE content key should be present");
+                // F1: the typed CHAT record is 32-byte-locked, so the X3DH
+                // signed prekey is NO LONGER in the resolved identity. Where
+                // the SPK lives in the typed-records world is F2's decision;
+                // forward-secret send (which needs it) is F2 too.
                 println!(
-                    "✅ resolved {name} → chat key + content key + signed prekey (scheme {}, ~{i}s). Phase-1+3+5 record works.",
-                    r.scheme
+                    "✅ resolved {name} → CHAT key + MESSAGE content key (~{i}s). Typed CHAT+MESSAGE records work."
                 );
                 return;
             }
@@ -2331,18 +2296,22 @@ mod typed_writes {
             chat_mint_test_cert(validator.into(), "//Dave".into(), cert_seed.clone(), 600_000)
                 .expect("mint test cert");
         let body = "name-addressed hello".to_string();
-        // Phase 3+5: content sealed to the RESOLVED record's content key
-        // AND the DR bootstrapped from the RESOLVED record's signed
-        // prekey — the full record-driven path (nothing out-of-band).
+        // Phase 3: content sealed to the RESOLVED record's content key (MESSAGE).
+        // F1/F2: the SPK is no longer in the resolved typed records (CHAT is
+        // 32-byte-locked). Until F2 decides the SPK's on-chain home, the DR
+        // bootstrap derives Bob's SPK from his seed locally (the test holds it);
+        // the rest of the path is still record-driven (CHAT key + MESSAGE key).
+        let bob_prekeys = crate::chat_dr::chat_dr_gen_prekeys(bob_seed.clone(), 0, 0)
+            .expect("bob prekeys");
         let init = crate::chat_dr::chat_dr_initiate(
             alice_seed.clone(),
             resolved.ed25519_pubkey_hex.clone(),
-            resolved.spk_x25519_hex.clone(),
-            resolved.spk_signature_hex.clone(),
+            bob_prekeys.spk_pubkey_hex,
+            bob_prekeys.spk_signature_hex,
             None,
             None,
         )
-        .expect("x3dh initiate from resolved record");
+        .expect("x3dh initiate");
         let outcome = chat_send(
             relay_send.into(),
             alice_seed.clone(),

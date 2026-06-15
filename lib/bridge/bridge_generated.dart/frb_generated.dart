@@ -3933,15 +3933,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ResolvedChatIdentity dco_decode_resolved_chat_identity(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 6)
-      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
     return ResolvedChatIdentity(
       found: dco_decode_bool(arr[0]),
-      scheme: dco_decode_u_8(arr[1]),
-      ed25519PubkeyHex: dco_decode_String(arr[2]),
-      innerContentKeyHex: dco_decode_String(arr[3]),
-      spkX25519Hex: dco_decode_String(arr[4]),
-      spkSignatureHex: dco_decode_String(arr[5]),
+      ed25519PubkeyHex: dco_decode_String(arr[1]),
+      innerContentKeyHex: dco_decode_String(arr[2]),
+      hasMessageKey: dco_decode_bool(arr[3]),
     );
   }
 
@@ -4573,18 +4571,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_found = sse_decode_bool(deserializer);
-    var var_scheme = sse_decode_u_8(deserializer);
     var var_ed25519PubkeyHex = sse_decode_String(deserializer);
     var var_innerContentKeyHex = sse_decode_String(deserializer);
-    var var_spkX25519Hex = sse_decode_String(deserializer);
-    var var_spkSignatureHex = sse_decode_String(deserializer);
+    var var_hasMessageKey = sse_decode_bool(deserializer);
     return ResolvedChatIdentity(
       found: var_found,
-      scheme: var_scheme,
       ed25519PubkeyHex: var_ed25519PubkeyHex,
       innerContentKeyHex: var_innerContentKeyHex,
-      spkX25519Hex: var_spkX25519Hex,
-      spkSignatureHex: var_spkSignatureHex,
+      hasMessageKey: var_hasMessageKey,
     );
   }
 
@@ -5151,11 +5145,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self.found, serializer);
-    sse_encode_u_8(self.scheme, serializer);
     sse_encode_String(self.ed25519PubkeyHex, serializer);
     sse_encode_String(self.innerContentKeyHex, serializer);
-    sse_encode_String(self.spkX25519Hex, serializer);
-    sse_encode_String(self.spkSignatureHex, serializer);
+    sse_encode_bool(self.hasMessageKey, serializer);
   }
 
   @protected

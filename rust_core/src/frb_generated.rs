@@ -3435,18 +3435,14 @@ impl SseDecode for crate::core::ResolvedChatIdentity {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_found = <bool>::sse_decode(deserializer);
-        let mut var_scheme = <u8>::sse_decode(deserializer);
         let mut var_ed25519PubkeyHex = <String>::sse_decode(deserializer);
         let mut var_innerContentKeyHex = <String>::sse_decode(deserializer);
-        let mut var_spkX25519Hex = <String>::sse_decode(deserializer);
-        let mut var_spkSignatureHex = <String>::sse_decode(deserializer);
+        let mut var_hasMessageKey = <bool>::sse_decode(deserializer);
         return crate::core::ResolvedChatIdentity {
             found: var_found,
-            scheme: var_scheme,
             ed25519_pubkey_hex: var_ed25519PubkeyHex,
             inner_content_key_hex: var_innerContentKeyHex,
-            spk_x25519_hex: var_spkX25519Hex,
-            spk_signature_hex: var_spkSignatureHex,
+            has_message_key: var_hasMessageKey,
         };
     }
 }
@@ -4136,11 +4132,9 @@ impl flutter_rust_bridge::IntoDart for crate::core::ResolvedChatIdentity {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.found.into_into_dart().into_dart(),
-            self.scheme.into_into_dart().into_dart(),
             self.ed25519_pubkey_hex.into_into_dart().into_dart(),
             self.inner_content_key_hex.into_into_dart().into_dart(),
-            self.spk_x25519_hex.into_into_dart().into_dart(),
-            self.spk_signature_hex.into_into_dart().into_dart(),
+            self.has_message_key.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -4574,11 +4568,9 @@ impl SseEncode for crate::core::ResolvedChatIdentity {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <bool>::sse_encode(self.found, serializer);
-        <u8>::sse_encode(self.scheme, serializer);
         <String>::sse_encode(self.ed25519_pubkey_hex, serializer);
         <String>::sse_encode(self.inner_content_key_hex, serializer);
-        <String>::sse_encode(self.spk_x25519_hex, serializer);
-        <String>::sse_encode(self.spk_signature_hex, serializer);
+        <bool>::sse_encode(self.has_message_key, serializer);
     }
 }
 

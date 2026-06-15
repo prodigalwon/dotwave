@@ -7,8 +7,8 @@ import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `connect_rostro_with_rpc`, `connect_rostro`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `encode_record_type`, `fetch_best_nonce`, `fetch_root_thumbprint`, `hex_encode_lower`, `rostro_tx_params`, `submit_typed`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatIdentityRecord`, `Sr25519Signer`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `clone`, `fmt`, `sign`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Sr25519Signer`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `fmt`, `sign`
 
 Future<String> fetchBalance({
   required String address,
@@ -173,12 +173,13 @@ Future<String> registerName({
 );
 
 /// Publish this device's chat identity under `name` (which the signer must own)
-/// into the PUBKEY1 record. `identity_seed_hex` is the device's chat-identity
-/// Ed25519 seed — the SEED, not the pubkey, because the record carries the
-/// X3DH signed prekey (Phase 5), which is derived from and signed by it.
+/// as the typed CHAT + MESSAGE records. `identity_seed_hex` is the device's
+/// chat-identity Ed25519 seed; its public key becomes the CHAT mail address.
 /// `inner_content_key_hex` is the device's silicon content key (hex of the
-/// SCALE curve-tagged `ContentPublicKey` from `chat::chat_gen_content_key` —
-/// Phase 3, REQUIRED: senders seal content to it).
+/// SCALE curve-tagged `ContentPublicKey` from `chat::chat_gen_content_key`) —
+/// published as MESSAGE. An empty content key publishes CHAT only (dead-drop).
+///
+/// Two extrinsics (CHAT then MESSAGE); returns both tx hashes joined by `;`.
 Future<String> chatPublishIdentity({
   required String name,
   required String phrase,
@@ -193,9 +194,11 @@ Future<String> chatPublishIdentity({
   innerContentKeyHex: innerContentKeyHex,
 );
 
-/// Resolve `name` → its published chat identity (PUBKEY1). Forward resolution —
-/// the recipient's name-display is "resolve the claimed name, verify the key
-/// matches the signed sender," never a reverse directory lookup.
+/// Resolve `name` → its published chat identity (typed CHAT + MESSAGE records).
+/// Forward resolution — the recipient's name-display is "resolve the claimed
+/// name, verify the key matches the signed sender," never a reverse lookup.
+/// Built on the existing `lookup_records` machinery (no duplicate runtime-API
+/// call): one query for both typed records, picked out by IANA code.
 Future<ResolvedChatIdentity> chatResolveIdentity({
   required String name,
   required String rpcUrl,
@@ -851,29 +854,31 @@ class PassphraseStrength {
 /// FRB-facing resolved chat identity for a `.rst` name.
 class ResolvedChatIdentity {
   final bool found;
-  final int scheme;
+
+  /// Outer Ed25519 mail address (CHAT record), hex. The sealed-sender target.
   final String ed25519PubkeyHex;
+
+  /// Inner content key (MESSAGE record), hex of the curve-tagged
+  /// `ContentPublicKey`. Empty if the name is dead-drop (no MESSAGE record).
   final String innerContentKeyHex;
-  final String spkX25519Hex;
-  final String spkSignatureHex;
+
+  /// True if a MESSAGE record is present (content sealing possible); false =
+  /// dead-drop (content key exchanged out-of-band).
+  final bool hasMessageKey;
 
   const ResolvedChatIdentity({
     required this.found,
-    required this.scheme,
     required this.ed25519PubkeyHex,
     required this.innerContentKeyHex,
-    required this.spkX25519Hex,
-    required this.spkSignatureHex,
+    required this.hasMessageKey,
   });
 
   @override
   int get hashCode =>
       found.hashCode ^
-      scheme.hashCode ^
       ed25519PubkeyHex.hashCode ^
       innerContentKeyHex.hashCode ^
-      spkX25519Hex.hashCode ^
-      spkSignatureHex.hashCode;
+      hasMessageKey.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -881,11 +886,9 @@ class ResolvedChatIdentity {
       other is ResolvedChatIdentity &&
           runtimeType == other.runtimeType &&
           found == other.found &&
-          scheme == other.scheme &&
           ed25519PubkeyHex == other.ed25519PubkeyHex &&
           innerContentKeyHex == other.innerContentKeyHex &&
-          spkX25519Hex == other.spkX25519Hex &&
-          spkSignatureHex == other.spkSignatureHex;
+          hasMessageKey == other.hasMessageKey;
 }
 
 class ResolvedName {
