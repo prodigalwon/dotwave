@@ -6,7 +6,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../bridge/bridge_generated.dart/chat.dart';
 import '../bridge/bridge_generated.dart/core.dart'
-    show chatResolveIdentity, chatSetupMessaging, ChatSetupOutcome;
+    show
+        chatResolveIdentity,
+        chatSetupMessaging,
+        ChatSetupOutcome,
+        devCertSeedHex,
+        chatMintTestCert;
 import '../config/rpc_endpoints.dart';
 
 /// One end-to-end-encrypted message in a thread.
@@ -136,6 +141,8 @@ class ChatStore extends ChangeNotifier {
   String _seedKey(String address) => 'chat_seed_$address';
   String _contentSeedKey(String address) => 'chat_content_seed_$address';
   String _myNameKey(String address) => 'chat_my_name_$address';
+  String _certSeedKey(String address) => 'chat_cert_seed_$address';
+  String _certThumbprintKey(String address) => 'chat_cert_thumbprint_$address';
   String _contactsKey(String address) => 'chat_contacts_$address';
   String _threadKey(String address, String pubkey) => 'chat_msgs_${address}_$pubkey';
   static const _nodeKey = 'chat_node_rpc';
@@ -143,6 +150,9 @@ class ChatStore extends ChangeNotifier {
   /// Content-key curve for the dev/software path. 0 = P-256 (StrongBox curve);
   /// on hardware the seed is replaced by a non-extractable silicon key.
   static const int _contentCurve = 0;
+
+  /// TTL (in blocks) for the dev admission cert. ~41 days at 6s blocks.
+  static const int _certTtlBlocks = 600000;
 
   // ── identity ────────────────────────────────────────────────────
 
@@ -199,6 +209,59 @@ class ChatStore extends ChangeNotifier {
     await _storage.write(key: _myNameKey(address), value: name);
   }
 
+  // ── Step 1: admission cert (authenticate to the node) ───────────
+  //
+  // The drop is admitted by the node only if it's signed by an Active
+  // HW-attested cert (anti-abuse: "a real secure element / human is
+  // sending" — NOT identity). On the dev box the cert is a software P-256
+  // key derived deterministically from the account; on real hardware it's a
+  // StrongBox/TPM key behind the same digest + wire format. The onion drop
+  // (Step 2) signs blake2_256(domain ‖ packet ‖ ts) with the cert key; this
+  // layer makes sure the cert exists and hands the drop its (thumbprint,
+  // cert seed). Minting is a chain op (register_root) — needs a
+  // block-producing chain, so it's live-exercised once the lab is up.
+
+  /// The account's cert seed (hex), deterministic from the signing phrase so
+  /// the idempotent mint and the signing key stay in lockstep. Cached after
+  /// first derivation. On hardware this is a non-extractable silicon key.
+  Future<String> certSeedHex(String address, String phrase) async {
+    final cached = await _storage.read(key: _certSeedKey(address));
+    if (cached != null && cached.isNotEmpty) return cached;
+    final seed = await devCertSeedHex(phrase: phrase);
+    await _storage.write(key: _certSeedKey(address), value: seed);
+    return seed;
+  }
+
+  /// Ensure the account holds an Active admission cert; returns its
+  /// thumbprint (hex). Idempotent — the mint is a no-op on chain if the
+  /// account already has a root cert. Caches the thumbprint so repeat sends
+  /// don't re-query the chain. Requires the signing phrase (mint is a chain
+  /// extrinsic); call from onboarding where the phrase is in hand.
+  Future<String> ensureCert(String address, String phrase) async {
+    final cached = await _storage.read(key: _certThumbprintKey(address));
+    if (cached != null && cached.isNotEmpty) return cached;
+    final seed = await certSeedHex(address, phrase);
+    final node = await nodeRpc();
+    final thumbprint = await chatMintTestCert(
+      rpcUrl: node,
+      phrase: phrase,
+      certSeedHex: seed,
+      ttlBlocks: _certTtlBlocks,
+    );
+    await _storage.write(key: _certThumbprintKey(address), value: thumbprint);
+    return thumbprint;
+  }
+
+  /// The cached (thumbprint, cert seed) the onion drop authenticates with.
+  /// Null if no cert has been minted yet (call [ensureCert] first, from
+  /// onboarding). Keeps Step 2's send free of the signing phrase.
+  Future<({String thumbprint, String certSeedHex})?> certAuth(String address) async {
+    final tp = await _storage.read(key: _certThumbprintKey(address));
+    final seed = await _storage.read(key: _certSeedKey(address));
+    if (tp == null || tp.isEmpty || seed == null || seed.isEmpty) return null;
+    return (thumbprint: tp, certSeedHex: seed);
+  }
+
   // ── onboarding + resolution (F1) ────────────────────────────────
 
   /// One-step "set up messaging": register `name` and publish this device's
@@ -218,6 +281,13 @@ class ChatStore extends ChangeNotifier {
     );
     if (outcome.published) {
       await _setMyName(address, name);
+      // Step 1: ensure the account can also AUTHENTICATE to drop (admission
+      // cert). Minted here while the phrase is in hand; idempotent. Tolerated
+      // if it fails (e.g. chain not producing) — onboarding's addressability
+      // (CHAT/MESSAGE) still stands and the cert can be minted later.
+      try {
+        await ensureCert(address, phrase);
+      } catch (_) {/* cert mint deferred; ensureCert is idempotent on retry */}
       notifyListeners();
     }
     return outcome;
