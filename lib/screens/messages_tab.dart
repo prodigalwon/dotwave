@@ -7,6 +7,7 @@ import '../bridge/bridge_generated.dart/chat.dart';
 import '../services/chat_store.dart';
 import '../theme.dart';
 import '../widgets/chat_avatar.dart';
+import '../widgets/transaction_blade.dart';
 import 'chat_thread_screen.dart';
 
 class MessagesTab extends StatefulWidget {
@@ -21,6 +22,7 @@ class _MessagesTabState extends State<MessagesTab> {
   final _store = ChatStore.instance;
 
   ChatIdentity? _identity;
+  String? _contentKey; // this account's published content key (hex), for sharing
   List<ChatContact> _contacts = [];
   bool _loading = true;
   Timer? _poll;
@@ -46,8 +48,12 @@ class _MessagesTabState extends State<MessagesTab> {
 
   Future<void> _bootstrap() async {
     final id = await _store.identity(widget.address);
+    final ck = await _store.contentKey(widget.address);
     if (!mounted) return;
-    setState(() => _identity = id);
+    setState(() {
+      _identity = id;
+      _contentKey = ck;
+    });
     await _load();
     if (mounted) setState(() => _loading = false);
     _refresh();
@@ -126,9 +132,15 @@ class _MessagesTabState extends State<MessagesTab> {
                   children: [
                     _IdentityCard(
                       identity: _identity,
+                      contentKey: _contentKey,
                       onCopy: () {
                         if (_identity != null) {
                           _copy(_identity!.ed25519PubkeyHex, 'Your chat address');
+                        }
+                      },
+                      onCopyContentKey: () {
+                        if (_contentKey != null) {
+                          _copy(_contentKey!, 'Your content key');
                         }
                       },
                     ),
@@ -157,6 +169,7 @@ class _MessagesTabState extends State<MessagesTab> {
 
   void _showNewMessageSheet() {
     final pubkeyCtrl = TextEditingController();
+    final contentKeyCtrl = TextEditingController();
     final labelCtrl = TextEditingController();
     String? error;
 
@@ -195,6 +208,16 @@ class _MessagesTabState extends State<MessagesTab> {
               ),
               const SizedBox(height: 12),
               TextField(
+                controller: contentKeyCtrl,
+                style: Theme.of(ctx).textTheme.bodyMedium,
+                decoration: const InputDecoration(
+                  labelText: 'Content key (hex)',
+                  hintText: "recipient's content key — required to send",
+                  prefixIcon: Icon(Icons.vpn_key_outlined, size: 18),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
                 controller: labelCtrl,
                 style: Theme.of(ctx).textTheme.bodyMedium,
                 decoration: const InputDecoration(
@@ -208,13 +231,19 @@ class _MessagesTabState extends State<MessagesTab> {
                 onPressed: () async {
                   final raw = pubkeyCtrl.text.trim().replaceFirst(RegExp('^0x'), '');
                   if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(raw)) {
-                    setSheet(() => error = 'Must be 64 hexadecimal characters.');
+                    setSheet(() => error = 'Chat address must be 64 hexadecimal characters.');
+                    return;
+                  }
+                  final ck = contentKeyCtrl.text.trim().replaceFirst(RegExp('^0x'), '');
+                  if (ck.isNotEmpty && !RegExp(r'^([0-9a-fA-F]{2})+$').hasMatch(ck)) {
+                    setSheet(() => error = 'Content key must be hex (even length).');
                     return;
                   }
                   final label = labelCtrl.text.trim();
                   final contact = await _store.upsertContact(
                     widget.address, raw.toLowerCase(),
                     label: label.isEmpty ? null : label,
+                    contentKeyHex: ck.isEmpty ? null : ck.toLowerCase(),
                   );
                   if (ctx.mounted) Navigator.pop(ctx);
                   _openThread(contact);
@@ -232,8 +261,10 @@ class _MessagesTabState extends State<MessagesTab> {
 
   void _showNodeSheet() async {
     final current = await _store.nodeRpc();
+    final currentRelay2 = await _store.relay2Rpc();
     if (!mounted) return;
     final ctrl = TextEditingController(text: current);
+    final relay2Ctrl = TextEditingController(text: currentRelay2);
 
     showModalBottomSheet(
       context: context,
@@ -248,10 +279,13 @@ class _MessagesTabState extends State<MessagesTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _SheetGrabber(),
-            Text('Relay node', style: Theme.of(ctx).textTheme.headlineSmall),
+            Text('Relay nodes', style: Theme.of(ctx).textTheme.headlineSmall),
             const SizedBox(height: 4),
             Text(
-              'The gemini-node this device sends through and pulls messages from. In the lab, point it at a node laptop on your network.',
+              'The guard is the node this device sends through and pulls messages from. '
+              'The 2-hop onion forwards through a second chat node (relay-2) so no single '
+              'relay sees both you and the recipient. In the lab, point these at two '
+              'different non-validator nodes on your network.',
               style: Theme.of(ctx).textTheme.bodySmall,
             ),
             const SizedBox(height: 20),
@@ -259,9 +293,19 @@ class _MessagesTabState extends State<MessagesTab> {
               controller: ctrl,
               style: Theme.of(ctx).textTheme.bodyMedium,
               decoration: const InputDecoration(
-                labelText: 'Node RPC URL',
+                labelText: 'Guard RPC URL',
                 hintText: 'ws://192.168.1.x:9944',
                 prefixIcon: Icon(Icons.dns_outlined, size: 18),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: relay2Ctrl,
+              style: Theme.of(ctx).textTheme.bodyMedium,
+              decoration: const InputDecoration(
+                labelText: 'Relay-2 RPC URL',
+                hintText: 'ws://192.168.1.y:9945 (different node)',
+                prefixIcon: Icon(Icons.alt_route_outlined, size: 18),
               ),
             ),
             const SizedBox(height: 20),
@@ -271,6 +315,7 @@ class _MessagesTabState extends State<MessagesTab> {
                   child: OutlinedButton(
                     onPressed: () async {
                       await _store.setNodeRpc(null); // reset to default
+                      await _store.setRelay2Rpc(null);
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
                     child: const Text('Reset'),
@@ -281,12 +326,54 @@ class _MessagesTabState extends State<MessagesTab> {
                   child: FilledButton(
                     onPressed: () async {
                       await _store.setNodeRpc(ctrl.text);
+                      await _store.setRelay2Rpc(relay2Ctrl.text);
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
                     child: const Text('Save'),
                   ),
                 ),
               ],
+            ),
+            const Divider(height: 32),
+            Text('Admission cert', style: Theme.of(ctx).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Every onion drop is signed by an Active device cert. Mint one once '
+              '(a chain extrinsic — needs a block-producing chain) before sending.',
+              style: Theme.of(ctx).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.verified_user_outlined, size: 18),
+              label: const Text('Mint admission cert'),
+              onPressed: () async {
+                // Persist the guard URL first so the mint RPC targets it.
+                await _store.setNodeRpc(ctrl.text);
+                await _store.setRelay2Rpc(relay2Ctrl.text);
+                if (!mounted) return;
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (!mounted) return;
+                TransactionBlade.show(
+                  context,
+                  TransactionBlade(
+                    transactionType: 'Mint Admission Cert',
+                    rpcUrl: ctrl.text,
+                    rows: [
+                      TxRow('Account',
+                          '${widget.address.substring(0, 6)}…${widget.address.substring(widget.address.length - 4)}'),
+                      const TxRow('Cert', 'dev admission (P-256)'),
+                    ],
+                    onConfirm: (phrase) => _store.ensureCert(widget.address, phrase),
+                    onSuccess: () {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Admission cert minted')),
+                        );
+                      }
+                    },
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -299,8 +386,15 @@ class _MessagesTabState extends State<MessagesTab> {
 
 class _IdentityCard extends StatelessWidget {
   final ChatIdentity? identity;
+  final String? contentKey;
   final VoidCallback onCopy;
-  const _IdentityCard({required this.identity, required this.onCopy});
+  final VoidCallback onCopyContentKey;
+  const _IdentityCard({
+    required this.identity,
+    required this.contentKey,
+    required this.onCopy,
+    required this.onCopyContentKey,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -337,13 +431,24 @@ class _IdentityCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text('Share this so others can message you', style: tt.bodySmall),
+                Text('Share your address + content key so others can message you',
+                    style: tt.bodySmall),
               ],
             ),
           ),
-          IconButton(
-            onPressed: identity == null ? null : onCopy,
-            icon: const Icon(Icons.copy_rounded, size: 18, color: AppTheme.pink),
+          Column(
+            children: [
+              IconButton(
+                onPressed: identity == null ? null : onCopy,
+                tooltip: 'Copy chat address',
+                icon: const Icon(Icons.copy_rounded, size: 18, color: AppTheme.pink),
+              ),
+              IconButton(
+                onPressed: contentKey == null ? null : onCopyContentKey,
+                tooltip: 'Copy content key',
+                icon: const Icon(Icons.vpn_key_outlined, size: 18, color: AppTheme.pink),
+              ),
+            ],
           ),
         ],
       ),

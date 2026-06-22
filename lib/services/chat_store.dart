@@ -136,6 +136,8 @@ class ChatStore extends ChangeNotifier {
   final Map<String, List<ChatMessage>> _threads = {}; // key: '$address|$pubkey'
   String? _nodeRpcOverride;
   bool _nodeLoaded = false;
+  String? _relay2RpcOverride;
+  bool _relay2Loaded = false;
 
   // ── keys ────────────────────────────────────────────────────────
   String _seedKey(String address) => 'chat_seed_$address';
@@ -146,6 +148,7 @@ class ChatStore extends ChangeNotifier {
   String _contactsKey(String address) => 'chat_contacts_$address';
   String _threadKey(String address, String pubkey) => 'chat_msgs_${address}_$pubkey';
   static const _nodeKey = 'chat_node_rpc';
+  static const _relay2Key = 'chat_relay2_rpc';
 
   /// Content-key curve for the dev/software path. 0 = P-256 (StrongBox curve);
   /// on hardware the seed is replaced by a non-extractable silicon key.
@@ -332,6 +335,30 @@ class ChatStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The relay-2 node RPC for the 2-hop onion drop. The guard (`nodeRpc`)
+  /// peels and forwards the inner packet to relay-2, which delivers — so a
+  /// single relay never sees sender AND recipient. MUST be a *different*
+  /// chat-capable (non-validator) node than the guard; returns '' if unset,
+  /// in which case [send] throws asking the operator to configure one.
+  Future<String> relay2Rpc() async {
+    if (!_relay2Loaded) {
+      _relay2RpcOverride = await _storage.read(key: _relay2Key);
+      _relay2Loaded = true;
+    }
+    return _relay2RpcOverride ?? '';
+  }
+
+  Future<void> setRelay2Rpc(String? url) async {
+    _relay2RpcOverride = (url != null && url.trim().isNotEmpty) ? url.trim() : null;
+    _relay2Loaded = true;
+    if (_relay2RpcOverride == null) {
+      await _storage.delete(key: _relay2Key);
+    } else {
+      await _storage.write(key: _relay2Key, value: _relay2RpcOverride!);
+    }
+    notifyListeners();
+  }
+
   // ── contacts ────────────────────────────────────────────────────
 
   Future<List<ChatContact>> contacts(String address) async {
@@ -441,49 +468,59 @@ class ChatStore extends ChangeNotifier {
     return ck;
   }
 
-  /// This device's sender `.rst` name (claimed in the signed inner; the
-  /// recipient forward-resolves it and checks the published key matches).
-  Future<String> _senderName(String address) async {
-    final name = await myName(address);
-    if (name.isEmpty) {
-      throw StateError('set up messaging first (no .rst name published for this account)');
-    }
-    return name;
-  }
-
-  /// F2: per-conversation Double Ratchet session state (hex), persisted
-  /// encrypted and advanced on every send/read. Empty bootstraps X3DH. The
-  /// last remaining plug point — forward-secret send needs the recipient SPK,
-  /// whose typed-records home is F2's open decision.
-  Future<String> _drSessionState(String address, String contactPubkey) async =>
-      throw UnimplementedError('F2: load/persist DR session state (needs recipient SPK)');
-
   // ── send / refresh (the RPC-facing surface) ─────────────────────
 
-  /// Seal + sign + dispatch a message to [contactPubkey]. Appends the
-  /// outbound message locally on success. Throws on RPC failure.
+  /// Seal + sign + dispatch a message to [contactPubkey] through the
+  /// **2-hop onion** (the locked drop transport). Appends the outbound
+  /// message locally on success. Throws on RPC failure.
   ///
-  /// F0: wired to the re-baselined v1.0 `chat_send` binding; the content
-  /// key + sender name (F1) and DR session state (F2) come from the plug
-  /// points above, which throw until their phase lands.
+  /// Transport: `chat_send_onion_2hop` carries `Plain` content (no Double
+  /// Ratchet) — the recipient reads it via `chat_read_content`'s Plain
+  /// branch. The guard (pinned `nodeRpc`) peels and FORWARDS the inner
+  /// packet to relay-2 (`relay2Rpc`), which delivers + stripes — so a
+  /// single relay never sees sender AND recipient. The node rejects a
+  /// 1-hop onion (guard must never be the final hop) and rejects an
+  /// unauthenticated drop, so both relay-2 and the admission cert are
+  /// required.
+  ///
+  /// Auth: cert-auth. The drop is signed with the device's admission cert
+  /// (`certAuth` → thumbprint + cert seed); rust derives the
+  /// `blake2_256(domain ‖ packet ‖ ts)` ECDSA signature the node verifies
+  /// against the Active on-chain cert. Mint the cert first ([ensureCert]).
+  ///
+  /// The forward-secret upgrade (F2) swaps the `Plain` body for a
+  /// `Ratcheted` one + threads the DR session here; the onion wrap and
+  /// auth are unchanged. The session-key drop auth (auth ceremony) is the
+  /// cheaper alternative to cert-auth, layered on next.
   Future<ChatMessage> send(String address, String contactPubkey, String text) async {
     final seed = await seedHex(address);
     final node = await nodeRpc();
-    final outcome = await chatSend(
+    final relay2 = await relay2Rpc();
+    if (relay2.isEmpty) {
+      throw StateError(
+          'no relay-2 configured — the 2-hop onion needs a second chat node '
+          '(Settings → Relay-2 node)');
+    }
+    final auth = await certAuth(address);
+    if (auth == null) {
+      throw StateError(
+          'no admission cert — mint your device cert first (Settings → Mint cert)');
+    }
+    final guard = await chatNodeInfo(nodeRpc: node); // pinned node = guard
+    final relay2Pubkey = await chatNodeInfo(nodeRpc: relay2);
+    final outcome = await chatSendOnion2Hop(
       nodeRpc: node,
+      guardPubkeyHex: guard,
+      relay2PubkeyHex: relay2Pubkey,
       senderSeedHex: seed,
       recipientPubkeyHex: contactPubkey,
-      recipientContentKeyHex: await _recipientContentKey(address, contactPubkey), // F1
+      recipientContentKeyHex: await _recipientContentKey(address, contactPubkey),
       message: text,
-      senderName: await _senderName(address), // F1
+      senderName: await myName(address), // claimed inner name; empty ok for Plain
       totalShares: 5,
-      drSessionStateHex: await _drSessionState(address, contactPubkey), // F2
-      x3DhInitHex: null, // F2: carried on the first message of a conversation
-      authCertThumbprintHex: null, // F1/P2: HW-attested device cert seam
-      authCertSeedHex: null,
+      authCertThumbprintHex: auth.thumbprint,
+      authCertSeedHex: auth.certSeedHex,
     );
-    // F2: outcome.newSessionStateHex MUST be persisted (encrypted) before
-    // the send is considered done — losing it breaks the ratchet.
     final msg = ChatMessage(
       id: outcome.messageIdHex,
       contactPubkey: contactPubkey,
