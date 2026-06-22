@@ -168,10 +168,12 @@ class _MessagesTabState extends State<MessagesTab> {
   // ── new-message sheet ──────────────────────────────────────────────
 
   void _showNewMessageSheet() {
+    final nameCtrl = TextEditingController();
     final pubkeyCtrl = TextEditingController();
     final contentKeyCtrl = TextEditingController();
     final labelCtrl = TextEditingController();
     String? error;
+    bool resolving = false;
 
     showModalBottomSheet(
       context: context,
@@ -191,19 +193,32 @@ class _MessagesTabState extends State<MessagesTab> {
                   style: Theme.of(ctx).textTheme.headlineSmall),
               const SizedBox(height: 4),
               Text(
-                "Paste the recipient's chat address (their 64-character public key).",
+                "Start by .rst name (resolved on-chain), or paste the recipient's "
+                "chat address + content key manually.",
                 style: Theme.of(ctx).textTheme.bodySmall,
               ),
               const SizedBox(height: 20),
               TextField(
-                controller: pubkeyCtrl,
+                controller: nameCtrl,
                 autofocus: true,
                 style: Theme.of(ctx).textTheme.bodyMedium,
                 decoration: InputDecoration(
+                  labelText: 'Recipient .rst name',
+                  hintText: 'e.g. ferdie',
+                  errorText: error,
+                  prefixIcon: const Icon(Icons.alternate_email, size: 18),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('— or enter manually —', style: Theme.of(ctx).textTheme.labelSmall),
+              const SizedBox(height: 8),
+              TextField(
+                controller: pubkeyCtrl,
+                style: Theme.of(ctx).textTheme.bodyMedium,
+                decoration: const InputDecoration(
                   labelText: 'Chat address (hex)',
                   hintText: '0x… / 64 hex chars',
-                  errorText: error,
-                  prefixIcon: const Icon(Icons.key_outlined, size: 18),
+                  prefixIcon: Icon(Icons.key_outlined, size: 18),
                 ),
               ),
               const SizedBox(height: 12),
@@ -228,27 +243,51 @@ class _MessagesTabState extends State<MessagesTab> {
               ),
               const SizedBox(height: 20),
               FilledButton(
-                onPressed: () async {
-                  final raw = pubkeyCtrl.text.trim().replaceFirst(RegExp('^0x'), '');
-                  if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(raw)) {
-                    setSheet(() => error = 'Chat address must be 64 hexadecimal characters.');
-                    return;
-                  }
-                  final ck = contentKeyCtrl.text.trim().replaceFirst(RegExp('^0x'), '');
-                  if (ck.isNotEmpty && !RegExp(r'^([0-9a-fA-F]{2})+$').hasMatch(ck)) {
-                    setSheet(() => error = 'Content key must be hex (even length).');
-                    return;
-                  }
-                  final label = labelCtrl.text.trim();
-                  final contact = await _store.upsertContact(
-                    widget.address, raw.toLowerCase(),
-                    label: label.isEmpty ? null : label,
-                    contentKeyHex: ck.isEmpty ? null : ck.toLowerCase(),
-                  );
-                  if (ctx.mounted) Navigator.pop(ctx);
-                  _openThread(contact);
-                },
-                child: const Text('Start chat'),
+                onPressed: resolving
+                    ? null
+                    : () async {
+                        final name = nameCtrl.text.trim().replaceFirst(RegExp(r'\.rst$'), '');
+                        // Path 1: resolve by .rst name (hits the node).
+                        if (name.isNotEmpty) {
+                          setSheet(() {
+                            resolving = true;
+                            error = null;
+                          });
+                          try {
+                            final contact =
+                                await _store.resolveContactByName(widget.address, name);
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            _openThread(contact);
+                          } catch (e) {
+                            setSheet(() {
+                              resolving = false;
+                              error = '$e'.replaceFirst('StateError: ', '');
+                            });
+                          }
+                          return;
+                        }
+                        // Path 2: manual address + content key.
+                        final raw = pubkeyCtrl.text.trim().replaceFirst(RegExp('^0x'), '');
+                        if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(raw)) {
+                          setSheet(() => error =
+                              'Enter a .rst name above, or a 64-hex chat address.');
+                          return;
+                        }
+                        final ck = contentKeyCtrl.text.trim().replaceFirst(RegExp('^0x'), '');
+                        if (ck.isNotEmpty && !RegExp(r'^([0-9a-fA-F]{2})+$').hasMatch(ck)) {
+                          setSheet(() => error = 'Content key must be hex (even length).');
+                          return;
+                        }
+                        final label = labelCtrl.text.trim();
+                        final contact = await _store.upsertContact(
+                          widget.address, raw.toLowerCase(),
+                          label: label.isEmpty ? null : label,
+                          contentKeyHex: ck.isEmpty ? null : ck.toLowerCase(),
+                        );
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        _openThread(contact);
+                      },
+                child: Text(resolving ? 'Resolving…' : 'Start chat'),
               ),
             ],
           ),

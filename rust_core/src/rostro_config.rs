@@ -39,8 +39,13 @@ impl Config for RostroConfig {
     type Hasher = subxt::config::substrate::BlakeTwo256;
     type Header = subxt::config::substrate::SubstrateHeader<<Self::Hasher as Hasher>::Hash>;
     type AssetId = u32;
+    // Matches the gemini star runtime's 9-element signed-extension set (verified
+    // via `subxt metadata --url <rig>`): CheckNonZeroSender, CheckSpecVersion,
+    // CheckTxVersion, CheckGenesis, CheckMortality, CheckNonce, CheckWeight,
+    // ChargeTransactionPayment, CheckMetadataHash. (The pns-node runtime adds
+    // AuthorizeCall + WeightReclaim for 11 — that's a DIFFERENT chain. We target
+    // the gemini rig here; a mismatch yields InvalidTransaction(1010)/BadProof.)
     type TransactionExtensions = (
-        AuthorizeCallShim,
         CheckNonZeroSenderShim,
         CheckSpecVersion,
         CheckTxVersion,
@@ -50,7 +55,6 @@ impl Config for RostroConfig {
         CheckWeightShim,
         ChargeTransactionPayment,
         CheckMetadataHash,
-        WeightReclaimShim,
     );
 }
 

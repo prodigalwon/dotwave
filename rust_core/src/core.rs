@@ -72,10 +72,19 @@ fn submit_typed<Call: subxt::tx::Payload>(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async {
-        let api = connect_rostro(rpc_url).await?;
+        // Immortal era + best-block nonce (see send_dot): survives a chain that
+        // isn't finalizing, where sign_and_submit_default's mortal era is ancient.
+        let (api, rpc) = connect_rostro_with_rpc(rpc_url).await?;
         let signer = Sr25519Signer(pair);
-        let hash = api.tx().await.map_err(|e| e.to_string())?
-            .sign_and_submit_default(&tx, &signer).await.map_err(|e| e.to_string())?;
+        let account = <Sr25519Signer as subxt::tx::Signer<RostroConfig>>::account_id(&signer);
+        let nonce = fetch_best_nonce(&rpc, &account).await?;
+        let mut tx_client = api.tx().await.map_err(|e| e.to_string())?;
+        let mut signable = tx_client
+            .create_signable(&tx, &account, rostro_tx_params(nonce))
+            .await
+            .map_err(|e| e.to_string())?;
+        let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
+        let hash = signed.submit().await.map_err(|e| e.to_string())?;
         Ok(format!("{:?}", hash))
     })
 }
@@ -371,28 +380,34 @@ pub fn send_dot(
     let amount: u128 = amount_planck
         .parse()
         .map_err(|_| "Invalid amount".to_string())?;
-    let (pair, _) = sr25519::Pair::from_phrase(&phrase, None)
+    // `from_string` (not `from_phrase`) so this accepts a BIP39 mnemonic AND
+    // dev-derivation suris (e.g. `//Ferdie`) — consistent with `submit_typed`.
+    let pair = sr25519::Pair::from_string(&phrase, None)
         .map_err(|e| format!("Keypair error: {:?}", e))?;
     let dest = AccountId32::from_str(&to_address)
         .map_err(|e| format!("Invalid address: {}", e))?;
 
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async {
-        let api = connect_rostro(&rpc_url).await?;
-
+        // Immortal era + best-block nonce (via system_accountNextIndex), the same
+        // pattern as chat_mint_test_cert. `sign_and_submit_default` builds a MORTAL
+        // era anchored at the finalized head; on a chain that isn't finalizing
+        // (e.g. a small validator set) that era reads as ancient -> Invalid
+        // Transaction (1010). This path avoids both that and the at-finalized nonce.
+        let (api, rpc) = connect_rostro_with_rpc(&rpc_url).await?;
         let signer = Sr25519Signer(pair);
+        let account = <Sr25519Signer as subxt::tx::Signer<RostroConfig>>::account_id(&signer);
+        let nonce = fetch_best_nonce(&rpc, &account).await?;
         let tx = polkadot::tx()
             .balances()
             .transfer_keep_alive(MultiAddress::Id(dest), amount);
-
-        let hash = api
-            .tx()
-            .await
-            .map_err(|e| e.to_string())?
-            .sign_and_submit_default(&tx, &signer)
+        let mut tx_client = api.tx().await.map_err(|e| e.to_string())?;
+        let mut signable = tx_client
+            .create_signable(&tx, &account, rostro_tx_params(nonce))
             .await
             .map_err(|e| e.to_string())?;
-
+        let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
+        let hash = signed.submit().await.map_err(|e| e.to_string())?;
         Ok(format!("{:?}", hash))
     })
 }
@@ -1576,16 +1591,15 @@ pub(crate) async fn fetch_best_nonce(
 /// (gemini-runtime) TxExtension order. Immortal era + explicit nonce so we don't
 /// depend on subxt's at-finalized model on stalled-finality dev nodes.
 pub(crate) fn rostro_tx_params(nonce: u64) -> (
-    (), (), (), (), (),
+    (), (), (), (),
     CheckMortalityParams<RostroConfig>,
     CheckNonceParams,
     (),
     ChargeTransactionPaymentParams,
     (),
-    (),
 ) {
+    // 9-element params, matching RostroConfig::TransactionExtensions (gemini rig).
     (
-        (), // AuthorizeCallShim
         (), // CheckNonZeroSenderShim
         (), // CheckSpecVersion
         (), // CheckTxVersion
@@ -1595,7 +1609,6 @@ pub(crate) fn rostro_tx_params(nonce: u64) -> (
         (), // CheckWeightShim
         ChargeTransactionPaymentParams::no_tip(),
         (), // CheckMetadataHash
-        (), // WeightReclaimShim
     )
 }
 

@@ -4,4 +4,9 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- DEBUG ONLY: allow cleartext (ws://) so the app can reach a local
+         gemini-node over `adb reverse` (ws://127.0.0.1:9954). Release stays
+         TLS-only — this overlay is not applied to release builds. -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>
