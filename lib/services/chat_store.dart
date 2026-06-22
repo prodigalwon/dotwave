@@ -38,6 +38,37 @@ class ChatMessage {
   final int tsMillis; // local stamp (send-time / first-seen)
   final bool verified;
 
+  // ── in-order delivery: the per-conversation self-hash chain ──────────
+  // All three live INSIDE the content seal (see InnerPayload). The relay
+  // network is dumb ephemeral transport and never sees them.
+
+  /// This message's chain hash (hex) — what a successor's [prevSelfHash]
+  /// references. Outbound: the tip returned by the send. Inbound: surfaced
+  /// by `chat_read_content` once decrypted. Empty until known.
+  final String selfHash;
+
+  /// The sender's PREVIOUS message in this conversation (hex). Empty =
+  /// first message OR a chain reset (no recoverable predecessor: prior
+  /// send-state aged out at the ~72h TTL, or the cache was wiped).
+  final String prevSelfHash;
+
+  /// Sender wall-clock (unix seconds) at compose time. The hash chain is
+  /// authoritative for a single sender's order; this only interleaves the
+  /// two directional streams and orders disjoint segments across a gap.
+  /// 0 until known.
+  final int composedAt;
+
+  // ── transient render markers (computed by _orderThread; NOT persisted,
+  //    recomputed each order so a late-arriving message can fill a gap) ──
+
+  /// A referenced predecessor is missing — a message between this and the
+  /// prior one didn't arrive (TTL-dropped). Render a "missing" divider.
+  final bool gapBefore;
+
+  /// The sender restarted their chain here (their send-state was lost).
+  /// Render a soft "resumed" divider, not a gap.
+  final bool resumption;
+
   const ChatMessage({
     required this.id,
     required this.contactPubkey,
@@ -46,6 +77,11 @@ class ChatMessage {
     this.sealedContentHex = '',
     required this.tsMillis,
     required this.verified,
+    this.selfHash = '',
+    this.prevSelfHash = '',
+    this.composedAt = 0,
+    this.gapBefore = false,
+    this.resumption = false,
   });
 
   DateTime get time => DateTime.fromMillisecondsSinceEpoch(tsMillis);
@@ -53,6 +89,33 @@ class ChatMessage {
   /// Inbound, still-sealed (content not yet read off the silicon key).
   bool get isSealed => !outbound && sealedContentHex.isNotEmpty && text.isEmpty;
 
+  ChatMessage copyWith({
+    String? text,
+    String? sealedContentHex,
+    String? selfHash,
+    String? prevSelfHash,
+    int? composedAt,
+    bool? gapBefore,
+    bool? resumption,
+  }) =>
+      ChatMessage(
+        id: id,
+        contactPubkey: contactPubkey,
+        outbound: outbound,
+        text: text ?? this.text,
+        sealedContentHex: sealedContentHex ?? this.sealedContentHex,
+        tsMillis: tsMillis,
+        verified: verified,
+        selfHash: selfHash ?? this.selfHash,
+        prevSelfHash: prevSelfHash ?? this.prevSelfHash,
+        composedAt: composedAt ?? this.composedAt,
+        // markers default to false — they are recomputed every reorder,
+        // never carried implicitly.
+        gapBefore: gapBefore ?? false,
+        resumption: resumption ?? false,
+      );
+
+  // chain fields persist; render markers do not (they are derived).
   Map<String, dynamic> toJson() => {
         'id': id,
         'c': contactPubkey,
@@ -61,6 +124,9 @@ class ChatMessage {
         'sc': sealedContentHex,
         'ts': tsMillis,
         'v': verified,
+        if (selfHash.isNotEmpty) 'sh': selfHash,
+        if (prevSelfHash.isNotEmpty) 'ph': prevSelfHash,
+        if (composedAt != 0) 'ca': composedAt,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
@@ -71,7 +137,112 @@ class ChatMessage {
         sealedContentHex: (j['sc'] as String?) ?? '',
         tsMillis: j['ts'] as int,
         verified: (j['v'] as bool?) ?? false,
+        selfHash: (j['sh'] as String?) ?? '',
+        prevSelfHash: (j['ph'] as String?) ?? '',
+        composedAt: (j['ca'] as int?) ?? 0,
       );
+}
+
+// ── read-time ordering (the self-hash chain) ───────────────────────────
+//
+// Pure functions (top-level so they're unit-testable). Intra-sender order
+// is authoritative from the hash chain; `composedAt` only interleaves the
+// two directional streams and orders disjoint segments after a reset/gap.
+// All ordering data rides INSIDE the content seal — the relay network is
+// dumb ephemeral transport and learns nothing of order, recipient, or
+// thread shape.
+
+/// Order a thread for display, recomputing the gap/resumption markers.
+/// Idempotent — a late-arriving message that fills a gap clears the marker
+/// on the next call.
+List<ChatMessage> orderThread(List<ChatMessage> msgs) {
+  // Inbound is the contact's chain (reconstructed from prev_self_hash).
+  // Outbound is locally authored — its order is the local send order,
+  // reliable on the authoring device. Then merge by composed_at.
+  final inbound = _orderChain(msgs.where((m) => !m.outbound).toList());
+  final outbound = msgs.where((m) => m.outbound).toList()..sort(_cmpOrder);
+  return _mergeByComposedAt(inbound, outbound);
+}
+
+/// Order one sender's stream by its self-hash chain. Walks each chain
+/// segment tip-forward; orders disjoint segments by head `composedAt`;
+/// flags a missing predecessor as a gap and a reset head as a resumption.
+/// Messages with no chain data yet (still sealed / pre-ordering legacy)
+/// fall to the tail by `composedAt`/`tsMillis`.
+List<ChatMessage> _orderChain(List<ChatMessage> stream) {
+  final withChain = stream.where((m) => m.selfHash.isNotEmpty).toList();
+  final withoutChain = stream.where((m) => m.selfHash.isEmpty).toList()
+    ..sort(_cmpOrder);
+  if (withChain.isEmpty) return withoutChain;
+
+  final bySelf = {for (final m in withChain) m.selfHash: m};
+  // prevHash -> the message that follows it (the successor link).
+  final next = <String, ChatMessage>{};
+  for (final m in withChain) {
+    if (m.prevSelfHash.isNotEmpty) next[m.prevSelfHash] = m;
+  }
+  // A head starts a segment: no prev (first/reset) OR its prev is absent
+  // (the linking message was TTL-dropped — a gap).
+  final heads = withChain
+      .where(
+          (m) => m.prevSelfHash.isEmpty || !bySelf.containsKey(m.prevSelfHash))
+      .toList()
+    ..sort(_cmpOrder);
+
+  final ordered = <ChatMessage>[];
+  final seen = <String>{};
+  for (final head in heads) {
+    ChatMessage? m = head;
+    var first = true;
+    while (m != null && !seen.contains(m.selfHash)) {
+      seen.add(m.selfHash);
+      var gap = false;
+      var resumed = false;
+      if (first) {
+        if (m.prevSelfHash.isNotEmpty && !bySelf.containsKey(m.prevSelfHash)) {
+          gap = true; // referenced predecessor missing (TTL drop)
+        } else if (m.prevSelfHash.isEmpty && ordered.isNotEmpty) {
+          resumed = true; // a None head after an earlier segment = reset
+        }
+      }
+      ordered.add(m.copyWith(gapBefore: gap, resumption: resumed));
+      first = false;
+      m = next[m.selfHash];
+    }
+  }
+  ordered.addAll(withoutChain);
+  return ordered;
+}
+
+/// Merge two already-ordered streams by `composedAt`, preserving each
+/// stream's internal order (so the inbound chain order is never broken).
+List<ChatMessage> _mergeByComposedAt(List<ChatMessage> a, List<ChatMessage> b) {
+  final out = <ChatMessage>[];
+  var i = 0, j = 0;
+  while (i < a.length && j < b.length) {
+    if (_cmpOrder(a[i], b[j]) <= 0) {
+      out.add(a[i++]);
+    } else {
+      out.add(b[j++]);
+    }
+  }
+  while (i < a.length) {
+    out.add(a[i++]);
+  }
+  while (j < b.length) {
+    out.add(b[j++]);
+  }
+  return out;
+}
+
+/// Coarse order key: sender wall-clock when known, else the local stamp;
+/// deterministic id tiebreak. Never overrides a chain link — it only
+/// orders messages the chain leaves unordered (across segments/streams).
+int _cmpOrder(ChatMessage a, ChatMessage b) {
+  final ca = a.composedAt, cb = b.composedAt;
+  if (ca > 0 && cb > 0 && ca != cb) return ca.compareTo(cb);
+  if (a.tsMillis != b.tsMillis) return a.tsMillis.compareTo(b.tsMillis);
+  return a.id.compareTo(b.id);
 }
 
 /// A correspondent — keyed by their ed25519 chat pubkey, with an
@@ -147,12 +318,19 @@ class ChatStore extends ChangeNotifier {
   String _certThumbprintKey(String address) => 'chat_cert_thumbprint_$address';
   String _contactsKey(String address) => 'chat_contacts_$address';
   String _threadKey(String address, String pubkey) => 'chat_msgs_${address}_$pubkey';
+  // The sender's last self-hash chain tip per conversation, stored as
+  // 'tipHex:atUnixSecs' so a stale tip (past the relay TTL) resets the chain.
+  String _chainTipKey(String address, String pubkey) => 'chat_tip_${address}_$pubkey';
   static const _nodeKey = 'chat_node_rpc';
   static const _relay2Key = 'chat_relay2_rpc';
 
   /// Content-key curve for the dev/software path. 0 = P-256 (StrongBox curve);
   /// on hardware the seed is replaced by a non-extractable silicon key.
   static const int _contentCurve = 0;
+  // A chain tip older than the relay message TTL is dead: the recipient's
+  // copy of that predecessor has aged out, so chaining to it would render a
+  // perpetual gap. Past this, the next send starts a fresh chain (reset).
+  static const int _chainTtlSecs = 72 * 3600;
 
   /// TTL (in blocks) for the dev admission cert. ~41 days at 6s blocks.
   static const int _certTtlBlocks = 600000;
@@ -431,9 +609,9 @@ class ChatStore extends ChangeNotifier {
         list.add(ChatMessage.fromJson(e as Map<String, dynamic>));
       }
     }
-    list.sort((a, b) => a.tsMillis.compareTo(b.tsMillis));
     _threads[key] = list;
-    return list;
+    _reorder(address, pubkey);
+    return _threads[key]!;
   }
 
   /// Most recent message in a thread, or null if empty.
@@ -449,6 +627,52 @@ class ChatStore extends ChangeNotifier {
       key: _threadKey(address, pubkey),
       value: jsonEncode(list.map((m) => m.toJson()).toList()),
     );
+  }
+
+  // ── the sender's self-hash chain tip (per conversation) ──────────────
+
+  /// The sender's last chain tip for this conversation, or null if there
+  /// is none yet or it has gone stale past the relay TTL — in which case
+  /// the next message starts a fresh chain (a reset, rendered as a soft
+  /// "resumed" boundary on the recipient rather than a perpetual gap).
+  Future<String?> _liveChainTip(String address, String pubkey) async {
+    final raw = await _storage.read(key: _chainTipKey(address, pubkey));
+    if (raw == null || raw.isEmpty) return null;
+    final i = raw.lastIndexOf(':');
+    if (i <= 0) return null;
+    final tip = raw.substring(0, i);
+    final atSecs = int.tryParse(raw.substring(i + 1)) ?? 0;
+    final nowSecs = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (tip.isEmpty || nowSecs - atSecs > _chainTtlSecs) return null;
+    return tip;
+  }
+
+  Future<void> _setChainTip(String address, String pubkey, String tip) async {
+    final nowSecs = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await _storage.write(
+      key: _chainTipKey(address, pubkey),
+      value: '$tip:$nowSecs',
+    );
+  }
+
+  // ── read-time ordering (the self-hash chain) ─────────────────────────
+  //
+  // Intra-sender order is authoritative from the hash chain; `composedAt`
+  // only interleaves the two directional streams and orders disjoint
+  // segments after a reset/gap. All ordering data rides inside the content
+  // seal — the relay network learns nothing of order, recipient, or shape.
+
+  /// Reorder a cached thread in place into display order, recomputing the
+  /// gap/resumption markers. Idempotent — a late-arriving message that
+  /// fills a gap clears the marker on the next call.
+  void _reorder(String address, String pubkey) {
+    final key = '$address|$pubkey';
+    final list = _threads[key];
+    if (list == null || list.length < 2) return;
+    final ordered = orderThread(list);
+    list
+      ..clear()
+      ..addAll(ordered);
   }
 
   // ── send-path inputs (F1 wired; DR session is the last F2 gate) ──
@@ -508,6 +732,13 @@ class ChatStore extends ChangeNotifier {
     }
     final guard = await chatNodeInfo(nodeRpc: node); // pinned node = guard
     final relay2Pubkey = await chatNodeInfo(nodeRpc: relay2);
+
+    // Chain this message to my previous one in this conversation. A null
+    // tip (none yet, or stale past the TTL) starts a fresh chain — the
+    // recipient renders that as the first message / a resumption.
+    final prevTip = await _liveChainTip(address, contactPubkey);
+    final composedAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
     final outcome = await chatSendOnion2Hop(
       nodeRpc: node,
       guardPubkeyHex: guard,
@@ -520,7 +751,15 @@ class ChatStore extends ChangeNotifier {
       totalShares: 5,
       authCertThumbprintHex: auth.thumbprint,
       authCertSeedHex: auth.certSeedHex,
+      prevSelfHashHex: prevTip,
+      composedAtSecs: BigInt.from(composedAt),
     );
+
+    // Persist the new tip BEFORE appending locally: a crash after the send
+    // but before this would otherwise re-chain the next message to the old
+    // tip and orphan this one on the recipient.
+    await _setChainTip(address, contactPubkey, outcome.newSelfHashHex);
+
     final msg = ChatMessage(
       id: outcome.messageIdHex,
       contactPubkey: contactPubkey,
@@ -528,9 +767,13 @@ class ChatStore extends ChangeNotifier {
       text: text,
       tsMillis: DateTime.now().millisecondsSinceEpoch,
       verified: true, // we authored it
+      selfHash: outcome.newSelfHashHex,
+      prevSelfHash: prevTip ?? '',
+      composedAt: composedAt,
     );
     final list = await messages(address, contactPubkey);
     list.add(msg);
+    _reorder(address, contactPubkey);
     await _persistThread(address, contactPubkey);
     await upsertContact(address, contactPubkey);
     notifyListeners();
@@ -565,7 +808,9 @@ class ChatStore extends ChangeNotifier {
         tsMillis: DateTime.now().millisecondsSinceEpoch,
         verified: true, // outer-layer sender signature already checked on-device
       ));
-      list.sort((a, b) => a.tsMillis.compareTo(b.tsMillis));
+      // Still sealed → no chain data yet; ordering settles when the thread
+      // is opened and batch-decrypted (readThread). Until then, arrival order.
+      _reorder(address, contactPubkey);
       await _persistThread(address, contactPubkey);
       await upsertContact(address, contactPubkey);
       newCount++;
@@ -589,6 +834,57 @@ class ChatStore extends ChangeNotifier {
     final m = list[idx];
     if (!m.isSealed) return m; // already read, or nothing sealed
 
+    final (updated, verifiedName) = await _readOne(address, contactPubkey, m);
+    list[idx] = updated;
+    _reorder(address, contactPubkey);
+    await _persistThread(address, contactPubkey);
+    if (verifiedName.isNotEmpty) {
+      await upsertContact(address, contactPubkey, name: verifiedName);
+    }
+    notifyListeners();
+    return updated;
+  }
+
+  /// Batch-on-open: decrypt EVERY still-sealed inbound message in this
+  /// conversation under one read pass (on hardware, one biometric→silicon
+  /// gate), then order the thread by the now-available self-hash chain.
+  /// This is what makes a freshly-opened thread render in send-order: the
+  /// ordering metadata lives inside the seal, so it isn't known until the
+  /// messages are decrypted. Returns the number newly decrypted.
+  Future<int> readThread(String address, String contactPubkey) async {
+    final list = await messages(address, contactPubkey);
+    final sealed = list.where((m) => m.isSealed).toList();
+    if (sealed.isEmpty) return 0;
+    var decrypted = 0;
+    var lastName = '';
+    for (final m in sealed) {
+      final idx = list.indexWhere((x) => x.id == m.id);
+      if (idx < 0) continue;
+      try {
+        final (updated, verifiedName) = await _readOne(address, contactPubkey, m);
+        list[idx] = updated;
+        decrypted++;
+        if (verifiedName.isNotEmpty) lastName = verifiedName;
+      } catch (_) {
+        // one undecryptable message (e.g. a gap predecessor we can't open)
+        // must not abort the batch — leave it sealed, order around it.
+      }
+    }
+    _reorder(address, contactPubkey);
+    await _persistThread(address, contactPubkey);
+    if (lastName.isNotEmpty) {
+      await upsertContact(address, contactPubkey, name: lastName);
+    }
+    if (decrypted > 0) notifyListeners();
+    return decrypted;
+  }
+
+  /// Decrypt + sender-verify a single sealed inbound message. Pure — no
+  /// thread mutation / persist / notify (the callers batch those). Returns
+  /// the decrypted message (carrying the self-hash chain fields) and the
+  /// forward-resolve-verified sender name ('' if unverified).
+  Future<(ChatMessage, String)> _readOne(
+      String address, String contactPubkey, ChatMessage m) async {
     final read = await chatReadContent(
       sealedContentHex: m.sealedContentHex,
       curve: _contentCurve,
@@ -621,13 +917,11 @@ class ChatStore extends ChangeNotifier {
       sealedContentHex: '', // consumed
       tsMillis: m.tsMillis,
       verified: true,
+      // the in-seal ordering chain, now decrypted:
+      selfHash: read.selfHashHex,
+      prevSelfHash: read.prevSelfHashHex,
+      composedAt: read.composedAt.toInt(),
     );
-    list[idx] = updated;
-    await _persistThread(address, contactPubkey);
-    if (verifiedName.isNotEmpty) {
-      await upsertContact(address, contactPubkey, name: verifiedName);
-    }
-    notifyListeners();
-    return updated;
+    return (updated, verifiedName);
   }
 }

@@ -1077,6 +1077,8 @@ fn wire__crate__chat__chat_send_onion_2hop_impl(
             let api_total_shares = <u8>::sse_decode(&mut deserializer);
             let api_auth_cert_thumbprint_hex = <Option<String>>::sse_decode(&mut deserializer);
             let api_auth_cert_seed_hex = <Option<String>>::sse_decode(&mut deserializer);
+            let api_prev_self_hash_hex = <Option<String>>::sse_decode(&mut deserializer);
+            let api_composed_at_secs = <u64>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -1092,6 +1094,8 @@ fn wire__crate__chat__chat_send_onion_2hop_impl(
                         api_total_shares,
                         api_auth_cert_thumbprint_hex,
                         api_auth_cert_seed_hex,
+                        api_prev_self_hash_hex,
+                        api_composed_at_secs,
                     )?;
                     Ok(output_ok)
                 })())
@@ -3137,11 +3141,13 @@ impl SseDecode for crate::chat::ChatSendOutcome {
         let mut var_shareCount = <u32>::sse_decode(deserializer);
         let mut var_recipientPickupKeyHex = <String>::sse_decode(deserializer);
         let mut var_newSessionStateHex = <String>::sse_decode(deserializer);
+        let mut var_newSelfHashHex = <String>::sse_decode(deserializer);
         return crate::chat::ChatSendOutcome {
             message_id_hex: var_messageIdHex,
             share_count: var_shareCount,
             recipient_pickup_key_hex: var_recipientPickupKeyHex,
             new_session_state_hex: var_newSessionStateHex,
+            new_self_hash_hex: var_newSelfHashHex,
         };
     }
 }
@@ -3606,12 +3612,18 @@ impl SseDecode for crate::chat::ReadMessage {
         let mut var_plaintextHex = <String>::sse_decode(deserializer);
         let mut var_ratcheted = <bool>::sse_decode(deserializer);
         let mut var_newSessionStateHex = <String>::sse_decode(deserializer);
+        let mut var_selfHashHex = <String>::sse_decode(deserializer);
+        let mut var_prevSelfHashHex = <String>::sse_decode(deserializer);
+        let mut var_composedAt = <u64>::sse_decode(deserializer);
         return crate::chat::ReadMessage {
             claimed_sender_name: var_claimedSenderName,
             plaintext: var_plaintext,
             plaintext_hex: var_plaintextHex,
             ratcheted: var_ratcheted,
             new_session_state_hex: var_newSessionStateHex,
+            self_hash_hex: var_selfHashHex,
+            prev_self_hash_hex: var_prevSelfHashHex,
+            composed_at: var_composedAt,
         };
     }
 }
@@ -3956,6 +3968,7 @@ impl flutter_rust_bridge::IntoDart for crate::chat::ChatSendOutcome {
             self.share_count.into_into_dart().into_dart(),
             self.recipient_pickup_key_hex.into_into_dart().into_dart(),
             self.new_session_state_hex.into_into_dart().into_dart(),
+            self.new_self_hash_hex.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -4398,6 +4411,9 @@ impl flutter_rust_bridge::IntoDart for crate::chat::ReadMessage {
             self.plaintext_hex.into_into_dart().into_dart(),
             self.ratcheted.into_into_dart().into_dart(),
             self.new_session_state_hex.into_into_dart().into_dart(),
+            self.self_hash_hex.into_into_dart().into_dart(),
+            self.prev_self_hash_hex.into_into_dart().into_dart(),
+            self.composed_at.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -4534,6 +4550,7 @@ impl SseEncode for crate::chat::ChatSendOutcome {
         <u32>::sse_encode(self.share_count, serializer);
         <String>::sse_encode(self.recipient_pickup_key_hex, serializer);
         <String>::sse_encode(self.new_session_state_hex, serializer);
+        <String>::sse_encode(self.new_self_hash_hex, serializer);
     }
 }
 
@@ -4861,6 +4878,9 @@ impl SseEncode for crate::chat::ReadMessage {
         <String>::sse_encode(self.plaintext_hex, serializer);
         <bool>::sse_encode(self.ratcheted, serializer);
         <String>::sse_encode(self.new_session_state_hex, serializer);
+        <String>::sse_encode(self.self_hash_hex, serializer);
+        <String>::sse_encode(self.prev_self_hash_hex, serializer);
+        <u64>::sse_encode(self.composed_at, serializer);
     }
 }
 

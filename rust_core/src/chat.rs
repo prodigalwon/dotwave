@@ -106,6 +106,11 @@ pub struct ChatSendOutcome {
     /// MUST persist it (encrypted) before considering the send done —
     /// losing it breaks the ratchet. Empty for `Plain` sends.
     pub new_session_state_hex: String,
+    /// This message's hash — the chain tip for THIS conversation. The
+    /// app persists it per-contact and feeds it back as the next send's
+    /// `prev_self_hash_hex`. Set by `chat_send_onion_2hop`; empty on the
+    /// dormant/one-way paths that don't chain.
+    pub new_self_hash_hex: String,
 }
 
 /// Signed inner payload: the sender's claimed `.rst` name + the message body.
@@ -116,6 +121,46 @@ pub struct ChatSendOutcome {
 struct InnerPayload {
     sender_name: Vec<u8>,
     body: Vec<u8>,
+    /// Hash of the sender's PREVIOUS message in THIS conversation
+    /// (`blake2_256` of that message's `InnerPayload` encoding —
+    /// chained git-style, so each link covers the prior link too).
+    /// `None` = the first message OR a chain reset: the sender had no
+    /// recoverable predecessor (its prior send-state aged out at the
+    /// ~72h relay TTL, or the cache was wiped). The recipient threads
+    /// messages into a per-sender hash chain by this field; a
+    /// referenced-but-absent hash is a detectable gap, and a `None`
+    /// arriving where earlier messages already exist is a resumption.
+    ///
+    /// Ordering metadata lives HERE, inside the content seal — never in
+    /// any node-visible layer. The relay network is dumb ephemeral
+    /// transport: it must not learn order, recipient, or thread shape.
+    prev_self_hash: Option<[u8; 32]>,
+    /// Sender wall-clock (unix seconds) at compose time. NOT
+    /// authoritative for intra-chain order — the hash chain owns that.
+    /// Used only to order disjoint chain segments across a reset/gap
+    /// ("the first message after a time gap") and to interleave the two
+    /// directional streams. A display hint; clocks lie, so it never
+    /// overrides a chain link.
+    composed_at: u64,
+}
+
+impl InnerPayload {
+    /// An ordering-free payload for paths that don't join a
+    /// per-conversation hash chain: prekey-bundle publications
+    /// (`chat_send_plain`), the dormant ratchet path (`chat_send`), and
+    /// the 1-hop onion (`chat_send_onion`). Only the live 2-hop send
+    /// chains messages.
+    fn unordered(sender_name: Vec<u8>, body: Vec<u8>) -> Self {
+        InnerPayload { sender_name, body, prev_self_hash: None, composed_at: 0 }
+    }
+
+    /// The chain link a *successor* message references: `blake2_256` over
+    /// this payload's canonical SCALE encoding. Computed by the sender
+    /// (to stamp the next message) and by the recipient at read time (to
+    /// match an incoming `prev_self_hash`).
+    fn self_hash(&self) -> [u8; 32] {
+        sp_core::hashing::blake2_256(&self.encode())
+    }
 }
 
 /// What actually gets content-sealed (Phase 5). User-to-user 1:1 is
@@ -160,6 +205,19 @@ pub struct ReadMessage {
     /// persist it (encrypted) — feeding a stale state to the next
     /// read replays the ratchet. Empty for `Plain` content.
     pub new_session_state_hex: String,
+    /// This message's own chain hash — what a successor's
+    /// `prev_self_hash` references. The recipient indexes by it to link
+    /// the per-sender chain at read time.
+    pub self_hash_hex: String,
+    /// The chain link this message references — the sender's previous
+    /// message in this conversation. Empty = first message OR a reset
+    /// (no recoverable predecessor). A non-empty value the recipient
+    /// holds no message for = a detectable gap.
+    pub prev_self_hash_hex: String,
+    /// Sender wall-clock (unix seconds) at compose time. Ordering hint
+    /// for cross-segment / cross-stream interleave only; never overrides
+    /// a chain link.
+    pub composed_at: u64,
 }
 
 // ── RPC response mirrors (must match gemini-node/src/chat_rpc.rs) ────
@@ -279,6 +337,10 @@ pub fn chat_read_content(
     match content {
         // One-way, non-conversational payload (prekey bundle / System).
         ContentPayload::Plain(payload) => {
+            let self_hash_hex = hex::encode(payload.self_hash());
+            let prev_self_hash_hex =
+                payload.prev_self_hash.map(hex::encode).unwrap_or_default();
+            let composed_at = payload.composed_at;
             let body = payload.body;
             Ok(ReadMessage {
                 claimed_sender_name: String::from_utf8(payload.sender_name)
@@ -287,6 +349,9 @@ pub fn chat_read_content(
                 plaintext_hex: hex::encode(&body),
                 ratcheted: false,
                 new_session_state_hex: String::new(),
+                self_hash_hex,
+                prev_self_hash_hex,
+                composed_at,
             })
         }
         // Normal 1:1: Double-Ratchet decrypt. An existing session
@@ -323,6 +388,10 @@ pub fn chat_read_content(
                 .map_err(|e| format!("dr decrypt: {e:?}"))?;
             let payload = InnerPayload::decode(&mut &plaintext_bytes[..])
                 .map_err(|e| format!("InnerPayload decode: {e}"))?;
+            let self_hash_hex = hex::encode(payload.self_hash());
+            let prev_self_hash_hex =
+                payload.prev_self_hash.map(hex::encode).unwrap_or_default();
+            let composed_at = payload.composed_at;
             let body = payload.body;
             Ok(ReadMessage {
                 claimed_sender_name: String::from_utf8(payload.sender_name)
@@ -331,6 +400,9 @@ pub fn chat_read_content(
                 plaintext_hex: hex::encode(&body),
                 ratcheted: true,
                 new_session_state_hex: hex::encode(session.to_state_bytes()),
+                self_hash_hex,
+                prev_self_hash_hex,
+                composed_at,
             })
         }
     }
@@ -432,11 +504,7 @@ pub fn chat_send(
         }
     };
 
-    let payload = InnerPayload {
-        sender_name: sender_name.into_bytes(),
-        body: message.into_bytes(),
-    }
-    .encode();
+    let payload = InnerPayload::unordered(sender_name.into_bytes(), message.into_bytes()).encode();
     let wire = session.encrypt(&payload);
     let content = ContentPayload::Ratcheted { x3dh, wire }.encode();
     let new_session_state_hex = hex::encode(session.to_state_bytes());
@@ -470,7 +538,7 @@ pub(crate) fn chat_send_plain(
     auth_cert_seed_hex: Option<String>,
 ) -> Result<ChatSendOutcome, String> {
     let content =
-        ContentPayload::Plain(InnerPayload { sender_name: Vec::new(), body }).encode();
+        ContentPayload::Plain(InnerPayload::unordered(Vec::new(), body)).encode();
     send_content(
         node_rpc,
         &sender_seed_hex,
@@ -529,11 +597,9 @@ pub fn chat_send_onion(
     auth_cert_thumbprint_hex: Option<String>,
     auth_cert_seed_hex: Option<String>,
 ) -> Result<ChatSendOutcome, String> {
-    let content = ContentPayload::Plain(InnerPayload {
-        sender_name: sender_name.into_bytes(),
-        body: message.into_bytes(),
-    })
-    .encode();
+    let content =
+        ContentPayload::Plain(InnerPayload::unordered(sender_name.into_bytes(), message.into_bytes()))
+            .encode();
     send_content_onion(
         node_rpc,
         &guard_pubkey_hex,
@@ -567,13 +633,31 @@ pub fn chat_send_onion_2hop(
     total_shares: u8,
     auth_cert_thumbprint_hex: Option<String>,
     auth_cert_seed_hex: Option<String>,
+    // `prev_self_hash_hex`: the sender's last chain tip for THIS
+    // conversation — the hash returned by the previous
+    // `chat_send_onion_2hop` to this contact. `None`/empty = first
+    // message OR a reset (no recoverable predecessor). The app persists
+    // the returned `new_self_hash_hex` and feeds it back here next send.
+    prev_self_hash_hex: Option<String>,
+    // `composed_at_secs`: sender wall-clock (unix seconds) at compose
+    // time — stamped into the sealed payload for cross-segment /
+    // cross-stream ordering.
+    composed_at_secs: u64,
 ) -> Result<ChatSendOutcome, String> {
-    let content = ContentPayload::Plain(InnerPayload {
+    let prev_self_hash = match prev_self_hash_hex.filter(|h| !h.is_empty()) {
+        Some(h) => Some(decode_hex32(&h)?),
+        None => None,
+    };
+    let inner = InnerPayload {
         sender_name: sender_name.into_bytes(),
         body: message.into_bytes(),
-    })
-    .encode();
-    send_content_onion(
+        prev_self_hash,
+        composed_at: composed_at_secs,
+    };
+    // The tip the NEXT message in this conversation will reference.
+    let new_self_hash = inner.self_hash();
+    let content = ContentPayload::Plain(inner).encode();
+    let mut outcome = send_content_onion(
         node_rpc,
         &guard_pubkey_hex,
         Some(&relay2_pubkey_hex),
@@ -584,7 +668,9 @@ pub fn chat_send_onion_2hop(
         total_shares,
         auth_cert_thumbprint_hex,
         auth_cert_seed_hex,
-    )
+    )?;
+    outcome.new_self_hash_hex = hex::encode(new_self_hash);
+    Ok(outcome)
 }
 
 /// Build the SealedEnvelope (content-seal → sign → sealed-sender) for a
@@ -730,6 +816,7 @@ fn send_content_onion(
             share_count: result.share_count,
             recipient_pickup_key_hex: result.recipient_pickup_key_hex,
             new_session_state_hex: String::new(),
+            new_self_hash_hex: String::new(),
         })
     })
 }
@@ -786,6 +873,7 @@ fn send_content(
             share_count: result.share_count,
             recipient_pickup_key_hex: result.recipient_pickup_key_hex,
             new_session_state_hex: String::new(),
+            new_self_hash_hex: String::new(),
         })
     })
 }
@@ -887,4 +975,63 @@ pub fn chat_fetch(
     }
 
     Ok(recovered)
+}
+
+#[cfg(test)]
+mod ordering_tests {
+    //! The in-seal self-hash chain primitive (in-order delivery). The
+    //! recipient's ordering engine lives in Dart (`orderThread`); these
+    //! cover the Rust side: a deterministic chain link that survives the
+    //! SCALE round-trip the content seal carries.
+    use super::*;
+
+    #[test]
+    fn self_hash_is_blake2_of_encoding_and_deterministic() {
+        let p = InnerPayload {
+            sender_name: b"alice".to_vec(),
+            body: b"hi".to_vec(),
+            prev_self_hash: None,
+            composed_at: 1_700_000_000,
+        };
+        assert_eq!(p.self_hash(), sp_core::hashing::blake2_256(&p.encode()));
+        assert_eq!(p.self_hash(), p.self_hash());
+    }
+
+    #[test]
+    fn unordered_carries_no_chain() {
+        let p = InnerPayload::unordered(b"x".to_vec(), b"y".to_vec());
+        assert!(p.prev_self_hash.is_none());
+        assert_eq!(p.composed_at, 0);
+    }
+
+    #[test]
+    fn chain_link_survives_scale_round_trip() {
+        // msg1 (first: no prev) -> msg2 references msg1's self_hash.
+        let m1 = InnerPayload {
+            sender_name: b"a".to_vec(),
+            body: b"one".to_vec(),
+            prev_self_hash: None,
+            composed_at: 10,
+        };
+        let tip = m1.self_hash();
+        let m2 = InnerPayload {
+            sender_name: b"a".to_vec(),
+            body: b"two".to_vec(),
+            prev_self_hash: Some(tip),
+            composed_at: 20,
+        };
+        // Decode m2 as the recipient would, after content-unseal.
+        let decoded = InnerPayload::decode(&mut &m2.encode()[..]).unwrap();
+        assert_eq!(decoded.prev_self_hash, Some(tip));
+        assert_eq!(decoded.composed_at, 20);
+        // The recipient recomputes m1's self_hash and the link matches.
+        assert_eq!(decoded.prev_self_hash.unwrap(), m1.self_hash());
+    }
+
+    #[test]
+    fn distinct_bodies_yield_distinct_hashes() {
+        let a = InnerPayload::unordered(b"n".to_vec(), b"hello".to_vec());
+        let b = InnerPayload::unordered(b"n".to_vec(), b"world".to_vec());
+        assert_ne!(a.self_hash(), b.self_hash());
+    }
 }

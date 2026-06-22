@@ -7,7 +7,7 @@ import 'chat_dr.dart';
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `identity_from_seed`, `p256_signing_key`, `send_content_onion`, `send_content`
+// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `identity_from_seed`, `p256_signing_key`, `self_hash`, `send_content_onion`, `send_content`, `unordered`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatFetchedShareRaw`, `ChatSendResultRpc`, `ChatShareDescriptorRpc`, `ContentPayload`, `InnerPayload`
 
 /// Derive a chat identity from a deterministic 32-byte seed (hex).
@@ -159,6 +159,8 @@ Future<ChatSendOutcome> chatSendOnion2Hop({
   required int totalShares,
   String? authCertThumbprintHex,
   String? authCertSeedHex,
+  String? prevSelfHashHex,
+  required BigInt composedAtSecs,
 }) => RustLib.instance.api.crateChatChatSendOnion2Hop(
   nodeRpc: nodeRpc,
   guardPubkeyHex: guardPubkeyHex,
@@ -171,6 +173,8 @@ Future<ChatSendOutcome> chatSendOnion2Hop({
   totalShares: totalShares,
   authCertThumbprintHex: authCertThumbprintHex,
   authCertSeedHex: authCertSeedHex,
+  prevSelfHashHex: prevSelfHashHex,
+  composedAtSecs: composedAtSecs,
 );
 
 /// Fetch shares for the recipient, then reconstruct, OUTER-unseal and
@@ -264,11 +268,18 @@ class ChatSendOutcome {
   /// losing it breaks the ratchet. Empty for `Plain` sends.
   final String newSessionStateHex;
 
+  /// This message's hash — the chain tip for THIS conversation. The
+  /// app persists it per-contact and feeds it back as the next send's
+  /// `prev_self_hash_hex`. Set by `chat_send_onion_2hop`; empty on the
+  /// dormant/one-way paths that don't chain.
+  final String newSelfHashHex;
+
   const ChatSendOutcome({
     required this.messageIdHex,
     required this.shareCount,
     required this.recipientPickupKeyHex,
     required this.newSessionStateHex,
+    required this.newSelfHashHex,
   });
 
   @override
@@ -276,7 +287,8 @@ class ChatSendOutcome {
       messageIdHex.hashCode ^
       shareCount.hashCode ^
       recipientPickupKeyHex.hashCode ^
-      newSessionStateHex.hashCode;
+      newSessionStateHex.hashCode ^
+      newSelfHashHex.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -286,7 +298,8 @@ class ChatSendOutcome {
           messageIdHex == other.messageIdHex &&
           shareCount == other.shareCount &&
           recipientPickupKeyHex == other.recipientPickupKeyHex &&
-          newSessionStateHex == other.newSessionStateHex;
+          newSessionStateHex == other.newSessionStateHex &&
+          newSelfHashHex == other.newSelfHashHex;
 }
 
 /// Decrypted content, produced ONLY by [`chat_read_content`].
@@ -308,12 +321,31 @@ class ReadMessage {
   /// read replays the ratchet. Empty for `Plain` content.
   final String newSessionStateHex;
 
+  /// This message's own chain hash — what a successor's
+  /// `prev_self_hash` references. The recipient indexes by it to link
+  /// the per-sender chain at read time.
+  final String selfHashHex;
+
+  /// The chain link this message references — the sender's previous
+  /// message in this conversation. Empty = first message OR a reset
+  /// (no recoverable predecessor). A non-empty value the recipient
+  /// holds no message for = a detectable gap.
+  final String prevSelfHashHex;
+
+  /// Sender wall-clock (unix seconds) at compose time. Ordering hint
+  /// for cross-segment / cross-stream interleave only; never overrides
+  /// a chain link.
+  final BigInt composedAt;
+
   const ReadMessage({
     required this.claimedSenderName,
     required this.plaintext,
     required this.plaintextHex,
     required this.ratcheted,
     required this.newSessionStateHex,
+    required this.selfHashHex,
+    required this.prevSelfHashHex,
+    required this.composedAt,
   });
 
   @override
@@ -322,7 +354,10 @@ class ReadMessage {
       plaintext.hashCode ^
       plaintextHex.hashCode ^
       ratcheted.hashCode ^
-      newSessionStateHex.hashCode;
+      newSessionStateHex.hashCode ^
+      selfHashHex.hashCode ^
+      prevSelfHashHex.hashCode ^
+      composedAt.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -333,5 +368,8 @@ class ReadMessage {
           plaintext == other.plaintext &&
           plaintextHex == other.plaintextHex &&
           ratcheted == other.ratcheted &&
-          newSessionStateHex == other.newSessionStateHex;
+          newSessionStateHex == other.newSessionStateHex &&
+          selfHashHex == other.selfHashHex &&
+          prevSelfHashHex == other.prevSelfHashHex &&
+          composedAt == other.composedAt;
 }

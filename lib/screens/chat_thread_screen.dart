@@ -36,9 +36,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void initState() {
     super.initState();
     _store.addListener(_onStore);
-    _load();
+    _open();
     // Pull new mail every few seconds while the thread is open.
     _poll = Timer.periodic(const Duration(seconds: 4), (_) => _refresh());
+  }
+
+  /// Open the thread: render what we have, then batch-decrypt the sealed
+  /// messages (one read pass) so the self-hash chain is available and the
+  /// thread settles into send-order. On hardware this is the single
+  /// biometric→silicon gate for the conversation.
+  Future<void> _open() async {
+    await _load(scrollToEnd: false);
+    try {
+      await _store.readThread(widget.address, widget.contact.pubkey);
+    } catch (_) {
+      // a partial/failed decrypt still renders what opened; don't nag.
+    }
+    if (mounted) _load(scrollToEnd: true);
   }
 
   @override
@@ -156,7 +170,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       final showTime = prev == null ||
                           m.outbound != prev.outbound ||
                           (m.tsMillis - prev.tsMillis) > 5 * 60 * 1000;
-                      return _Bubble(message: m, showTime: showTime);
+                      final bubble = _Bubble(message: m, showTime: showTime);
+                      // A break in the sender's self-hash chain: a message
+                      // didn't arrive (gap) or the sender restarted their
+                      // chain (resumption). Surfaced honestly, never hidden.
+                      if (m.gapBefore) {
+                        return Column(children: [
+                          const _ChainDivider(
+                            icon: Icons.link_off,
+                            label: 'A message here didn’t arrive',
+                          ),
+                          bubble,
+                        ]);
+                      }
+                      if (m.resumption) {
+                        return Column(children: [
+                          const _ChainDivider(
+                            icon: Icons.history,
+                            label: 'Conversation resumed',
+                          ),
+                          bubble,
+                        ]);
+                      }
+                      return bubble;
                     },
                   ),
           ),
@@ -211,6 +247,44 @@ class _SecurityBanner extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── chain-break divider (gap / resumption) ──────────────────────────
+//
+// Honesty is a safety feature: where ordering is uncertain — a message
+// that never arrived, or a sender who restarted their chain — the thread
+// says so rather than silently closing the seam.
+
+class _ChainDivider extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _ChainDivider({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          const Expanded(child: Divider(color: AppTheme.surface2, height: 1)),
+          const SizedBox(width: 8),
+          Icon(icon, size: 13, color: AppTheme.textTertiary),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              style: tt.labelSmall?.copyWith(color: AppTheme.textTertiary),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Expanded(child: Divider(color: AppTheme.surface2, height: 1)),
         ],
       ),
     );
