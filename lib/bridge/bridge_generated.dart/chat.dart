@@ -7,8 +7,9 @@ import 'chat_dr.dart';
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `identity_from_seed`, `p256_signing_key`, `self_hash`, `send_content_onion`, `send_content`, `unordered`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatFetchedShareRaw`, `ChatSendResultRpc`, `ChatShareDescriptorRpc`, `ContentPayload`, `InnerPayload`
+// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `decode_sealed`, `finish_read`, `identity_from_seed`, `p256_signing_key`, `self_hash`, `send_content_onion`, `send_content`, `unordered`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatFetchedShareRaw`, `ChatSendResultRpc`, `ChatShareDescriptorRpc`, `ContentPayload`, `InnerPayload`, `PrecomputedEcdh`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `curve`, `ecdh`
 
 /// Derive a chat identity from a deterministic 32-byte seed (hex).
 ChatIdentity chatGenIdentity({required String seedHex}) =>
@@ -45,6 +46,60 @@ Future<ReadMessage> chatReadContent({
   sealedContentHex: sealedContentHex,
   curve: curve,
   contentSeedHex: contentSeedHex,
+  drSessionStateHex: drSessionStateHex,
+  identitySeedHex: identitySeedHex,
+  opkSecrets: opkSecrets,
+);
+
+/// Wrap a hardware content public key (the SEC1 bytes StrongBox/TPM exports
+/// for its non-extractable `PURPOSE_AGREE_KEY` key) into the publishable
+/// curve-tagged `ContentPublicKey` bytes for the RNS `MESSAGE` record — the
+/// hardware counterpart to [`chat_gen_content_key`]. Validates the bytes are
+/// a real point on the curve and re-encodes COMPRESSED so the record is
+/// compact and uniform with the software path. P-256 only: the hardware
+/// content path is StrongBox-class silicon (P-384/TPM stays deferred).
+Future<String> chatContentPubkeyFromSec1({
+  required int curve,
+  required String sec1Hex,
+}) => RustLib.instance.api.crateChatChatContentPubkeyFromSec1(
+  curve: curve,
+  sec1Hex: sec1Hex,
+);
+
+/// Extract the sender's per-message ephemeral public key from a sealed blob,
+/// re-encoded UNCOMPRESSED SEC1 (65 bytes) — the form Android's
+/// `KeyAgreement` consumes when building the peer `ECPublicKey`. Hand this to
+/// the StrongBox in-chip ECDH; the resulting shared secret feeds
+/// [`chat_read_content_hw`]. (Decompressing here keeps the curve math in Rust,
+/// out of Kotlin.)
+Future<String> chatContentEphemeralOf({required String sealedContentHex}) =>
+    RustLib.instance.api.crateChatChatContentEphemeralOf(
+      sealedContentHex: sealedContentHex,
+    );
+
+/// Hardware read seam: the recipient's content scalar lives in StrongBox/TPM
+/// and never leaves it. The in-chip ECDH (against the sealed ephemeral, behind
+/// a biometric prompt) is performed by the platform keystore via
+/// [`chat_content_ephemeral_of`] → Kotlin; its 32-byte shared secret is passed
+/// in here as `shared_secret_hex`. HKDF + AEAD then run in-process exactly as
+/// the software path — only the one private-key op moved into silicon.
+/// `recipient_content_key_hex` MUST be this device's OWN published `MESSAGE`
+/// value (the SCALE-encoded curve-tagged `ContentPublicKey` from
+/// [`chat_content_pubkey_from_sec1`]): its inner `sec1` bytes are bound into
+/// the KDF salt exactly as the sender bound them, so passing the published
+/// value verbatim makes the salt match by construction. Plaintext is returned
+/// transiently — the amnesiac app must not persist it.
+Future<ReadMessage> chatReadContentHw({
+  required String sealedContentHex,
+  required String recipientContentKeyHex,
+  required String sharedSecretHex,
+  String? drSessionStateHex,
+  required String identitySeedHex,
+  required List<DrOpkSecret> opkSecrets,
+}) => RustLib.instance.api.crateChatChatReadContentHw(
+  sealedContentHex: sealedContentHex,
+  recipientContentKeyHex: recipientContentKeyHex,
+  sharedSecretHex: sharedSecretHex,
   drSessionStateHex: drSessionStateHex,
   identitySeedHex: identitySeedHex,
   opkSecrets: opkSecrets,

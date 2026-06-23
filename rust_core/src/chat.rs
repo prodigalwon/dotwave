@@ -48,8 +48,8 @@ use rostro_chat_primitives::{
     verify::verify_sender,
 };
 use rostro_chat_content_seal::{
-    seal as content_seal, unseal_software as content_unseal_software, ContentCurve,
-    ContentPublicKey, ContentSealed, SoftwareContentKey,
+    seal as content_seal, unseal_software as content_unseal_software, unseal_with, ContentCurve,
+    ContentEcdh, ContentPublicKey, ContentSealError, ContentSealed, SoftwareContentKey,
 };
 use rostro_chat_sealed_sender::{seal as ss_seal, unseal as ss_unseal, SealedOutput};
 use rostro_chat_onion::{wrap_onion, OnionDeliverPayload};
@@ -325,12 +325,33 @@ pub fn chat_read_content(
 ) -> Result<ReadMessage, String> {
     let curve = content_curve_from_u8(curve)?;
     let scalar = decode_content_scalar(curve, &content_seed_hex)?;
-    let sealed_bytes = hex::decode(sealed_content_hex.trim_start_matches("0x"))
-        .map_err(|e| format!("sealed content hex: {e}"))?;
-    let sealed = ContentSealed::decode(&mut &sealed_bytes[..])
-        .map_err(|e| format!("ContentSealed decode: {e}"))?;
+    let sealed = decode_sealed(&sealed_content_hex)?;
     let inner_bytes = content_unseal_software(curve, &scalar, &sealed)
         .map_err(|e| format!("content unseal: {e:?}"))?;
+    finish_read(inner_bytes, dr_session_state_hex, identity_seed_hex, opk_secrets)
+}
+
+/// Decode a hex-encoded SCALE `ContentSealed` blob (shared by the software
+/// and hardware read seams).
+fn decode_sealed(sealed_content_hex: &str) -> Result<ContentSealed, String> {
+    let sealed_bytes = hex::decode(sealed_content_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("sealed content hex: {e}"))?;
+    ContentSealed::decode(&mut &sealed_bytes[..])
+        .map_err(|e| format!("ContentSealed decode: {e}"))
+}
+
+/// Shared tail of the read path: decode the unsealed inner bytes as a
+/// [`ContentPayload`] and turn it into a [`ReadMessage`] — a `Plain`
+/// pass-through or a Double-Ratchet decrypt. Both the software
+/// ([`chat_read_content`]) and hardware ([`chat_read_content_hw`]) seams
+/// converge here once the inner plaintext is in hand; only the one
+/// private-key ECDH that produced `inner_bytes` differs between them.
+fn finish_read(
+    inner_bytes: Vec<u8>,
+    dr_session_state_hex: Option<String>,
+    identity_seed_hex: String,
+    opk_secrets: Vec<crate::chat_dr::DrOpkSecret>,
+) -> Result<ReadMessage, String> {
     let content = ContentPayload::decode(&mut &inner_bytes[..])
         .map_err(|e| format!("ContentPayload decode: {e}"))?;
 
@@ -406,6 +427,118 @@ pub fn chat_read_content(
             })
         }
     }
+}
+
+// ── FRB: hardware content key (Phase 3 silicon seam) ────────────────
+
+/// Wrap a hardware content public key (the SEC1 bytes StrongBox/TPM exports
+/// for its non-extractable `PURPOSE_AGREE_KEY` key) into the publishable
+/// curve-tagged `ContentPublicKey` bytes for the RNS `MESSAGE` record — the
+/// hardware counterpart to [`chat_gen_content_key`]. Validates the bytes are
+/// a real point on the curve and re-encodes COMPRESSED so the record is
+/// compact and uniform with the software path. P-256 only: the hardware
+/// content path is StrongBox-class silicon (P-384/TPM stays deferred).
+pub fn chat_content_pubkey_from_sec1(curve: u8, sec1_hex: String) -> Result<String, String> {
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    let curve = content_curve_from_u8(curve)?;
+    if curve != ContentCurve::P256 {
+        return Err("hardware content key path is P-256 only".into());
+    }
+    let sec1 = hex::decode(sec1_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("content sec1 hex: {e}"))?;
+    let pk = p256::PublicKey::from_sec1_bytes(&sec1)
+        .map_err(|_| "content key is not a valid P-256 point".to_string())?;
+    let compressed = pk.to_encoded_point(true).as_bytes().to_vec();
+    Ok(hex::encode(ContentPublicKey { curve: ContentCurve::P256, sec1: compressed }.encode()))
+}
+
+/// Extract the sender's per-message ephemeral public key from a sealed blob,
+/// re-encoded UNCOMPRESSED SEC1 (65 bytes) — the form Android's
+/// `KeyAgreement` consumes when building the peer `ECPublicKey`. Hand this to
+/// the StrongBox in-chip ECDH; the resulting shared secret feeds
+/// [`chat_read_content_hw`]. (Decompressing here keeps the curve math in Rust,
+/// out of Kotlin.)
+pub fn chat_content_ephemeral_of(sealed_content_hex: String) -> Result<String, String> {
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    let sealed = decode_sealed(&sealed_content_hex)?;
+    if sealed.curve != ContentCurve::P256 {
+        return Err("hardware content read is P-256 only".into());
+    }
+    let pk = p256::PublicKey::from_sec1_bytes(&sealed.ephemeral_pub_sec1)
+        .map_err(|_| "sealed ephemeral is not a valid P-256 point".to_string())?;
+    Ok(hex::encode(pk.to_encoded_point(false).as_bytes()))
+}
+
+/// A [`ContentEcdh`] provider whose ECDH result was already computed inside
+/// StrongBox/TPM by the platform keystore. The static content scalar never
+/// enters this process; we only hold the per-message shared secret the chip
+/// returned. [`unseal_with`] asks this provider for the ECDH of the one
+/// ephemeral carried in the sealed blob — the exact ephemeral the chip was
+/// given — so we hand back the precomputed secret.
+struct PrecomputedEcdh {
+    curve: ContentCurve,
+    shared: Vec<u8>,
+}
+
+impl ContentEcdh for PrecomputedEcdh {
+    fn curve(&self) -> ContentCurve {
+        self.curve
+    }
+
+    fn ecdh(&self, _ephemeral_pub_sec1: &[u8]) -> Result<Vec<u8>, ContentSealError> {
+        let want = match self.curve {
+            ContentCurve::P256 => 32,
+            ContentCurve::P384 => 48,
+        };
+        if self.shared.len() != want {
+            return Err(ContentSealError::EcdhProvider(format!(
+                "shared secret is {} bytes, expected {want} for this curve",
+                self.shared.len()
+            )));
+        }
+        Ok(self.shared.clone())
+    }
+}
+
+/// Hardware read seam: the recipient's content scalar lives in StrongBox/TPM
+/// and never leaves it. The in-chip ECDH (against the sealed ephemeral, behind
+/// a biometric prompt) is performed by the platform keystore via
+/// [`chat_content_ephemeral_of`] → Kotlin; its 32-byte shared secret is passed
+/// in here as `shared_secret_hex`. HKDF + AEAD then run in-process exactly as
+/// the software path — only the one private-key op moved into silicon.
+/// `recipient_content_key_hex` MUST be this device's OWN published `MESSAGE`
+/// value (the SCALE-encoded curve-tagged `ContentPublicKey` from
+/// [`chat_content_pubkey_from_sec1`]): its inner `sec1` bytes are bound into
+/// the KDF salt exactly as the sender bound them, so passing the published
+/// value verbatim makes the salt match by construction. Plaintext is returned
+/// transiently — the amnesiac app must not persist it.
+pub fn chat_read_content_hw(
+    sealed_content_hex: String,
+    recipient_content_key_hex: String,
+    shared_secret_hex: String,
+    dr_session_state_hex: Option<String>,
+    identity_seed_hex: String,
+    opk_secrets: Vec<crate::chat_dr::DrOpkSecret>,
+) -> Result<ReadMessage, String> {
+    let sealed = decode_sealed(&sealed_content_hex)?;
+    if sealed.curve != ContentCurve::P256 {
+        return Err("hardware content read is P-256 only".into());
+    }
+    let ck_bytes = hex::decode(recipient_content_key_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("recipient content key hex: {e}"))?;
+    let recipient = ContentPublicKey::decode(&mut &ck_bytes[..])
+        .map_err(|e| format!("ContentPublicKey decode: {e}"))?;
+    if recipient.curve != ContentCurve::P256 {
+        return Err("hardware content read is P-256 only".into());
+    }
+    let shared = hex::decode(shared_secret_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("shared secret hex: {e}"))?;
+    let provider = PrecomputedEcdh { curve: ContentCurve::P256, shared };
+    // The seal binds the recipient key's `sec1` (as published) into the salt;
+    // pass those exact bytes so a blob sealed to the published key authenticates.
+    let inner_bytes = unseal_with(&provider, &recipient.sec1, &sealed)
+        .map_err(|e| format!("content unseal (hw): {e:?}"))?;
+    finish_read(inner_bytes, dr_session_state_hex, identity_seed_hex, opk_secrets)
 }
 
 // ── FRB: cert-auth key (Phase 2) ────────────────────────────────────

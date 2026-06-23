@@ -238,6 +238,53 @@ class MainActivity : FlutterFragmentActivity() {
                         .build()
                     prompt.authenticate(promptInfo)
                 }
+                "generateContentKeyPair" -> {
+                    val pubkey = StrongBoxManager.generateContentKeyPair()
+                    if (pubkey != null) {
+                        result.success(pubkey)
+                    } else {
+                        result.error("CONTENT_KEY_ERROR", "Failed to generate content key (StrongBox/API-31 required)", null)
+                    }
+                }
+                "getContentPublicKey" -> {
+                    result.success(StrongBoxManager.getContentPublicKey())
+                }
+                "contentEcdh" -> {
+                    val ephemeral = call.argument<ByteArray>("ephemeralSec1")
+                    if (ephemeral == null) {
+                        result.error("INVALID_ARGS", "ephemeralSec1 required", null)
+                        return@setMethodCallHandler
+                    }
+                    // Biometric gate: one STRONG prompt authorizes the in-chip
+                    // ECDH for the content key's auth window, then we run the
+                    // key agreement inside StrongBox.
+                    val executor = ContextCompat.getMainExecutor(this)
+                    val prompt = BiometricPrompt(this, executor,
+                        object : BiometricPrompt.AuthenticationCallback() {
+                            override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
+                                val shared = StrongBoxManager.computeContentEcdh(ephemeral)
+                                if (shared != null) {
+                                    result.success(shared)
+                                } else {
+                                    result.error("ECDH_ERROR", "In-chip ECDH failed after auth", null)
+                                }
+                            }
+                            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                result.error("BIOMETRIC_ERROR", errString.toString(), null)
+                            }
+                            override fun onAuthenticationFailed() {
+                                // OS may allow retry
+                            }
+                        }
+                    )
+                    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                        .setTitle("Decrypt Message")
+                        .setSubtitle("Biometric required to read")
+                        .setNegativeButtonText("Cancel")
+                        .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                        .build()
+                    prompt.authenticate(promptInfo)
+                }
                 "getAttestationCertChain" -> {
                     val challengeBytes = call.argument<ByteArray>("challengeBytes")
                     if (challengeBytes == null) {

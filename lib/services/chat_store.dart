@@ -13,6 +13,7 @@ import '../bridge/bridge_generated.dart/core.dart'
         devCertSeedHex,
         chatMintTestCert;
 import '../config/rpc_endpoints.dart';
+import 'content_key_service.dart';
 
 /// One end-to-end-encrypted message in a thread.
 ///
@@ -302,6 +303,10 @@ class ChatStore extends ChangeNotifier {
 
   static const _storage = FlutterSecureStorage();
 
+  // StrongBox content (decrypt) key seam — null-degrades to the software seed
+  // on devices without StrongBox (dev box / emulator).
+  final ContentKeyService _contentKeys = ContentKeyService();
+
   // In-memory caches (hydrated lazily from storage).
   final Map<String, List<ChatContact>> _contacts = {};
   final Map<String, List<ChatMessage>> _threads = {}; // key: '$address|$pubkey'
@@ -313,6 +318,10 @@ class ChatStore extends ChangeNotifier {
   // ── keys ────────────────────────────────────────────────────────
   String _seedKey(String address) => 'chat_seed_$address';
   String _contentSeedKey(String address) => 'chat_content_seed_$address';
+  // Presence (non-empty) marks HARDWARE content mode; the value is this
+  // device's published MESSAGE record (curve-tagged ContentPublicKey hex) for
+  // the StrongBox content key. Absent => software-seed content path.
+  String _contentHwKey(String address) => 'chat_content_hw_$address';
   String _myNameKey(String address) => 'chat_my_name_$address';
   String _certSeedKey(String address) => 'chat_cert_seed_$address';
   String _certThumbprintKey(String address) => 'chat_cert_thumbprint_$address';
@@ -375,9 +384,31 @@ class ChatStore extends ChangeNotifier {
 
   /// This device's published content key (MESSAGE record value), hex of the
   /// curve-tagged ContentPublicKey. Senders seal inner content to it.
+  ///
+  /// Hardware-first: if StrongBox can host a non-extractable P-256 content key
+  /// it publishes that (the Phase-3 silicon path); otherwise it falls back to
+  /// the software seed (the dev stand-in). The choice is recorded under
+  /// [_contentHwKey] so the read path knows which seam to use.
   Future<String> contentKey(String address) async {
+    final hw = await _ensureHardwareContentKey(address);
+    if (hw != null) return hw;
     final seed = await contentSeedHex(address);
     return chatGenContentKey(curve: _contentCurve, contentSeedHex: seed);
+  }
+
+  /// Resolve (and cache) this device's HARDWARE content key as a published
+  /// MESSAGE value, or null when StrongBox/API-31 is unavailable. Reuses an
+  /// existing StrongBox key if present, else generates one. The private scalar
+  /// stays in the secure element — only its public SEC1 ever surfaces here.
+  Future<String?> _ensureHardwareContentKey(String address) async {
+    final cached = await _storage.read(key: _contentHwKey(address));
+    if (cached != null && cached.isNotEmpty) return cached;
+    var sec1 = await _contentKeys.publicKeyHex();
+    sec1 ??= await _contentKeys.generateHex();
+    if (sec1 == null || sec1.isEmpty) return null; // no StrongBox → software path
+    final ck = await chatContentPubkeyFromSec1(curve: _contentCurve, sec1Hex: sec1);
+    await _storage.write(key: _contentHwKey(address), value: ck);
+    return ck;
   }
 
   /// This account's own `.rst` chat name (claimed in the signed inner so the
@@ -885,14 +916,37 @@ class ChatStore extends ChangeNotifier {
   /// forward-resolve-verified sender name ('' if unverified).
   Future<(ChatMessage, String)> _readOne(
       String address, String contactPubkey, ChatMessage m) async {
-    final read = await chatReadContent(
-      sealedContentHex: m.sealedContentHex,
-      curve: _contentCurve,
-      contentSeedHex: await contentSeedHex(address),
-      drSessionStateHex: null, // F2: Ratcheted content threads the DR session here
-      identitySeedHex: await seedHex(address),
-      opkSecrets: const [],
-    );
+    final hwCk = await _storage.read(key: _contentHwKey(address));
+    final ReadMessage read;
+    if (hwCk != null && hwCk.isNotEmpty) {
+      // Hardware path: the content scalar lives in StrongBox. Hand the chip the
+      // sender's ephemeral, get the shared secret back from an in-chip ECDH
+      // (biometric-gated), and finish HKDF+AEAD in Rust. The scalar never
+      // enters app memory.
+      final ephemeral =
+          await chatContentEphemeralOf(sealedContentHex: m.sealedContentHex);
+      final shared = await _contentKeys.ecdhHex(ephemeral);
+      if (shared == null || shared.isEmpty) {
+        throw StateError('content ECDH failed (biometric declined or no chip key)');
+      }
+      read = await chatReadContentHw(
+        sealedContentHex: m.sealedContentHex,
+        recipientContentKeyHex: hwCk,
+        sharedSecretHex: shared,
+        drSessionStateHex: null, // F2: Ratcheted content threads the DR session here
+        identitySeedHex: await seedHex(address),
+        opkSecrets: const [],
+      );
+    } else {
+      read = await chatReadContent(
+        sealedContentHex: m.sealedContentHex,
+        curve: _contentCurve,
+        contentSeedHex: await contentSeedHex(address),
+        drSessionStateHex: null, // F2: Ratcheted content threads the DR session here
+        identitySeedHex: await seedHex(address),
+        opkSecrets: const [],
+      );
+    }
 
     // Forward-resolve-and-verify the claimed sender name (impersonation-
     // resistant): the claimed name must resolve to THIS exact ed25519 sender
