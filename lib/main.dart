@@ -10,6 +10,7 @@ import 'package:local_auth/local_auth.dart';
 import 'backup_provider_screen.dart';
 import 'restore_provider_screen.dart';
 import 'home_shell.dart';
+import 'widgets/tx_badge_overlay.dart';
 import 'theme.dart';
 import 'screens/name_registration_screen.dart';
 import 'screens/seed_phrase_quiz_screen.dart';
@@ -30,9 +31,23 @@ class DotWaveApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Dotwave',
+      navigatorKey: rootNavigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       home: const SplashScreen(),
+      builder: (context, child) {
+        // Pin the transaction tracker badge above every route.
+        return Stack(
+          children: [
+            if (child != null) child,
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 12,
+              child: const TxBadgeOverlay(),
+            ),
+          ],
+        );
+      },
     );
   }
 }

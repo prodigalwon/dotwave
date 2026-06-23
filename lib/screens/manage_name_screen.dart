@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../config/rpc_endpoints.dart';
+import '../services/tx_actions.dart';
 import '../widgets/transaction_blade.dart';
 
 /// Lifecycle management for a canonical name the caller owns: renew, transfer,
@@ -55,8 +56,8 @@ class _ManageNameScreenState extends State<ManageNameScreen> {
           TxRow('Name', '${widget.name}.rst'),
           TxRow('Action', 'Extend expiry +365 days'),
         ],
-        onConfirm: (phrase) =>
-            RustLib.instance.api.crateCoreRenewName(phrase: phrase, rpcUrl: _rpcUrl),
+        txAction: renewNameAction,
+        trackerLabel: 'Renew ${widget.name}.rst',
       ),
     );
   }
@@ -118,15 +119,10 @@ class _ManageNameScreenState extends State<ManageNameScreen> {
           TxRow('Name', '${widget.name}.rst'),
           TxRow('To', _truncate(toAddress)),
         ],
-        onConfirm: (phrase) => RustLib.instance.api.crateCoreTransferName(
-          toAddress: toAddress,
-          phrase: phrase,
-          rpcUrl: _rpcUrl,
-        ),
-        onSuccess: () async {
-          await _forgetCachedName();
-          if (mounted) Navigator.of(context).pop(true);
-        },
+        txAction: transferNameAction(toAddress),
+        trackerLabel: 'Transfer ${widget.name}.rst',
+        // Forget the cached name only once the transfer is confirmed on-chain.
+        onSuccess: _forgetCachedName,
       ),
     );
   }
@@ -167,12 +163,10 @@ class _ManageNameScreenState extends State<ManageNameScreen> {
           TxRow('Name', '${widget.name}.rst'),
           TxRow('Action', 'Release — back to pool'),
         ],
-        onConfirm: (phrase) =>
-            RustLib.instance.api.crateCoreReleaseName(phrase: phrase, rpcUrl: _rpcUrl),
-        onSuccess: () async {
-          await _forgetCachedName();
-          if (mounted) Navigator.of(context).pop(true);
-        },
+        txAction: releaseNameAction,
+        trackerLabel: 'Release ${widget.name}.rst',
+        // Forget the cached name only once the release is confirmed on-chain.
+        onSuccess: _forgetCachedName,
       ),
     );
   }

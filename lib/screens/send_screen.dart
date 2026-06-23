@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../bridge/bridge_generated.dart/core.dart';
 import '../config/rpc_endpoints.dart';
+import '../services/tx_actions.dart';
 import '../widgets/transaction_blade.dart';
 
 class SendScreen extends StatefulWidget {
@@ -186,12 +187,8 @@ class _SendScreenState extends State<SendScreen> {
         ],
         costLabel: 'Amount',
         loadCost: () async => amountStr,
-        onConfirm: (phrase) => RustLib.instance.api.crateCoreSendDot(
-          toAddress: to,
-          amountPlanck: amountStr,
-          phrase: phrase,
-          rpcUrl: _rpcUrl,
-        ),
+        txAction: sendAction(to, amountStr),
+        trackerLabel: 'Send to $displayName',
       ),
     );
   }

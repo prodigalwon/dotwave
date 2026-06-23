@@ -6,9 +6,21 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `connect_rostro_with_rpc`, `connect_rostro`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `encode_record_type`, `fetch_best_nonce`, `fetch_root_thumbprint`, `hex_encode_lower`, `rostro_tx_params`, `submit_typed`
+// These functions are ignored because they are not marked as `pub`: `confirmed`, `connect_rostro_with_rpc`, `connect_rostro`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `dispatch_action`, `encode_record_type`, `failed`, `fetch_best_nonce`, `fetch_root_thumbprint`, `hex_encode_lower`, `rostro_tx_params`, `run_streamed`, `submit_signed_watched`, `submit_typed`, `submitted`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Sr25519Signer`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `fmt`, `sign`
+
+/// Submit a write action and stream its progress. Always returns `Ok(())`; every
+/// outcome (including errors) is delivered through `sink` as a [`TxUpdate`].
+Stream<TxUpdate> submitAction({
+  required TxAction action,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreSubmitAction(
+  action: action,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
 
 Future<String> fetchBalance({
   required String address,
@@ -991,4 +1003,91 @@ class StrongBoxCeremonyBundle {
           integrityBlobHex == other.integrityBlobHex &&
           integritySignatureHex == other.integritySignatureHex &&
           challengeHex == other.challengeHex;
+}
+
+/// A write action to submit. Flattened for the same freezed-free reason; fields
+/// not relevant to a given `kind` are empty strings. Extend as more PNS
+/// management UI lands (listings, subdomains, records).
+class TxAction {
+  final TxActionKind kind;
+  final String name;
+  final String to;
+  final String amountPlanck;
+  final String recipient;
+
+  const TxAction({
+    required this.kind,
+    required this.name,
+    required this.to,
+    required this.amountPlanck,
+    required this.recipient,
+  });
+
+  @override
+  int get hashCode =>
+      kind.hashCode ^
+      name.hashCode ^
+      to.hashCode ^
+      amountPlanck.hashCode ^
+      recipient.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TxAction &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          name == other.name &&
+          to == other.to &&
+          amountPlanck == other.amountPlanck &&
+          recipient == other.recipient;
+}
+
+/// Discriminant for [`TxAction`].
+enum TxActionKind {
+  send,
+  registerName,
+  transferName,
+  releaseName,
+  renewName,
+  buyName,
+  buyNameFor,
+}
+
+/// Progress event for a streamed submission. Flattened (struct + kind enum)
+/// rather than an enum-with-data so the Dart bindings don't pull in `freezed`.
+class TxUpdate {
+  final TxUpdateKind kind;
+
+  /// Extrinsic hash — set when `kind == Confirmed`, else empty.
+  final String hash;
+
+  /// Error message — set when `kind == Failed`, else empty.
+  final String error;
+
+  const TxUpdate({required this.kind, required this.hash, required this.error});
+
+  @override
+  int get hashCode => kind.hashCode ^ hash.hashCode ^ error.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TxUpdate &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          hash == other.hash &&
+          error == other.error;
+}
+
+/// Discriminant for [`TxUpdate`].
+enum TxUpdateKind {
+  /// Accepted into the transaction pool.
+  submitted,
+
+  /// Included in a block and dispatched successfully.
+  confirmed,
+
+  /// Rejected at submission, failed on dispatch, or timed out.
+  failed,
 }

@@ -11,6 +11,7 @@ use crate::rostro_config::RostroConfig;
 use subxt::utils::{AccountId32, MultiAddress, MultiSignature};
 use std::str::FromStr;
 use std::sync::Arc;
+use crate::frb_generated::StreamSink;
 
 /// Connect to a Rostro (gemini-node) RPC endpoint via the Legacy backend.
 ///
@@ -131,6 +132,235 @@ async fn submit_signed_watched(
     tokio::time::timeout(std::time::Duration::from_secs(60), watch)
         .await
         .map_err(|_| "timed out waiting for transaction inclusion (60s)".to_string())?
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Streaming submit — for the fire-and-forget transaction tracker.
+//
+// `submit_action` streams progress so the UI can hand off after pool entry:
+//   Submitted            -> accepted into the pool (UI shrinks blade to a badge)
+//   Confirmed { hash }   -> in a block, ExtrinsicSuccess
+//   Failed { error }     -> rejected at submission, dispatch error, or timeout
+//
+// A pool rejection (bad nonce/sig/era) or a setup error (offline) emits `Failed`
+// with NO prior `Submitted`, so the UI knows the tx never entered the pool and
+// can show the error inline instead of shrinking.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Discriminant for [`TxUpdate`].
+pub enum TxUpdateKind {
+    /// Accepted into the transaction pool.
+    Submitted,
+    /// Included in a block and dispatched successfully.
+    Confirmed,
+    /// Rejected at submission, failed on dispatch, or timed out.
+    Failed,
+}
+
+/// Progress event for a streamed submission. Flattened (struct + kind enum)
+/// rather than an enum-with-data so the Dart bindings don't pull in `freezed`.
+pub struct TxUpdate {
+    pub kind: TxUpdateKind,
+    /// Extrinsic hash — set when `kind == Confirmed`, else empty.
+    pub hash: String,
+    /// Error message — set when `kind == Failed`, else empty.
+    pub error: String,
+}
+
+impl TxUpdate {
+    fn submitted() -> Self {
+        Self { kind: TxUpdateKind::Submitted, hash: String::new(), error: String::new() }
+    }
+    fn confirmed(hash: String) -> Self {
+        Self { kind: TxUpdateKind::Confirmed, hash, error: String::new() }
+    }
+    fn failed(error: String) -> Self {
+        Self { kind: TxUpdateKind::Failed, hash: String::new(), error }
+    }
+}
+
+/// Discriminant for [`TxAction`].
+pub enum TxActionKind {
+    Send,
+    RegisterName,
+    TransferName,
+    ReleaseName,
+    RenewName,
+    BuyName,
+    BuyNameFor,
+}
+
+/// A write action to submit. Flattened for the same freezed-free reason; fields
+/// not relevant to a given `kind` are empty strings. Extend as more PNS
+/// management UI lands (listings, subdomains, records).
+pub struct TxAction {
+    pub kind: TxActionKind,
+    pub name: String,
+    pub to: String,
+    pub amount_planck: String,
+    pub recipient: String,
+}
+
+/// Submit a write action and stream its progress. Always returns `Ok(())`; every
+/// outcome (including errors) is delivered through `sink` as a [`TxUpdate`].
+pub fn submit_action(
+    action: TxAction,
+    phrase: String,
+    rpc_url: String,
+    sink: StreamSink<TxUpdate>,
+) -> Result<(), String> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        // Setup errors (bad phrase, offline, nonce fetch) happen before any
+        // `Submitted`; surface them as `Failed` so the UI always learns via the
+        // stream.
+        if let Err(e) = dispatch_action(&action, &phrase, &rpc_url, &sink).await {
+            let _ = sink.add(TxUpdate::failed(e));
+        }
+    });
+    Ok(())
+}
+
+async fn dispatch_action(
+    action: &TxAction,
+    phrase: &str,
+    rpc_url: &str,
+    sink: &StreamSink<TxUpdate>,
+) -> Result<(), String> {
+    match action.kind {
+        TxActionKind::Send => {
+            let amount: u128 =
+                action.amount_planck.parse().map_err(|_| "Invalid amount".to_string())?;
+            let dest =
+                AccountId32::from_str(&action.to).map_err(|e| format!("Invalid address: {e}"))?;
+            run_streamed(
+                phrase,
+                rpc_url,
+                polkadot::tx().balances().transfer_keep_alive(MultiAddress::Id(dest), amount),
+                sink,
+            )
+            .await
+        }
+        TxActionKind::RegisterName => {
+            run_streamed(
+                phrase,
+                rpc_url,
+                polkadot::tx().rns_registrar().register(action.name.clone().into_bytes(), None),
+                sink,
+            )
+            .await
+        }
+        TxActionKind::TransferName => {
+            let dest =
+                AccountId32::from_str(&action.to).map_err(|e| format!("Invalid address: {e}"))?;
+            run_streamed(
+                phrase,
+                rpc_url,
+                polkadot::tx().rns_registrar().transfer(MultiAddress::Id(dest)),
+                sink,
+            )
+            .await
+        }
+        TxActionKind::ReleaseName => {
+            run_streamed(phrase, rpc_url, polkadot::tx().rns_registrar().release_name(), sink).await
+        }
+        TxActionKind::RenewName => {
+            run_streamed(phrase, rpc_url, polkadot::tx().rns_registrar().renew(), sink).await
+        }
+        TxActionKind::BuyName => {
+            run_streamed(
+                phrase,
+                rpc_url,
+                polkadot::tx().rns_marketplace().buy_name(action.name.clone().into_bytes(), None),
+                sink,
+            )
+            .await
+        }
+        TxActionKind::BuyNameFor => {
+            let dest = AccountId32::from_str(&action.recipient)
+                .map_err(|e| format!("Invalid recipient: {e}"))?;
+            run_streamed(
+                phrase,
+                rpc_url,
+                polkadot::tx().rns_marketplace().buy_name(action.name.clone().into_bytes(), Some(dest)),
+                sink,
+            )
+            .await
+        }
+    }
+}
+
+/// Build, sign, submit, and watch a typed extrinsic, emitting [`TxUpdate`]s. Setup
+/// failures (before pool entry) are returned as `Err`; chain outcomes are emitted
+/// through `sink` and return `Ok(())`.
+async fn run_streamed<Call: subxt::tx::Payload>(
+    phrase: &str,
+    rpc_url: &str,
+    tx: Call,
+    sink: &StreamSink<TxUpdate>,
+) -> Result<(), String> {
+    use subxt::tx::TransactionStatus;
+
+    let pair = sr25519::Pair::from_string(phrase, None)
+        .map_err(|e| format!("Keypair error: {e:?}"))?;
+    let (api, rpc) = connect_rostro_with_rpc(rpc_url).await?;
+    let signer = Sr25519Signer(pair);
+    let account = <Sr25519Signer as subxt::tx::Signer<RostroConfig>>::account_id(&signer);
+    let nonce = fetch_best_nonce(&rpc, &account).await?;
+    let mut tx_client = api.tx().await.map_err(|e| e.to_string())?;
+    let mut signable = tx_client
+        .create_signable(&tx, &account, rostro_tx_params(nonce))
+        .await
+        .map_err(|e| e.to_string())?;
+    let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
+
+    let mut progress = match signed.submit_and_watch().await {
+        Ok(p) => p,
+        // Pool rejection — emit Failed with no prior Submitted.
+        Err(e) => {
+            let _ = sink.add(TxUpdate::failed(e.to_string()));
+            return Ok(());
+        }
+    };
+    let _ = sink.add(TxUpdate::submitted());
+
+    let outcome = tokio::time::timeout(std::time::Duration::from_secs(120), async {
+        while let Some(status) = progress.next().await {
+            match status.map_err(|e| e.to_string())? {
+                TransactionStatus::InBestBlock(in_block)
+                | TransactionStatus::InFinalizedBlock(in_block) => {
+                    return match in_block.wait_for_success().await {
+                        Ok(_) => Ok(format!("{:?}", in_block.extrinsic_hash())),
+                        Err(e) => Err(e.to_string()),
+                    };
+                }
+                TransactionStatus::Error { message }
+                | TransactionStatus::Invalid { message }
+                | TransactionStatus::Dropped { message } => return Err(message),
+                _ => {}
+            }
+        }
+        Err("transaction stream ended before inclusion".to_string())
+    })
+    .await;
+
+    match outcome {
+        Ok(Ok(hash)) => {
+            let _ = sink.add(TxUpdate::confirmed(hash));
+        }
+        Ok(Err(e)) => {
+            let _ = sink.add(TxUpdate::failed(e));
+        }
+        Err(_) => {
+            let _ = sink.add(TxUpdate::failed(
+                "timed out waiting for inclusion (120s)".to_string(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[flutter_rust_bridge::frb(ignore)]

@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../bridge/bridge_generated.dart/core.dart';
 import '../config/rpc_endpoints.dart';
+import '../services/tx_actions.dart';
 import '../widgets/transaction_blade.dart';
 import '../home_shell.dart';
 
@@ -262,11 +263,10 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
                   .crateCoreGetNameListing(name: name, rpcUrl: _rpcUrl);
               return current == null ? 'Name is no longer for sale' : null;
             },
-            onConfirm: (phrase) => RustLib.instance.api.crateCoreBuyName(
-              name: name,
-              phrase: phrase,
-              rpcUrl: _rpcUrl,
-            ),
+            txAction: buyNameAction(name),
+            trackerLabel: 'Buy $name.rst',
+            // The bought name becomes yours once confirmed on-chain.
+            onSuccess: () => _saveOwnedName(name),
           ),
         );
       }
@@ -490,14 +490,10 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
                               }
                               return null;
                             },
-                            onConfirm: (phrase) =>
-                                RustLib.instance.api.crateCoreRegisterName(
-                              name: name,
-                              phrase: phrase,
-                              rpcUrl: _rpcUrl,
-                            ),
-                            onSuccess: () async {
-                              await _saveOwnedName(name);
+                            txAction: registerNameAction(name),
+                            trackerLabel: 'Register $name.rst',
+                            // UI transition at pool entry (screen still alive).
+                            onSubmitted: () {
                               if (!mounted) return;
                               if (widget.isOnboarding) {
                                 _goHome();
@@ -508,6 +504,8 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
                                 });
                               }
                             },
+                            // Cache the name only once it's confirmed on-chain.
+                            onSuccess: () => _saveOwnedName(name),
                           ),
                         );
                       },

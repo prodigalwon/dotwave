@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 820543105;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 2122169839;
 
 // Section: executor
 
@@ -2562,6 +2562,46 @@ fn wire__crate__core__set_text_impl(
         },
     )
 }
+fn wire__crate__core__submit_action_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "submit_action",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_action = <crate::core::TxAction>::sse_decode(&mut deserializer);
+            let api_phrase = <String>::sse_decode(&mut deserializer);
+            let api_rpc_url = <String>::sse_decode(&mut deserializer);
+            let api_sink = <StreamSink<
+                crate::core::TxUpdate,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok =
+                        crate::core::submit_action(api_action, api_phrase, api_rpc_url, api_sink)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__personhood__submit_discard_pop_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -3073,6 +3113,14 @@ impl SseDecode for flutter_rust_bridge::for_generated::anyhow::Error {
     }
 }
 
+impl SseDecode for StreamSink<crate::core::TxUpdate, flutter_rust_bridge::for_generated::SseCodec> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
+    }
+}
+
 impl SseDecode for String {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3294,6 +3342,13 @@ impl SseDecode for f64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_f64::<NativeEndian>().unwrap()
+    }
+}
+
+impl SseDecode for i32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_i32::<NativeEndian>().unwrap()
     }
 }
 
@@ -3693,6 +3748,68 @@ impl SseDecode for crate::core::StrongBoxCeremonyBundle {
     }
 }
 
+impl SseDecode for crate::core::TxAction {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_kind = <crate::core::TxActionKind>::sse_decode(deserializer);
+        let mut var_name = <String>::sse_decode(deserializer);
+        let mut var_to = <String>::sse_decode(deserializer);
+        let mut var_amountPlanck = <String>::sse_decode(deserializer);
+        let mut var_recipient = <String>::sse_decode(deserializer);
+        return crate::core::TxAction {
+            kind: var_kind,
+            name: var_name,
+            to: var_to,
+            amount_planck: var_amountPlanck,
+            recipient: var_recipient,
+        };
+    }
+}
+
+impl SseDecode for crate::core::TxActionKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::core::TxActionKind::Send,
+            1 => crate::core::TxActionKind::RegisterName,
+            2 => crate::core::TxActionKind::TransferName,
+            3 => crate::core::TxActionKind::ReleaseName,
+            4 => crate::core::TxActionKind::RenewName,
+            5 => crate::core::TxActionKind::BuyName,
+            6 => crate::core::TxActionKind::BuyNameFor,
+            _ => unreachable!("Invalid variant for TxActionKind: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::core::TxUpdate {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_kind = <crate::core::TxUpdateKind>::sse_decode(deserializer);
+        let mut var_hash = <String>::sse_decode(deserializer);
+        let mut var_error = <String>::sse_decode(deserializer);
+        return crate::core::TxUpdate {
+            kind: var_kind,
+            hash: var_hash,
+            error: var_error,
+        };
+    }
+}
+
+impl SseDecode for crate::core::TxUpdateKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::core::TxUpdateKind::Submitted,
+            1 => crate::core::TxUpdateKind::Confirmed,
+            2 => crate::core::TxUpdateKind::Failed,
+            _ => unreachable!("Invalid variant for TxUpdateKind: {}", inner),
+        };
+    }
+}
+
 impl SseDecode for u16 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3724,13 +3841,6 @@ impl SseDecode for u8 {
 impl SseDecode for () {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {}
-}
-
-impl SseDecode for i32 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        deserializer.cursor.read_i32::<NativeEndian>().unwrap()
-    }
 }
 
 fn pde_ffi_dispatcher_primary_impl(
@@ -3843,32 +3953,33 @@ fn pde_ffi_dispatcher_primary_impl(
         65 => wire__crate__core__send_dot_impl(port, ptr, rust_vec_len, data_len),
         66 => wire__crate__core__set_record_impl(port, ptr, rust_vec_len, data_len),
         67 => wire__crate__core__set_text_impl(port, ptr, rust_vec_len, data_len),
-        68 => wire__crate__personhood__submit_discard_pop_impl(port, ptr, rust_vec_len, data_len),
-        69 => wire__crate__core__submit_mint_cert_strongbox_impl(port, ptr, rust_vec_len, data_len),
-        70 => wire__crate__personhood__submit_mint_pop_impl(port, ptr, rust_vec_len, data_len),
-        71 => wire__crate__core__submit_self_discard_cert_mime_wrap_impl(
+        68 => wire__crate__core__submit_action_impl(port, ptr, rust_vec_len, data_len),
+        69 => wire__crate__personhood__submit_discard_pop_impl(port, ptr, rust_vec_len, data_len),
+        70 => wire__crate__core__submit_mint_cert_strongbox_impl(port, ptr, rust_vec_len, data_len),
+        71 => wire__crate__personhood__submit_mint_pop_impl(port, ptr, rust_vec_len, data_len),
+        72 => wire__crate__core__submit_self_discard_cert_mime_wrap_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        72 => wire__crate__core__submit_set_mime_wrap_vk_impl(port, ptr, rust_vec_len, data_len),
-        73 => wire__crate__personhood__submit_srt_set_csca_root_impl(
+        73 => wire__crate__core__submit_set_mime_wrap_vk_impl(port, ptr, rust_vec_len, data_len),
+        74 => wire__crate__personhood__submit_srt_set_csca_root_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        74 => wire__crate__personhood__submit_srt_set_seats_root_impl(
+        75 => wire__crate__personhood__submit_srt_set_seats_root_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        75 => wire__crate__personhood__submit_srt_set_vk_impl(port, ptr, rust_vec_len, data_len),
-        76 => wire__crate__core__transfer_name_impl(port, ptr, rust_vec_len, data_len),
-        77 => wire__crate__core__verify_name_ownership_impl(port, ptr, rust_vec_len, data_len),
-        78 => wire__crate__core__vote_on_referendum_impl(port, ptr, rust_vec_len, data_len),
+        76 => wire__crate__personhood__submit_srt_set_vk_impl(port, ptr, rust_vec_len, data_len),
+        77 => wire__crate__core__transfer_name_impl(port, ptr, rust_vec_len, data_len),
+        78 => wire__crate__core__verify_name_ownership_impl(port, ptr, rust_vec_len, data_len),
+        79 => wire__crate__core__vote_on_referendum_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3895,7 +4006,7 @@ fn pde_ffi_dispatcher_sync_impl(
             data_len,
         ),
         63 => wire__crate__core__restore_account_impl(ptr, rust_vec_len, data_len),
-        79 => wire__crate__totp_enrollment__zeroize_bytes_impl(ptr, rust_vec_len, data_len),
+        80 => wire__crate__totp_enrollment__zeroize_bytes_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -4492,11 +4603,92 @@ impl flutter_rust_bridge::IntoIntoDart<crate::core::StrongBoxCeremonyBundle>
         self
     }
 }
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::core::TxAction {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.kind.into_into_dart().into_dart(),
+            self.name.into_into_dart().into_dart(),
+            self.to.into_into_dart().into_dart(),
+            self.amount_planck.into_into_dart().into_dart(),
+            self.recipient.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::core::TxAction {}
+impl flutter_rust_bridge::IntoIntoDart<crate::core::TxAction> for crate::core::TxAction {
+    fn into_into_dart(self) -> crate::core::TxAction {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::core::TxActionKind {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Send => 0.into_dart(),
+            Self::RegisterName => 1.into_dart(),
+            Self::TransferName => 2.into_dart(),
+            Self::ReleaseName => 3.into_dart(),
+            Self::RenewName => 4.into_dart(),
+            Self::BuyName => 5.into_dart(),
+            Self::BuyNameFor => 6.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::core::TxActionKind {}
+impl flutter_rust_bridge::IntoIntoDart<crate::core::TxActionKind> for crate::core::TxActionKind {
+    fn into_into_dart(self) -> crate::core::TxActionKind {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::core::TxUpdate {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.kind.into_into_dart().into_dart(),
+            self.hash.into_into_dart().into_dart(),
+            self.error.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::core::TxUpdate {}
+impl flutter_rust_bridge::IntoIntoDart<crate::core::TxUpdate> for crate::core::TxUpdate {
+    fn into_into_dart(self) -> crate::core::TxUpdate {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::core::TxUpdateKind {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Submitted => 0.into_dart(),
+            Self::Confirmed => 1.into_dart(),
+            Self::Failed => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::core::TxUpdateKind {}
+impl flutter_rust_bridge::IntoIntoDart<crate::core::TxUpdateKind> for crate::core::TxUpdateKind {
+    fn into_into_dart(self) -> crate::core::TxUpdateKind {
+        self
+    }
+}
 
 impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(format!("{:?}", self), serializer);
+    }
+}
+
+impl SseEncode for StreamSink<crate::core::TxUpdate, flutter_rust_bridge::for_generated::SseCodec> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
     }
 }
 
@@ -4647,6 +4839,13 @@ impl SseEncode for f64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         serializer.cursor.write_f64::<NativeEndian>(self).unwrap();
+    }
+}
+
+impl SseEncode for i32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
     }
 }
 
@@ -4926,6 +5125,64 @@ impl SseEncode for crate::core::StrongBoxCeremonyBundle {
     }
 }
 
+impl SseEncode for crate::core::TxAction {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::core::TxActionKind>::sse_encode(self.kind, serializer);
+        <String>::sse_encode(self.name, serializer);
+        <String>::sse_encode(self.to, serializer);
+        <String>::sse_encode(self.amount_planck, serializer);
+        <String>::sse_encode(self.recipient, serializer);
+    }
+}
+
+impl SseEncode for crate::core::TxActionKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::core::TxActionKind::Send => 0,
+                crate::core::TxActionKind::RegisterName => 1,
+                crate::core::TxActionKind::TransferName => 2,
+                crate::core::TxActionKind::ReleaseName => 3,
+                crate::core::TxActionKind::RenewName => 4,
+                crate::core::TxActionKind::BuyName => 5,
+                crate::core::TxActionKind::BuyNameFor => 6,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::core::TxUpdate {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::core::TxUpdateKind>::sse_encode(self.kind, serializer);
+        <String>::sse_encode(self.hash, serializer);
+        <String>::sse_encode(self.error, serializer);
+    }
+}
+
+impl SseEncode for crate::core::TxUpdateKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::core::TxUpdateKind::Submitted => 0,
+                crate::core::TxUpdateKind::Confirmed => 1,
+                crate::core::TxUpdateKind::Failed => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
 impl SseEncode for u16 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4957,13 +5214,6 @@ impl SseEncode for u8 {
 impl SseEncode for () {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {}
-}
-
-impl SseEncode for i32 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
-    }
 }
 
 #[cfg(not(target_family = "wasm"))]

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
+import '../bridge/bridge_generated.dart/core.dart' show TxAction;
+import '../services/transaction_tracker.dart';
 import 'package:flutter/foundation.dart';
 
 /// A single label/value row shown in the transaction detail section.
@@ -18,6 +20,7 @@ enum _BladeState {
   checkingAvailability,
   awaitingPassphrase,
   submitting,
+  submitted, // accepted into the pool — shows "Submitted" then shrinks to badge
   success,
   error,
 }
@@ -38,28 +41,48 @@ class TransactionBlade extends StatefulWidget {
   /// RPC endpoint used for the connectivity/balance pre-check.
   final String rpcUrl;
 
-  /// Called after biometric + passphrase auth. Receives the decrypted phrase.
-  /// Should throw a [String] message on failure.
-  final Future<void> Function(String phrase) onConfirm;
+  /// Tracked, fire-and-forget submission. When set, the blade streams the action
+  /// through [TransactionTracker]: on pool entry it shows "Submitted", shrinks
+  /// into the corner badge, and the final in-block result is reported by the
+  /// badge. Preferred over [onConfirm].
+  final TxAction? txAction;
+
+  /// Human label for the tracker entry, e.g. "Register tony.rst".
+  final String? trackerLabel;
+
+  /// Legacy blocking path: called after auth with the decrypted phrase; should
+  /// throw a [String] on failure. Used only when [txAction] is null.
+  final Future<void> Function(String phrase)? onConfirm;
 
   /// Optional extra availability check before signing.
   /// Return null if OK, or an error string to block submission.
   final Future<String?> Function()? preflightCheck;
 
-  /// Called immediately after a successful transaction, before the blade closes.
+  /// Side effect to run once the tx is confirmed in a block (tracked path) or
+  /// immediately after success (legacy path). Must be safe to run detached from
+  /// this widget — it may fire after the blade has closed.
   final VoidCallback? onSuccess;
+
+  /// Fired once the tx enters the pool, just before the blade shrinks away — for
+  /// UI transitions on the still-alive originating screen (navigate, clear a
+  /// form). If it navigates away (unmounting the blade), the shrink is skipped.
+  final VoidCallback? onSubmitted;
 
   const TransactionBlade({
     super.key,
     required this.transactionType,
     required this.rpcUrl,
     required this.rows,
-    required this.onConfirm,
+    this.txAction,
+    this.trackerLabel,
+    this.onConfirm,
     this.loadCost,
     this.costLabel = 'Fee',
     this.preflightCheck,
     this.onSuccess,
-  });
+    this.onSubmitted,
+  }) : assert(txAction != null || onConfirm != null,
+            'Provide either txAction (tracked) or onConfirm (legacy)');
 
   /// Push the blade as a translucent slide-up overlay.
   static Future<void> show(BuildContext context, TransactionBlade blade) {
@@ -89,7 +112,8 @@ class TransactionBlade extends StatefulWidget {
   State<TransactionBlade> createState() => _TransactionBladeState();
 }
 
-class _TransactionBladeState extends State<TransactionBlade> {
+class _TransactionBladeState extends State<TransactionBlade>
+    with SingleTickerProviderStateMixin {
   static const _dotDecimals = 12;
 
   String? _costRaw;
@@ -99,6 +123,10 @@ class _TransactionBladeState extends State<TransactionBlade> {
   _BladeState _state = _BladeState.idle;
   String? _errorMessage;
 
+  /// Drives the shrink-into-the-corner animation after pool entry.
+  late final AnimationController _shrink =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
+
   @override
   void initState() {
     super.initState();
@@ -107,6 +135,7 @@ class _TransactionBladeState extends State<TransactionBlade> {
 
   @override
   void dispose() {
+    _shrink.dispose();
     _passphraseController.dispose();
     super.dispose();
   }
@@ -188,32 +217,75 @@ class _TransactionBladeState extends State<TransactionBlade> {
     setState(() => _state = _BladeState.awaitingPassphrase);
   }
 
+  /// Decrypt the stored seed phrase with the entered passphrase. Single-layer
+  /// (Argon2 + ChaCha20-Poly1305) — the stored blob is passphrase-only.
+  Future<String> _decryptPhrase(String passphrase) async {
+    const storage = FlutterSecureStorage();
+    final hex = await storage.read(key: 'encrypted_phrase');
+    if (hex == null) throw 'No account found in storage';
+    final bytes = Uint8List.fromList(
+      List.generate(hex.length ~/ 2,
+          (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16)),
+    );
+    return RustLib.instance.api
+        .crateCoreDecryptPhrase(blob: bytes, passphrase: passphrase);
+  }
+
   Future<void> _onSign() async {
     final passphrase = _passphraseController.text;
     if (passphrase.isEmpty) return;
 
-    setState(() { _state = _BladeState.submitting; _errorMessage = null; });
+    setState(() {
+      _state = _BladeState.submitting;
+      _errorMessage = null;
+    });
 
+    // Decrypt first — a wrong passphrase is a distinct, common failure.
+    final String phrase;
     try {
-      // Single-layer passphrase decrypt (Argon2 + ChaCha20-Poly1305).
-      // The previous code had a second Android Keystore layer; that
-      // broke cross-device restore because the outer wrap was bound
-      // to one device's hardware key. Reverted at onboarding; the
-      // stored blob is now passphrase-only.
-      const storage = FlutterSecureStorage();
-      final hex = await storage.read(key: 'encrypted_phrase');
-      if (hex == null) throw 'No account found in storage';
+      phrase = await _decryptPhrase(passphrase);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _state = _BladeState.error;
+        _errorMessage = 'Incorrect passphrase';
+      });
+      return;
+    }
 
-      final bytes = Uint8List.fromList(
-        List.generate(hex.length ~/ 2, (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16)),
-      );
-      final phrase = await RustLib.instance.api.crateCoreDecryptPhrase(
-        blob: bytes,
-        passphrase: passphrase,
-      );
+    final action = widget.txAction;
+    if (action != null) {
+      // Tracked path: resolve on pool entry, then shrink into the corner badge.
+      try {
+        await TransactionTracker.instance.submit(
+          label: widget.trackerLabel ?? widget.transactionType,
+          action: action,
+          phrase: phrase,
+          rpcUrl: widget.rpcUrl,
+          onConfirmed: widget.onSuccess,
+        );
+        if (!mounted) return;
+        setState(() => _state = _BladeState.submitted);
+        await Future.delayed(const Duration(milliseconds: 600));
+        if (!mounted) return;
+        widget.onSubmitted?.call();
+        if (!mounted) return; // onSubmitted may have navigated away
+        await _shrink.forward();
+        if (mounted) Navigator.of(context).pop();
+      } catch (e) {
+        // Failed before pool entry (bad nonce/sig, offline) — show inline.
+        if (!mounted) return;
+        setState(() {
+          _state = _BladeState.error;
+          _errorMessage = e is String ? e : e.toString();
+        });
+      }
+      return;
+    }
 
-      await widget.onConfirm(phrase);
-
+    // Legacy blocking path.
+    try {
+      await widget.onConfirm!(phrase);
       if (!mounted) return;
       setState(() => _state = _BladeState.success);
       widget.onSuccess?.call();
@@ -232,7 +304,10 @@ class _TransactionBladeState extends State<TransactionBlade> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Stack(
+      body: AnimatedBuilder(
+        animation: _shrink,
+        builder: (context, child) => _shrinkWrap(child!),
+        child: Stack(
         children: [
           Column(
             children: [
@@ -483,7 +558,60 @@ class _TransactionBladeState extends State<TransactionBlade> {
                 ),
               ),
             ),
+          // Submitted overlay (tracked path) — brief "Submitted" before shrink.
+          if (_state == _BladeState.submitted) _submittedOverlay(),
         ],
+        ),
+      ),
+    );
+  }
+
+  /// Shrink the whole blade scene up into the corner badge after pool entry.
+  Widget _shrinkWrap(Widget child) {
+    if (_shrink.value == 0) return child;
+    final t = Curves.easeInCubic.transform(_shrink.value);
+    final size = MediaQuery.of(context).size;
+    return Opacity(
+      opacity: 1 - t,
+      child: Transform.translate(
+        offset: Offset(size.width * 0.42 * t, -size.height * 0.80 * t),
+        child: Transform.scale(
+          scale: 1 - 0.9 * t,
+          alignment: Alignment.topRight,
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  Widget _submittedOverlay() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black87,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF9CA3AF).withOpacity(0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF9CA3AF), width: 2),
+                ),
+                child: const Icon(Icons.outbox_outlined,
+                    color: Color(0xFFD1D5DB), size: 34),
+              ),
+              const SizedBox(height: 20),
+              const Text('Submitted',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
       ),
     );
   }

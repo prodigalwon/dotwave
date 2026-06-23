@@ -29,6 +29,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException dco_decode_AnyhowException(dynamic raw);
 
   @protected
+  RustStreamSink<TxUpdate> dco_decode_StreamSink_tx_update_Sse(dynamic raw);
+
+  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
@@ -63,6 +66,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   StrongBoxCeremonyBundle dco_decode_box_autoadd_strong_box_ceremony_bundle(
     dynamic raw,
   );
+
+  @protected
+  TxAction dco_decode_box_autoadd_tx_action(dynamic raw);
 
   @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
@@ -105,6 +111,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   double dco_decode_f_64(dynamic raw);
+
+  @protected
+  int dco_decode_i_32(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
@@ -191,6 +200,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   StrongBoxCeremonyBundle dco_decode_strong_box_ceremony_bundle(dynamic raw);
 
   @protected
+  TxAction dco_decode_tx_action(dynamic raw);
+
+  @protected
+  TxActionKind dco_decode_tx_action_kind(dynamic raw);
+
+  @protected
+  TxUpdate dco_decode_tx_update(dynamic raw);
+
+  @protected
+  TxUpdateKind dco_decode_tx_update_kind(dynamic raw);
+
+  @protected
   int dco_decode_u_16(dynamic raw);
 
   @protected
@@ -207,6 +228,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<TxUpdate> sse_decode_StreamSink_tx_update_Sse(
+    SseDeserializer deserializer,
+  );
 
   @protected
   String sse_decode_String(SseDeserializer deserializer);
@@ -249,6 +275,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   StrongBoxCeremonyBundle sse_decode_box_autoadd_strong_box_ceremony_bundle(
     SseDeserializer deserializer,
   );
+
+  @protected
+  TxAction sse_decode_box_autoadd_tx_action(SseDeserializer deserializer);
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
@@ -297,6 +326,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   double sse_decode_f_64(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
@@ -409,6 +441,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  TxAction sse_decode_tx_action(SseDeserializer deserializer);
+
+  @protected
+  TxActionKind sse_decode_tx_action_kind(SseDeserializer deserializer);
+
+  @protected
+  TxUpdate sse_decode_tx_update(SseDeserializer deserializer);
+
+  @protected
+  TxUpdateKind sse_decode_tx_update_kind(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_u_16(SseDeserializer deserializer);
 
   @protected
@@ -424,11 +468,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
-
-  @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_tx_update_Sse(
+    RustStreamSink<TxUpdate> self,
     SseSerializer serializer,
   );
 
@@ -480,6 +527,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_strong_box_ceremony_bundle(
     StrongBoxCeremonyBundle self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_tx_action(
+    TxAction self,
     SseSerializer serializer,
   );
 
@@ -539,6 +592,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_f_64(double self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
@@ -682,6 +738,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_tx_action(TxAction self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tx_action_kind(TxActionKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tx_update(TxUpdate self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tx_update_kind(TxUpdateKind self, SseSerializer serializer);
+
+  @protected
   void sse_encode_u_16(int self, SseSerializer serializer);
 
   @protected
@@ -695,9 +763,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
 }
 
 // Section: wire_class
