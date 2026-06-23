@@ -61,26 +61,44 @@ pub fn as_bool(value: &Value<()>) -> Option<bool> {
 
 /// Extract a byte vector from an unnamed composite of u8 primitives.
 /// scale_value widens u8 → U128, so each item must be a U128 in 0..=255.
+///
+/// Fixed-size byte newtypes (`H256`/`DomainHash`, `AccountId32`, and often
+/// `BoundedVec<u8, _>`) decode newtype-wrapped: `Unnamed([ Unnamed([N u8s]) ])`.
+/// So if the flat read fails on a single-element unnamed composite, unwrap one
+/// level and retry. This is safe for a genuine `Vec<u8>`: a byte vec only fails
+/// the flat read when its lone element is itself a composite (never a u8), so
+/// unwrapping can't corrupt a real byte sequence.
 pub fn as_bytes(value: &Value<()>) -> Option<Vec<u8>> {
-	let ValueDef::Composite(Composite::Unnamed(items)) = &value.value else {
-		return None;
-	};
-	let mut out = Vec::with_capacity(items.len());
-	for item in items {
-		let n = as_u128(item)?;
-		if n > 0xff {
+	let mut v = value;
+	loop {
+		let ValueDef::Composite(Composite::Unnamed(items)) = &v.value else {
 			return None;
+		};
+		let mut out = Vec::with_capacity(items.len());
+		let mut flat = true;
+		for item in items {
+			match as_u128(item) {
+				Some(n) if n <= 0xff => out.push(n as u8),
+				_ => { flat = false; break; }
+			}
 		}
-		out.push(n as u8);
+		if flat {
+			return Some(out);
+		}
+		// Not a flat byte sequence — unwrap a single-element newtype wrapper and
+		// retry; anything else isn't byte-shaped.
+		if items.len() == 1 {
+			v = &items[0];
+			continue;
+		}
+		return None;
 	}
-	Some(out)
 }
 
-/// Extract a 32-byte AccountId from a value. Substrate encodes
-/// `AccountId32` as a fixed-32 unnamed composite of u8.
+/// Extract a 32-byte AccountId. `AccountId32([u8; 32])` decodes newtype-wrapped;
+/// [`as_bytes`] handles the unwrapping, so this is just a length-checked view.
 pub fn as_account_id(value: &Value<()>) -> Option<[u8; 32]> {
-	let bytes = as_bytes(value)?;
-	bytes.try_into().ok()
+	as_bytes(value)?.try_into().ok()
 }
 
 /// Returns `Some(inner)` if the value is `Option::Some(_)`, `None` if `Option::None`,

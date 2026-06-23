@@ -2,18 +2,59 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'manage_name_screen.dart';
 import 'name_registration_screen.dart';
 import 'zkpki_spoof_defense_test_screen.dart';
 
-class ProfileTab extends StatelessWidget {
+class ProfileTab extends StatefulWidget {
   final String address;
   const ProfileTab({super.key, required this.address});
 
+  @override
+  State<ProfileTab> createState() => _ProfileTabState();
+}
+
+class _ProfileTabState extends State<ProfileTab> {
+  /// Cached canonical name (bare label, no ".rst"). The chain has no
+  /// address→label reverse lookup, so this comes from the same secure-storage
+  /// cache the home header uses.
+  String? _ownedName;
+
+  String get _address => widget.address;
+
   String get _truncatedAddress =>
-      '${address.substring(0, 8)}...${address.substring(address.length - 6)}';
+      '${_address.substring(0, 8)}...${_address.substring(_address.length - 6)}';
+
+  String get _storageKey => 'owned_name_$_address';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOwnedName();
+  }
+
+  Future<void> _loadOwnedName() async {
+    const storage = FlutterSecureStorage();
+    final stored = await storage.read(key: _storageKey);
+    if (!mounted) return;
+    setState(() => _ownedName = (stored != null && stored.isNotEmpty) ? stored : null);
+  }
+
+  /// Owned → manage it; otherwise → register one. Re-read the cache on return so
+  /// a fresh registration / release / transfer is reflected here immediately.
+  void _openNameScreen() {
+    final name = _ownedName;
+    final route = name != null
+        ? MaterialPageRoute<void>(
+            builder: (_) => ManageNameScreen(address: _address, name: name))
+        : MaterialPageRoute<void>(
+            builder: (_) => NameRegistrationScreen(address: _address));
+    Navigator.push(context, route).then((_) => _loadOwnedName());
+  }
 
   @override
   Widget build(BuildContext context) {
+    final name = _ownedName;
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(
@@ -44,9 +85,9 @@ class ProfileTab extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'No name registered',
-                  style: TextStyle(
+                Text(
+                  name != null ? '$name.rst' : 'No name registered',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -55,7 +96,7 @@ class ProfileTab extends StatelessWidget {
                 const SizedBox(height: 4),
                 GestureDetector(
                   onTap: () {
-                    Clipboard.setData(ClipboardData(text: address));
+                    Clipboard.setData(ClipboardData(text: _address));
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Address copied')),
                     );
@@ -88,15 +129,9 @@ class ProfileTab extends StatelessWidget {
           _SectionHeader(label: 'Identity'),
           _SettingsTile(
             icon: Icons.badge_outlined,
-            label: 'Register a Name',
-            subtitle: 'Claim your .rst name',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                    NameRegistrationScreen(address: address),
-              ),
-            ),
+            label: name != null ? 'Manage Name' : 'Register a Name',
+            subtitle: name != null ? '$name.rst' : 'Claim your .rst name',
+            onTap: _openNameScreen,
           ),
 
           const SizedBox(height: 16),

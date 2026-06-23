@@ -71,8 +71,11 @@ class _HomeTabState extends State<HomeTab> {
         await storage.delete(key: _storageKey);
       }
       if (mounted) setState(() => _ownedName = stillOwned ? stored : null);
-    } catch (_) {
-      // silent — keep showing whatever we had
+    } catch (e) {
+      // Don't clear the header on a transient error, but don't fail silently
+      // either — a swallowed decode error here is exactly what hid the
+      // AccountId32 bug. Surface it to the log.
+      debugPrint('resolveOwnedName failed: $e');
     }
   }
 

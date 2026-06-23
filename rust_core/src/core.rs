@@ -84,9 +84,53 @@ fn submit_typed<Call: subxt::tx::Payload>(
             .await
             .map_err(|e| e.to_string())?;
         let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
-        let hash = signed.submit().await.map_err(|e| e.to_string())?;
-        Ok(format!("{:?}", hash))
+        submit_signed_watched(signed).await
     })
+}
+
+/// Submit an already-signed transaction and wait until it is included in a best
+/// block, then confirm it actually dispatched (`System.ExtrinsicSuccess` vs
+/// `ExtrinsicFailed`). Unlike a bare `.submit()` — which returns the moment the
+/// tx is accepted into the pool, so a failed dispatch looks identical to a
+/// successful one — this surfaces the real `DispatchError`. Stops at
+/// in-best-block (not finalization) so it does not hang on a chain that
+/// finalizes slowly; 60s safety timeout so a stuck tx returns an error instead
+/// of blocking the UI forever.
+async fn submit_signed_watched(
+    signed: subxt::tx::SubmittableTransaction<
+        RostroConfig,
+        subxt::client::OnlineClientAtBlockImpl<RostroConfig>,
+    >,
+) -> Result<String, String> {
+    use subxt::tx::TransactionStatus;
+    let mut progress = signed.submit_and_watch().await.map_err(|e| e.to_string())?;
+    let watch = async {
+        while let Some(status) = progress.next().await {
+            match status.map_err(|e| e.to_string())? {
+                TransactionStatus::InBestBlock(in_block)
+                | TransactionStatus::InFinalizedBlock(in_block) => {
+                    // Errors here carry the dispatch error (e.g. an insufficient
+                    // deposit reserve) instead of a false success.
+                    in_block.wait_for_success().await.map_err(|e| e.to_string())?;
+                    return Ok(format!("{:?}", in_block.extrinsic_hash()));
+                }
+                TransactionStatus::Error { message } => {
+                    return Err(format!("transaction error: {message}"))
+                }
+                TransactionStatus::Invalid { message } => {
+                    return Err(format!("invalid transaction: {message}"))
+                }
+                TransactionStatus::Dropped { message } => {
+                    return Err(format!("transaction dropped: {message}"))
+                }
+                _ => {} // Validated / Broadcasted / NoLongerInBestBlock — keep waiting
+            }
+        }
+        Err("transaction stream ended before inclusion".to_string())
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(60), watch)
+        .await
+        .map_err(|_| "timed out waiting for transaction inclusion (60s)".to_string())?
 }
 
 #[flutter_rust_bridge::frb(ignore)]
@@ -407,8 +451,7 @@ pub fn send_dot(
             .await
             .map_err(|e| e.to_string())?;
         let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
-        let hash = signed.submit().await.map_err(|e| e.to_string())?;
-        Ok(format!("{:?}", hash))
+        submit_signed_watched(signed).await
     })
 }
 
@@ -511,33 +554,18 @@ pub fn get_name_price(name: String, rpc_url: String) -> Result<String, String> {
 }
 
 pub fn register_name(name: String, phrase: String, rpc_url: String) -> Result<String, String> {
-    let (pair, _) = sr25519::Pair::from_phrase(&phrase, None)
-        .map_err(|e| format!("Keypair error: {:?}", e))?;
-
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
-    rt.block_on(async {
-        let api = connect_rostro(&rpc_url).await?;
-
-        let signer = Sr25519Signer(pair);
-        let name_bytes = name.into_bytes();
-
-        // RnsRegistrar.register(name, reject_offer): owner is always the signer
-        // now (the runtime dropped the explicit-owner arg). `None` = don't reject
-        // any pending offered name first.
-        let tx = polkadot::tx()
-            .rns_registrar()
-            .register(name_bytes, None);
-
-        let hash = api
-            .tx()
-            .await
-            .map_err(|e| e.to_string())?
-            .sign_and_submit_default(&tx, &signer)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        Ok(format!("{:?}", hash))
-    })
+    // RnsRegistrar.register(name, reject_offer): owner is always the signer now
+    // (the runtime dropped the explicit-owner arg). `None` = don't reject any
+    // pending offered name first.
+    //
+    // Routes through `submit_typed` like every other RNS write (buy_name, etc.):
+    // it uses the immortal-era + best-block-nonce path. The old
+    // `sign_and_submit_default` here built a MORTAL era anchored at the finalized
+    // head, which reads as ancient on a chain that isn't finalizing (the lab rig's
+    // small validator set) -> Invalid Transaction (1010), so registration failed
+    // on-device while reads worked fine.
+    submit_typed(&phrase, &rpc_url,
+        polkadot::tx().rns_registrar().register(name.into_bytes(), None))
 }
 
 // ─── Phase 1: chat-identity records (typed RNS CHAT + MESSAGE) ───────────────
@@ -1639,8 +1667,7 @@ pub fn submit_set_mime_wrap_vk(
             .create_signable(&tx, &account, rostro_tx_params(nonce))
             .await.map_err(|e| e.to_string())?;
         let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
-        let hash = signed.submit().await.map_err(|e| e.to_string())?;
-        Ok(format!("{:?}", hash))
+        submit_signed_watched(signed).await
     })
 }
 
@@ -1765,8 +1792,7 @@ pub fn submit_mint_cert_strongbox(
             .create_signable(&tx, &account, rostro_tx_params(nonce))
             .await.map_err(|e| e.to_string())?;
         let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
-        let hash = signed.submit().await.map_err(|e| e.to_string())?;
-        Ok(format!("{:?}", hash))
+        submit_signed_watched(signed).await
     })
 }
 
@@ -1852,8 +1878,7 @@ pub fn submit_self_discard_cert_mime_wrap(
             .create_signable(&tx, &account, rostro_tx_params(nonce))
             .await.map_err(|e| e.to_string())?;
         let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
-        let hash = signed.submit().await.map_err(|e| e.to_string())?;
-        Ok(format!("{:?}", hash))
+        submit_signed_watched(signed).await
     })
 }
 
