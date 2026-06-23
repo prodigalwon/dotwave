@@ -201,6 +201,88 @@ pub struct TxAction {
     pub recipient: String,
 }
 
+/// Estimate the network fee (in planck) for a write action, without the user's
+/// phrase. The fee depends only on the call's weight + encoded length, not the
+/// signer, so we sign with a dev key purely to produce a correctly-sized signed
+/// extrinsic and query `TransactionPaymentApi_query_info`.
+pub fn estimate_fee(action: TxAction, rpc_url: String) -> Result<String, String> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    rt.block_on(async { Ok(estimate_action_fee(&action, &rpc_url).await?.to_string()) })
+}
+
+async fn estimate_action_fee(action: &TxAction, rpc_url: &str) -> Result<u128, String> {
+    match action.kind {
+        TxActionKind::Send => {
+            let amount: u128 =
+                action.amount_planck.parse().map_err(|_| "Invalid amount".to_string())?;
+            let dest =
+                AccountId32::from_str(&action.to).map_err(|e| format!("Invalid address: {e}"))?;
+            estimate_call(
+                rpc_url,
+                polkadot::tx().balances().transfer_keep_alive(MultiAddress::Id(dest), amount),
+            )
+            .await
+        }
+        TxActionKind::RegisterName => {
+            estimate_call(
+                rpc_url,
+                polkadot::tx().rns_registrar().register(action.name.clone().into_bytes(), None),
+            )
+            .await
+        }
+        TxActionKind::TransferName => {
+            let dest =
+                AccountId32::from_str(&action.to).map_err(|e| format!("Invalid address: {e}"))?;
+            estimate_call(rpc_url, polkadot::tx().rns_registrar().transfer(MultiAddress::Id(dest)))
+                .await
+        }
+        TxActionKind::ReleaseName => {
+            estimate_call(rpc_url, polkadot::tx().rns_registrar().release_name()).await
+        }
+        TxActionKind::RenewName => {
+            estimate_call(rpc_url, polkadot::tx().rns_registrar().renew()).await
+        }
+        TxActionKind::BuyName => {
+            estimate_call(
+                rpc_url,
+                polkadot::tx().rns_marketplace().buy_name(action.name.clone().into_bytes(), None),
+            )
+            .await
+        }
+        TxActionKind::BuyNameFor => {
+            let dest = AccountId32::from_str(&action.recipient)
+                .map_err(|e| format!("Invalid recipient: {e}"))?;
+            estimate_call(
+                rpc_url,
+                polkadot::tx().rns_marketplace().buy_name(action.name.clone().into_bytes(), Some(dest)),
+            )
+            .await
+        }
+    }
+}
+
+async fn estimate_call<Call: subxt::tx::Payload>(
+    rpc_url: &str,
+    tx: Call,
+) -> Result<u128, String> {
+    let pair = sr25519::Pair::from_string("//Alice", None)
+        .map_err(|e| format!("Keypair error: {e:?}"))?;
+    let (api, rpc) = connect_rostro_with_rpc(rpc_url).await?;
+    let signer = Sr25519Signer(pair);
+    let account = <Sr25519Signer as subxt::tx::Signer<RostroConfig>>::account_id(&signer);
+    let nonce = fetch_best_nonce(&rpc, &account).await.unwrap_or(0);
+    let mut tx_client = api.tx().await.map_err(|e| e.to_string())?;
+    let mut signable = tx_client
+        .create_signable(&tx, &account, rostro_tx_params(nonce))
+        .await
+        .map_err(|e| e.to_string())?;
+    let signed = signable.sign(&signer).map_err(|e| e.to_string())?;
+    signed.partial_fee_estimate().await.map_err(|e| e.to_string())
+}
+
 /// Submit a write action and stream its progress. Always returns `Ok(())`; every
 /// outcome (including errors) is delivered through `sink` as a [`TxUpdate`].
 pub fn submit_action(

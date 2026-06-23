@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 2122169839;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 338571728;
 
 // Section: executor
 
@@ -1568,6 +1568,40 @@ fn wire__crate__core__encrypt_phrase_impl(
                 let output_ok = crate::core::encrypt_phrase(api_phrase, api_passphrase)?;
                 Ok(output_ok)
             })())
+        },
+    )
+}
+fn wire__crate__core__estimate_fee_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "estimate_fee",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_action = <crate::core::TxAction>::sse_decode(&mut deserializer);
+            let api_rpc_url = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::core::estimate_fee(api_action, api_rpc_url)?;
+                    Ok(output_ok)
+                })())
+            }
         },
     )
 }
@@ -3917,69 +3951,70 @@ fn pde_ffi_dispatcher_primary_impl(
             data_len,
         ),
         39 => wire__crate__core__dev_cert_seed_hex_impl(port, ptr, rust_vec_len, data_len),
-        41 => {
+        41 => wire__crate__core__estimate_fee_impl(port, ptr, rust_vec_len, data_len),
+        42 => {
             wire__crate__core__extract_sec1_from_x509_leaf_impl(port, ptr, rust_vec_len, data_len)
         }
-        42 => wire__crate__core__fetch_asset_balance_impl(port, ptr, rust_vec_len, data_len),
-        43 => wire__crate__core__fetch_balance_impl(port, ptr, rust_vec_len, data_len),
-        44 => wire__crate__core__fetch_zkpki_offer_nonce_impl(port, ptr, rust_vec_len, data_len),
-        46 => wire__crate__mime_wrap_client__generate_mime_wrap_signing_proof_impl(
+        43 => wire__crate__core__fetch_asset_balance_impl(port, ptr, rust_vec_len, data_len),
+        44 => wire__crate__core__fetch_balance_impl(port, ptr, rust_vec_len, data_len),
+        45 => wire__crate__core__fetch_zkpki_offer_nonce_impl(port, ptr, rust_vec_len, data_len),
+        47 => wire__crate__mime_wrap_client__generate_mime_wrap_signing_proof_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        48 => wire__crate__core__get_name_listing_impl(port, ptr, rust_vec_len, data_len),
-        49 => wire__crate__core__get_name_price_impl(port, ptr, rust_vec_len, data_len),
-        50 => wire__crate__core__has_canonical_name_impl(port, ptr, rust_vec_len, data_len),
-        51 => wire__crate__core__lookup_records_impl(port, ptr, rust_vec_len, data_len),
-        52 => wire__crate__core__offer_subdomain_impl(port, ptr, rust_vec_len, data_len),
-        53 => wire__crate__mime_wrap_client__prepare_mime_wrap_setup_impl(
+        49 => wire__crate__core__get_name_listing_impl(port, ptr, rust_vec_len, data_len),
+        50 => wire__crate__core__get_name_price_impl(port, ptr, rust_vec_len, data_len),
+        51 => wire__crate__core__has_canonical_name_impl(port, ptr, rust_vec_len, data_len),
+        52 => wire__crate__core__lookup_records_impl(port, ptr, rust_vec_len, data_len),
+        53 => wire__crate__core__offer_subdomain_impl(port, ptr, rust_vec_len, data_len),
+        54 => wire__crate__mime_wrap_client__prepare_mime_wrap_setup_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        54 => wire__crate__personhood__query_pop_cert_impl(port, ptr, rust_vec_len, data_len),
-        55 => wire__crate__core__register_name_impl(port, ptr, rust_vec_len, data_len),
-        56 => wire__crate__core__register_name_for_impl(port, ptr, rust_vec_len, data_len),
-        57 => wire__crate__core__reject_subdomain_impl(port, ptr, rust_vec_len, data_len),
-        58 => wire__crate__core__release_name_impl(port, ptr, rust_vec_len, data_len),
-        59 => wire__crate__core__release_subdomain_impl(port, ptr, rust_vec_len, data_len),
-        60 => wire__crate__core__renew_name_impl(port, ptr, rust_vec_len, data_len),
-        61 => wire__crate__core__resolve_address_to_name_impl(port, ptr, rust_vec_len, data_len),
-        62 => wire__crate__core__resolve_name_verified_impl(port, ptr, rust_vec_len, data_len),
-        64 => wire__crate__core__revoke_subdomain_impl(port, ptr, rust_vec_len, data_len),
-        65 => wire__crate__core__send_dot_impl(port, ptr, rust_vec_len, data_len),
-        66 => wire__crate__core__set_record_impl(port, ptr, rust_vec_len, data_len),
-        67 => wire__crate__core__set_text_impl(port, ptr, rust_vec_len, data_len),
-        68 => wire__crate__core__submit_action_impl(port, ptr, rust_vec_len, data_len),
-        69 => wire__crate__personhood__submit_discard_pop_impl(port, ptr, rust_vec_len, data_len),
-        70 => wire__crate__core__submit_mint_cert_strongbox_impl(port, ptr, rust_vec_len, data_len),
-        71 => wire__crate__personhood__submit_mint_pop_impl(port, ptr, rust_vec_len, data_len),
-        72 => wire__crate__core__submit_self_discard_cert_mime_wrap_impl(
+        55 => wire__crate__personhood__query_pop_cert_impl(port, ptr, rust_vec_len, data_len),
+        56 => wire__crate__core__register_name_impl(port, ptr, rust_vec_len, data_len),
+        57 => wire__crate__core__register_name_for_impl(port, ptr, rust_vec_len, data_len),
+        58 => wire__crate__core__reject_subdomain_impl(port, ptr, rust_vec_len, data_len),
+        59 => wire__crate__core__release_name_impl(port, ptr, rust_vec_len, data_len),
+        60 => wire__crate__core__release_subdomain_impl(port, ptr, rust_vec_len, data_len),
+        61 => wire__crate__core__renew_name_impl(port, ptr, rust_vec_len, data_len),
+        62 => wire__crate__core__resolve_address_to_name_impl(port, ptr, rust_vec_len, data_len),
+        63 => wire__crate__core__resolve_name_verified_impl(port, ptr, rust_vec_len, data_len),
+        65 => wire__crate__core__revoke_subdomain_impl(port, ptr, rust_vec_len, data_len),
+        66 => wire__crate__core__send_dot_impl(port, ptr, rust_vec_len, data_len),
+        67 => wire__crate__core__set_record_impl(port, ptr, rust_vec_len, data_len),
+        68 => wire__crate__core__set_text_impl(port, ptr, rust_vec_len, data_len),
+        69 => wire__crate__core__submit_action_impl(port, ptr, rust_vec_len, data_len),
+        70 => wire__crate__personhood__submit_discard_pop_impl(port, ptr, rust_vec_len, data_len),
+        71 => wire__crate__core__submit_mint_cert_strongbox_impl(port, ptr, rust_vec_len, data_len),
+        72 => wire__crate__personhood__submit_mint_pop_impl(port, ptr, rust_vec_len, data_len),
+        73 => wire__crate__core__submit_self_discard_cert_mime_wrap_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        73 => wire__crate__core__submit_set_mime_wrap_vk_impl(port, ptr, rust_vec_len, data_len),
-        74 => wire__crate__personhood__submit_srt_set_csca_root_impl(
+        74 => wire__crate__core__submit_set_mime_wrap_vk_impl(port, ptr, rust_vec_len, data_len),
+        75 => wire__crate__personhood__submit_srt_set_csca_root_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        75 => wire__crate__personhood__submit_srt_set_seats_root_impl(
+        76 => wire__crate__personhood__submit_srt_set_seats_root_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        76 => wire__crate__personhood__submit_srt_set_vk_impl(port, ptr, rust_vec_len, data_len),
-        77 => wire__crate__core__transfer_name_impl(port, ptr, rust_vec_len, data_len),
-        78 => wire__crate__core__verify_name_ownership_impl(port, ptr, rust_vec_len, data_len),
-        79 => wire__crate__core__vote_on_referendum_impl(port, ptr, rust_vec_len, data_len),
+        77 => wire__crate__personhood__submit_srt_set_vk_impl(port, ptr, rust_vec_len, data_len),
+        78 => wire__crate__core__transfer_name_impl(port, ptr, rust_vec_len, data_len),
+        79 => wire__crate__core__verify_name_ownership_impl(port, ptr, rust_vec_len, data_len),
+        80 => wire__crate__core__vote_on_referendum_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3999,14 +4034,14 @@ fn pde_ffi_dispatcher_sync_impl(
         34 => wire__crate__core__check_passphrase_strength_impl(ptr, rust_vec_len, data_len),
         37 => wire__crate__core__decrypt_phrase_impl(ptr, rust_vec_len, data_len),
         40 => wire__crate__core__encrypt_phrase_impl(ptr, rust_vec_len, data_len),
-        45 => wire__crate__core__generate_account_impl(ptr, rust_vec_len, data_len),
-        47 => wire__crate__totp_enrollment__generate_totp_seed_protected_impl(
+        46 => wire__crate__core__generate_account_impl(ptr, rust_vec_len, data_len),
+        48 => wire__crate__totp_enrollment__generate_totp_seed_protected_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        63 => wire__crate__core__restore_account_impl(ptr, rust_vec_len, data_len),
-        80 => wire__crate__totp_enrollment__zeroize_bytes_impl(ptr, rust_vec_len, data_len),
+        64 => wire__crate__core__restore_account_impl(ptr, rust_vec_len, data_len),
+        81 => wire__crate__totp_enrollment__zeroize_bytes_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

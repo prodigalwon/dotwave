@@ -142,7 +142,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
               '${recipient.substring(0, 6)}'
               '...${recipient.substring(recipient.length - 4)}'),
         ],
-        costLabel: 'Registration Fee',
+        costLabel: 'Name Registration',
         loadCost: () => RustLib.instance.api
             .crateCoreGetNamePrice(name: name, rpcUrl: _rpcUrl),
         preflightCheck: () async {
@@ -468,7 +468,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
                             rows: [
                               TxRow('Name', '$name.rst'),
                             ],
-                            costLabel: 'Registration Fee',
+                            costLabel: 'Name Registration',
                             loadCost: () =>
                                 RustLib.instance.api.crateCoreGetNamePrice(
                               name: name,

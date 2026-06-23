@@ -6,9 +6,18 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `confirmed`, `connect_rostro_with_rpc`, `connect_rostro`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `dispatch_action`, `encode_record_type`, `failed`, `fetch_best_nonce`, `fetch_root_thumbprint`, `hex_encode_lower`, `rostro_tx_params`, `run_streamed`, `submit_signed_watched`, `submit_typed`, `submitted`
+// These functions are ignored because they are not marked as `pub`: `confirmed`, `connect_rostro_with_rpc`, `connect_rostro`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `dispatch_action`, `encode_record_type`, `estimate_action_fee`, `estimate_call`, `failed`, `fetch_best_nonce`, `fetch_root_thumbprint`, `hex_encode_lower`, `rostro_tx_params`, `run_streamed`, `submit_signed_watched`, `submit_typed`, `submitted`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Sr25519Signer`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `fmt`, `sign`
+
+/// Estimate the network fee (in planck) for a write action, without the user's
+/// phrase. The fee depends only on the call's weight + encoded length, not the
+/// signer, so we sign with a dev key purely to produce a correctly-sized signed
+/// extrinsic and query `TransactionPaymentApi_query_info`.
+Future<String> estimateFee({
+  required TxAction action,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreEstimateFee(action: action, rpcUrl: rpcUrl);
 
 /// Submit a write action and stream its progress. Always returns `Ok(())`; every
 /// outcome (including errors) is delivered through `sink` as a [`TxUpdate`].

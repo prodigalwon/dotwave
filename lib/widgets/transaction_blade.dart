@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
-import '../bridge/bridge_generated.dart/core.dart' show TxAction;
+import '../bridge/bridge_generated.dart/core.dart' show TxAction, estimateFee;
 import '../services/transaction_tracker.dart';
 import 'package:flutter/foundation.dart';
 
@@ -118,6 +118,8 @@ class _TransactionBladeState extends State<TransactionBlade>
 
   String? _costRaw;
   bool _loadingCost = false;
+  String? _feeRaw; // estimated network fee in planck (tracked path)
+  bool _loadingFee = false;
   final _passphraseController = TextEditingController();
   bool _passphraseObscured = true;
   _BladeState _state = _BladeState.idle;
@@ -131,6 +133,7 @@ class _TransactionBladeState extends State<TransactionBlade>
   void initState() {
     super.initState();
     if (widget.loadCost != null) _loadCost();
+    if (widget.txAction != null) _loadFee();
   }
 
   @override
@@ -150,6 +153,16 @@ class _TransactionBladeState extends State<TransactionBlade>
     }
   }
 
+  Future<void> _loadFee() async {
+    setState(() => _loadingFee = true);
+    try {
+      final fee = await estimateFee(action: widget.txAction!, rpcUrl: widget.rpcUrl);
+      if (mounted) setState(() { _feeRaw = fee; _loadingFee = false; });
+    } catch (_) {
+      if (mounted) setState(() { _feeRaw = null; _loadingFee = false; });
+    }
+  }
+
   String _formatDot(String planck) {
     final value = BigInt.parse(planck);
     final divisor = BigInt.from(10).pow(_dotDecimals);
@@ -158,6 +171,44 @@ class _TransactionBladeState extends State<TransactionBlade>
         .toString()
         .padLeft(3, '0');
     return '$whole.$frac RST';
+  }
+
+  /// Higher-precision formatter for the network fee (6 decimals) so a small fee
+  /// isn't rounded to 0.000.
+  String _formatFee(String planck) {
+    final value = BigInt.parse(planck);
+    final divisor = BigInt.from(10).pow(_dotDecimals);
+    final whole = value ~/ divisor;
+    final frac = ((value % divisor) * BigInt.from(1000000) ~/ divisor)
+        .toString()
+        .padLeft(6, '0');
+    return '$whole.$frac RST';
+  }
+
+  /// price (loadCost) + estimated network fee, in planck.
+  String? get _totalRaw {
+    final p = _costRaw != null ? BigInt.tryParse(_costRaw!) : null;
+    final f = _feeRaw != null ? BigInt.tryParse(_feeRaw!) : null;
+    if (p == null && f == null) return null;
+    return ((p ?? BigInt.zero) + (f ?? BigInt.zero)).toString();
+  }
+
+  Widget _costRow(String label, bool loading, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 14)),
+        loading
+            ? const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(color: Colors.white38, strokeWidth: 2),
+              )
+            : Text(value,
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+      ],
+    );
   }
 
   Future<void> _onSubmit() async {
@@ -390,32 +441,23 @@ class _TransactionBladeState extends State<TransactionBlade>
                   const Divider(color: Colors.white12),
                   const SizedBox(height: 16),
 
-                  // Cost section
-                  if (widget.loadCost != null) ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(widget.costLabel,
-                            style: const TextStyle(color: Colors.white54, fontSize: 14)),
-                        _loadingCost
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                    color: Colors.white38, strokeWidth: 2),
-                              )
-                            : Text(
-                                _costRaw != null ? _formatDot(_costRaw!) : '—',
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-                              ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'plus network transaction fees',
-                      style: TextStyle(color: Colors.white38, fontSize: 12),
-                    ),
+                  // Cost section — shown when there's a price (loadCost) and/or
+                  // a tracked action we can estimate the network fee for.
+                  if (widget.loadCost != null || widget.txAction != null) ...[
+                    if (widget.loadCost != null)
+                      _costRow(
+                        widget.costLabel,
+                        _loadingCost,
+                        _costRaw != null ? _formatDot(_costRaw!) : '—',
+                      ),
+                    if (widget.txAction != null) ...[
+                      if (widget.loadCost != null) const SizedBox(height: 8),
+                      _costRow(
+                        'Network Fee',
+                        _loadingFee,
+                        _feeRaw != null ? _formatFee(_feeRaw!) : '—',
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -424,7 +466,7 @@ class _TransactionBladeState extends State<TransactionBlade>
                             style: TextStyle(
                                 color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
                         Text(
-                          _costRaw != null ? _formatDot(_costRaw!) : '—',
+                          _totalRaw != null ? _formatFee(_totalRaw!) : '—',
                           style: const TextStyle(
                               color: Color(0xFFE6007A),
                               fontSize: 15,
