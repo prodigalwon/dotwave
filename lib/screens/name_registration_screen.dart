@@ -135,7 +135,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
         transactionType: 'Name Registration (Gift)',
         rpcUrl: _rpcUrl,
         rows: [
-          TxRow('Name', '$name.dot'),
+          TxRow('Name', '$name.rst'),
           TxRow(
               'Recipient',
               '${recipient.substring(0, 6)}'
@@ -151,7 +151,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
           final existing = await RustLib.instance.api
               .crateCoreResolveAddressToName(
                   address: recipient, rpcUrl: _rpcUrl);
-          if (existing != null) return 'Recipient already owns $existing.dot';
+          if (existing != null) return 'Recipient already owns $existing.rst';
           return null;
         },
         onConfirm: (phrase) => RustLib.instance.api.crateCoreRegisterNameFor(
@@ -249,7 +249,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
             transactionType: 'Name Purchase',
             rpcUrl: _rpcUrl,
             rows: [
-              TxRow('Name', '$name.dot'),
+              TxRow('Name', '$name.rst'),
               TxRow(
                   'Seller',
                   '${listing.seller.substring(0, 6)}'
@@ -315,7 +315,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Search for a .dot name to register on the Polkadot network.',
+                'Search for a .rst name to register on Rostro.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Colors.white60,
                     ),
@@ -425,7 +425,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'You already own $_ownedName.dot',
+                            'You already own $_ownedName.rst',
                             style: const TextStyle(
                                 color: Colors.orange, fontSize: 13),
                           ),
@@ -466,7 +466,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
                             transactionType: 'Name Registration',
                             rpcUrl: _rpcUrl,
                             rows: [
-                              TxRow('Name', '$name.dot'),
+                              TxRow('Name', '$name.rst'),
                             ],
                             costLabel: 'Registration Fee',
                             loadCost: () =>
@@ -486,7 +486,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
                                       address: widget.address,
                                       rpcUrl: _rpcUrl);
                               if (existing != null) {
-                                return 'You already own $existing.dot';
+                                return 'You already own $existing.rst';
                               }
                               return null;
                             },
@@ -607,16 +607,16 @@ class _ForSaleDialog extends StatelessWidget {
 
   const _ForSaleDialog({required this.name, required this.listing});
 
-  static const _dotDecimals = 12;
+  static const _rstDecimals = 12;
 
-  String _formatDot(String planck) {
+  String _formatRst(String planck) {
     final value = BigInt.parse(planck);
-    final divisor = BigInt.from(10).pow(_dotDecimals);
+    final divisor = BigInt.from(10).pow(_rstDecimals);
     final whole = value ~/ divisor;
     final frac = ((value % divisor) * BigInt.from(1000) ~/ divisor)
         .toString()
         .padLeft(3, '0');
-    return '$whole.$frac DOT';
+    return '$whole.$frac RST';
   }
 
   @override
@@ -636,7 +636,7 @@ class _ForSaleDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '$name.dot',
+              '$name.rst',
               style: const TextStyle(
                   color: Colors.white,
                   fontSize: 22,
@@ -648,7 +648,7 @@ class _ForSaleDialog extends StatelessWidget {
             const SizedBox(height: 20),
             const Divider(color: Colors.white12),
             const SizedBox(height: 16),
-            _row('Asking Price', _formatDot(listing.price),
+            _row('Asking Price', _formatRst(listing.price),
                 valueColor: const Color(0xFFE6007A)),
             const SizedBox(height: 10),
             _row('Seller', truncatedSeller),
@@ -760,7 +760,7 @@ class _SearchForFunBlade extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    "You're $ownedName.dot",
+                    "You're $ownedName.rst",
                     style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
@@ -950,7 +950,7 @@ class _GiftNameBladeState extends State<_GiftNameBlade> {
                   const SizedBox(height: 20),
                   Center(
                     child: Text(
-                      'Register ${widget.name}.dot for someone else',
+                      'Register ${widget.name}.rst for someone else',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                           color: Colors.white,
@@ -961,7 +961,7 @@ class _GiftNameBladeState extends State<_GiftNameBlade> {
                   const SizedBox(height: 6),
                   Center(
                     child: Text(
-                      "You're ${widget.ownedName}.dot",
+                      "You're ${widget.ownedName}.rst",
                       style: const TextStyle(
                           color: Colors.white54, fontSize: 14),
                     ),
@@ -1046,7 +1046,7 @@ class _GiftNameBladeState extends State<_GiftNameBlade> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'This address already owns $_takenByName.dot',
+                              'This address already owns $_takenByName.rst',
                               style: const TextStyle(
                                   color: Colors.orange, fontSize: 13),
                             ),

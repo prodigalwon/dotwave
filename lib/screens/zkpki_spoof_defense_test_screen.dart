@@ -23,6 +23,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../bridge/bridge_generated.dart/core.dart' as bridge;
 import '../bridge/bridge_generated.dart/frb_generated.dart' show RustLib;
+import '../config/rpc_endpoints.dart';
 import '../services/zkpki_ceremony_service.dart';
 
 class ZkPkiSpoofDefenseTestScreen extends StatefulWidget {
@@ -44,9 +45,10 @@ class _ZkPkiSpoofDefenseTestScreenState
   ZkPkiCeremonyResult? _lastCeremony;
 
   // ── Stage 4c state ─────────────────────────────────────────────
-  /// Target paseo-node dev URL. Default points at local dev mode.
+  /// Target Rostro node dev URL. Defaults to the local Rostro lab node
+  /// ([RpcEndpoints.chain]); editable for pointing at another lab node.
   final TextEditingController _rpcUrlController =
-      TextEditingController(text: 'ws://127.0.0.1:9944');
+      TextEditingController(text: RpcEndpoints.chain);
   /// Signer seed phrase for submitting extrinsics. Default is Alice
   /// (dev-mode sudo + funded account).
   final TextEditingController _phraseController =
@@ -60,8 +62,8 @@ class _ZkPkiSpoofDefenseTestScreenState
   // ── Stage 5e cert lifecycle inputs ─────────────────────────────
   /// `contract_nonce` — 32-byte hex from the issuer's `offerContract`
   /// `ContractOffered` event. Issuer-side admin work happens off-device
-  /// (polkadot-js or the Stage 5d driver); this field is where the
-  /// operator pastes the result.
+  /// (the Stage 5d driver); this field is where the operator pastes the
+  /// result.
   final TextEditingController _contractNonceController = TextEditingController();
   /// `offer_created_at_block` — u32 block number of the same offerContract
   /// extrinsic. Decimal, no `0x`.
@@ -150,7 +152,7 @@ class _ZkPkiSpoofDefenseTestScreenState
         'bindingProofContext="${result.bindingProofContext}"',
         'certKeyAlias="${result.certKeyAlias}"',
         '',
-        '── Raw bytes (hex) for paseo-runtime mint_cert payload ──',
+        '── Raw bytes (hex) for Rostro-runtime mint_cert payload ──',
         'challenge          = 0x${_bytesHex(challenge)}',
         'cert_ec_public     = 0x${_bytesHex(result.publicKeyBytes)}',
         'hmac_binding_out   = 0x${_bytesHex(result.hmacBindingOutput)}',
@@ -446,9 +448,9 @@ class _ZkPkiSpoofDefenseTestScreenState
   /// Stage 4c.1: Run the one-time in-Rust trusted setup for the mime-wrap
   /// circuit. Produces a (pk, vk) pair from a deterministic RNG — the pk
   /// is cached in Rust process memory for subsequent proof-gen calls, and
-  /// the vk hex is surfaced here for Tony to paste into polkadot-js +
+  /// the vk hex is surfaced here to paste into the Stage 5d driver and
   /// submit via `Sudo.sudo(ZkPkiMimeWrap.set_verifying_key(...))` on
-  /// paseo-node.
+  /// the Rostro node.
   ///
   /// First call does the heavy work (30-60s on S20 expected); subsequent
   /// calls hit the cache and return in milliseconds.
@@ -493,7 +495,7 @@ class _ZkPkiSpoofDefenseTestScreenState
 
       // Stage 5e: auto-submit `zkPki.set_mime_wrap_vk(vk)` if phrase + URL
       // fields are populated. Replaces the Stage 4c.1 "copy hex into
-      // polkadot-js" workflow now that the integrated pallet accepts a
+      // the Stage 5d driver" workflow now that the integrated pallet accepts a
       // signed extrinsic (no sudo needed in PoC trust model).
       if (result.success && _phraseController.text.trim().isNotEmpty) {
         try {
@@ -513,7 +515,7 @@ class _ZkPkiSpoofDefenseTestScreenState
             '── on-chain submit failed (paste VK manually instead) ──',
             'error: $e',
             '',
-            '── VK hex for manual install via polkadot-js ──',
+            '── VK hex for manual install via the Stage 5d driver ──',
             '0x${result.vkBytesHex}',
           ]);
         }
@@ -569,7 +571,7 @@ class _ZkPkiSpoofDefenseTestScreenState
   ///     was made to.
   ///
   /// On success the cert thumbprint is read off the `CertMinted` event
-  /// (operator-side via polkadot-js for now) and pasted into the
+  /// (operator-side via the Stage 5d driver for now) and pasted into the
   /// thumbprint field for the next step.
   Future<void> _runMintCert() async {
     if (_busy) return;
@@ -687,7 +689,7 @@ class _ZkPkiSpoofDefenseTestScreenState
           'cert_ec SEC1  = 0x${_bytesHex(certEcSec1)}',
           'attest SEC1   = 0x${_bytesHex(attestEcSec1)}',
           '',
-          'Read CertMinted event from polkadot-js → System → Events to',
+          'Read CertMinted event from the chain (System → Events) to',
           'pick up the cert thumbprint, then paste into the field above.',
         ].join('\n'),
         elapsed: DateTime.now().difference(started),
@@ -1216,7 +1218,7 @@ class _LogEntry {
 }
 
 /// Stage 4c end-to-end panel: RPC URL + signer phrase inputs, plus the
-/// register + sign buttons that exercise the paseo-node extrinsics.
+/// register + sign buttons that exercise the Rostro node extrinsics.
 ///
 /// Laid out compactly under the probe-button row so the log area stays
 /// visible for reading results as tests run. Not a shipping-UI surface.
@@ -1270,7 +1272,7 @@ class _Stage4cPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'Stage 4c: end-to-end against paseo-node',
+            'Stage 4c: end-to-end against the Rostro node',
             style: TextStyle(
               color: Color(0xFF10B981),
               fontSize: 12,

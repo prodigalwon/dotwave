@@ -128,7 +128,7 @@ class _TransactionBladeState extends State<TransactionBlade> {
     final frac = ((value % divisor) * BigInt.from(1000) ~/ divisor)
         .toString()
         .padLeft(3, '0');
-    return '$whole.$frac DOT';
+    return '$whole.$frac RST';
   }
 
   Future<void> _onSubmit() async {

@@ -64,7 +64,8 @@ bool _isActiveReferendum(String status) {
 
 class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
   static const _base = 'https://polkadot-api.subsquare.io';
-  static const _mainnetRpc = RpcEndpoints.polkadotMainnet;
+  // DORMANT: governance is hidden pending a Rostro referendum indexer.
+  static const _mainnetRpc = RpcEndpoints.governanceIndexer;
 
   String? _body;
   List<_Comment> _comments = [];

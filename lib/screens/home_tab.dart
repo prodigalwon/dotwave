@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../config/rpc_endpoints.dart';
-import 'governance_screen.dart';
-import 'tokens_screen.dart';
 import 'receive_screen.dart';
 import 'send_screen.dart';
 
@@ -18,22 +16,15 @@ class HomeTab extends StatefulWidget {
 
 class _HomeTabState extends State<HomeTab> {
   static const _rpcUrl = RpcEndpoints.pnsNode;
-  static const _assetHubRpc = RpcEndpoints.assetHub;
-  static const _dotDecimals = 12;
-  static const _stableDecimals = 6;
+  static const _rstDecimals = 12;
 
-  String? _balanceDot;
-  String? _balanceUsdt;
-  String? _balanceUsdc;
+  String? _balanceRst;
   bool _loadingBalance = true;
   String? _balanceError;
   DateTime? _lastRefreshed;
   Timer? _refreshTimer;
 
-  final PageController _pageController = PageController();
-  int _currentPage = 0;
-
-  String? _ownedName; // resolved PNS name without ".dot"
+  String? _ownedName; // resolved PNS name without ".rst"
   Timer? _namePoller;
 
   String get _refreshLabel {
@@ -107,23 +98,14 @@ class _HomeTabState extends State<HomeTab> {
   void dispose() {
     _refreshTimer?.cancel();
     _namePoller?.cancel();
-    _pageController.dispose();
     super.dispose();
   }
 
-  String _formatDot(String planckStr) {
+  String _formatRst(String planckStr) {
     final p = BigInt.parse(planckStr);
-    final d = BigInt.from(10).pow(_dotDecimals);
+    final d = BigInt.from(10).pow(_rstDecimals);
     final whole = p ~/ d;
     final frac = ((p % d) * BigInt.from(1000) ~/ d).toString().padLeft(3, '0');
-    return '$whole.$frac';
-  }
-
-  String _formatStable(String planckStr) {
-    final p = BigInt.parse(planckStr);
-    final d = BigInt.from(10).pow(_stableDecimals);
-    final whole = p ~/ d;
-    final frac = ((p % d) * BigInt.from(100) ~/ d).toString().padLeft(2, '0');
     return '$whole.$frac';
   }
 
@@ -133,38 +115,22 @@ class _HomeTabState extends State<HomeTab> {
       _balanceError = null;
     });
 
-    Future<String?> tryFetch(Future<String> f) async {
-      try { return await f; } catch (_) { return null; }
-    }
-
-    final results = await Future.wait([
-      tryFetch(RustLib.instance.api.crateCoreFetchBalance(
+    String? rstRaw;
+    try {
+      rstRaw = await RustLib.instance.api.crateCoreFetchBalance(
         address: widget.address,
         rpcUrl: _rpcUrl,
-      )),
-      tryFetch(RustLib.instance.api.crateCoreFetchAssetBalance(
-        address: widget.address,
-        assetHubRpc: _assetHubRpc,
-        assetId: 1984,
-      )),
-      tryFetch(RustLib.instance.api.crateCoreFetchAssetBalance(
-        address: widget.address,
-        assetHubRpc: _assetHubRpc,
-        assetId: 1337,
-      )),
-    ]);
+      );
+    } catch (_) {
+      rstRaw = null;
+    }
 
     if (!mounted) return;
-    final dotRaw = results[0];
-    final usdtRaw = results[1];
-    final usdcRaw = results[2];
 
     setState(() {
-      _balanceDot  = dotRaw  != null ? _formatDot(dotRaw)       : null;
-      _balanceUsdt = usdtRaw != null ? _formatStable(usdtRaw)   : null;
-      _balanceUsdc = usdcRaw != null ? _formatStable(usdcRaw)   : null;
+      _balanceRst = rstRaw != null ? _formatRst(rstRaw) : null;
       _loadingBalance = false;
-      if (dotRaw != null) {
+      if (rstRaw != null) {
         _lastRefreshed = DateTime.now();
       } else {
         _balanceError = 'Error: client appears to be offline';
@@ -237,18 +203,13 @@ class _HomeTabState extends State<HomeTab> {
 
                     const SizedBox(height: 32),
 
-                    // Balance carousel
+                    // Balance card
                     SizedBox(
                       height: 160,
-                      child: PageView.builder(
-                        controller: _pageController,
-                        itemCount: 3,
-                        onPageChanged: (i) => setState(() => _currentPage = i),
-                        itemBuilder: (_, i) {
-                          const tokens   = ['DOT', 'USDT', 'USDC'];
-                          final balances = [_balanceDot, _balanceUsdt, _balanceUsdc];
-                          final token   = tokens[i];
-                          final balance = balances[i];
+                      child: Builder(
+                        builder: (_) {
+                          const token   = 'RST';
+                          final balance = _balanceRst;
                           return GestureDetector(
                             onTap: _loadingBalance ? null : _fetchBalance,
                             child: Container(
@@ -330,28 +291,6 @@ class _HomeTabState extends State<HomeTab> {
                       ),
                     ),
 
-                    const SizedBox(height: 12),
-
-                    // Page indicators
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(3, (i) {
-                        final active = _currentPage == i;
-                        return AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          width: active ? 20 : 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: active
-                                ? const Color(0xFFE6007A)
-                                : Colors.white24,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        );
-                      }),
-                    ),
-
                     const SizedBox(height: 16),
 
                     // Quick actions
@@ -383,31 +322,6 @@ class _HomeTabState extends State<HomeTab> {
                                 ),
                               );
                             },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _QuickActionButton(
-                            icon: Icons.toll_outlined,
-                            label: 'Tokens',
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => TokensScreen(address: widget.address),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _QuickActionButton(
-                            icon: Icons.how_to_vote_outlined,
-                            label: 'Vote',
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const GovernanceScreen()),
-                            ),
                           ),
                         ),
                       ],

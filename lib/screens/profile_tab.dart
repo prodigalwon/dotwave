@@ -89,7 +89,7 @@ class ProfileTab extends StatelessWidget {
           _SettingsTile(
             icon: Icons.badge_outlined,
             label: 'Register a Name',
-            subtitle: 'Claim your .dot name',
+            subtitle: 'Claim your .rst name',
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(

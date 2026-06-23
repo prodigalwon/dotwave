@@ -15,7 +15,7 @@ class SendScreen extends StatefulWidget {
 
 class _SendScreenState extends State<SendScreen> {
   static const _rpcUrl = RpcEndpoints.pnsNode;
-  static const _dotDecimals = 12;
+  static const _rstDecimals = 12;
 
   final _recipientController = TextEditingController();
   final _amountController = TextEditingController();
@@ -28,8 +28,13 @@ class _SendScreenState extends State<SendScreen> {
   bool? _verified;
   String? _verifyError;
 
-  bool get _isDotName =>
-      _recipientController.text.trim().toLowerCase().endsWith('.dot');
+  bool get _isRstName =>
+      _recipientController.text.trim().toLowerCase().endsWith('.rst');
+
+  /// Recipient text with any trailing ".rst" stripped — PNS resolves by
+  /// the bare name, the suffix is display-only (matches the chat path).
+  String get _bareRecipientName =>
+      _recipientController.text.trim().replaceFirst(RegExp(r'\.rst$'), '');
 
   bool get _isSelf =>
       _effectiveRecipient.isNotEmpty &&
@@ -39,7 +44,7 @@ class _SendScreenState extends State<SendScreen> {
     final recipient = _recipientController.text.trim();
     final amount = _amountController.text.trim();
     if (recipient.isEmpty || amount.isEmpty) return false;
-    if (_isDotName && _resolved == null) return false;
+    if (_isRstName && _resolved == null) return false;
     if (_isSelf) return false;
     return true;
   }
@@ -66,7 +71,7 @@ class _SendScreenState extends State<SendScreen> {
   }
 
   Future<void> _lookupName() async {
-    final name = _recipientController.text.trim();
+    final name = _bareRecipientName;
     setState(() {
       _resolvingName = true;
       _recipientError = null;
@@ -106,7 +111,7 @@ class _SendScreenState extends State<SendScreen> {
     setState(() { _verifying = true; _verifyError = null; });
     try {
       final ok = await RustLib.instance.api.crateCoreVerifyNameOwnership(
-        name: _recipientController.text.trim(),
+        name: _bareRecipientName,
         blockHashHex: resolved.blockHash,
         expectedOwner: resolved.owner,
         rpcUrl: _rpcUrl,
@@ -129,31 +134,31 @@ class _SendScreenState extends State<SendScreen> {
 
   String _formatPlanck(String planck) {
     final value = BigInt.parse(planck);
-    final divisor = BigInt.from(10).pow(_dotDecimals);
+    final divisor = BigInt.from(10).pow(_rstDecimals);
     final whole = value ~/ divisor;
     final frac = ((value % divisor) * BigInt.from(1000) ~/ divisor)
         .toString()
         .padLeft(3, '0');
-    return '$whole.$frac DOT';
+    return '$whole.$frac RST';
   }
 
   String _truncate(String address) =>
       '${address.substring(0, 8)}...${address.substring(address.length - 6)}';
 
-  BigInt? _parseDotAmount(String input) {
+  BigInt? _parseRstAmount(String input) {
     try {
       final parts = input.split('.');
       final whole = BigInt.parse(parts[0]);
       final frac = parts.length > 1 ? parts[1] : '';
-      final fracPadded = frac.padRight(_dotDecimals, '0').substring(0, _dotDecimals);
-      return whole * BigInt.from(10).pow(_dotDecimals) + BigInt.parse(fracPadded);
+      final fracPadded = frac.padRight(_rstDecimals, '0').substring(0, _rstDecimals);
+      return whole * BigInt.from(10).pow(_rstDecimals) + BigInt.parse(fracPadded);
     } catch (_) {
       return null;
     }
   }
 
   void _openSendBlade() {
-    final amountPlanck = _parseDotAmount(_amountController.text.trim());
+    final amountPlanck = _parseRstAmount(_amountController.text.trim());
     if (amountPlanck == null || amountPlanck <= BigInt.zero) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter a valid amount')),
@@ -163,7 +168,7 @@ class _SendScreenState extends State<SendScreen> {
 
     final to = _effectiveRecipient;
     final amountStr = amountPlanck.toString();
-    final displayName = _isDotName
+    final displayName = _isRstName
         ? _recipientController.text.trim()
         : _truncate(to);
 
@@ -174,10 +179,10 @@ class _SendScreenState extends State<SendScreen> {
         rpcUrl: _rpcUrl,
         rows: [
           TxRow('To', displayName),
-          if (_isDotName && _resolved != null)
+          if (_isRstName && _resolved != null)
             TxRow('Address', _truncate(_resolved!.owner),
                 valueColor: Colors.white54),
-          TxRow('Network', 'Polkadot'),
+          TxRow('Network', 'Rostro'),
         ],
         costLabel: 'Amount',
         loadCost: () async => amountStr,
@@ -220,9 +225,9 @@ class _SendScreenState extends State<SendScreen> {
                       controller: _recipientController,
                       style: const TextStyle(color: Colors.white),
                       onChanged: _onRecipientChanged,
-                      onSubmitted: (_) { if (_isDotName) _lookupName(); },
+                      onSubmitted: (_) { if (_isRstName) _lookupName(); },
                       decoration: InputDecoration(
-                        hintText: 'SS58 address or name.dot',
+                        hintText: 'SS58 address or name.rst',
                         hintStyle: const TextStyle(color: Colors.white24),
                         filled: true,
                         fillColor: const Color(0xFF1E1E1E),
@@ -243,7 +248,7 @@ class _SendScreenState extends State<SendScreen> {
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
-                        suffixIcon: _isDotName && _resolved == null
+                        suffixIcon: _isRstName && _resolved == null
                             ? IconButton(
                                 icon: _resolvingName
                                     ? const SizedBox(
@@ -404,7 +409,7 @@ class _SendScreenState extends State<SendScreen> {
                 decoration: InputDecoration(
                   hintText: '0.000',
                   hintStyle: const TextStyle(color: Colors.white24),
-                  suffixText: 'DOT',
+                  suffixText: 'RST',
                   suffixStyle: const TextStyle(
                       color: Colors.white54, fontWeight: FontWeight.w600),
                   filled: true,

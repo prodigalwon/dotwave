@@ -12,7 +12,7 @@ class ReceiveScreen extends StatelessWidget {
       backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
-        title: const Text('Receive DOT'),
+        title: const Text('Receive RST'),
       ),
       body: SafeArea(
         child: Padding(

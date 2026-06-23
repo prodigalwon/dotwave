@@ -174,7 +174,7 @@ class OnboardingScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               Text(
-                'Your gateway to the Polkadot ecosystem.',
+                'Your gateway to Rostro.',
                 style: GoogleFonts.dmSans(
                   fontSize: 16,
                   color: AppTheme.textSecondary,
@@ -795,7 +795,7 @@ class PickNamePromptScreen extends StatelessWidget {
                 children: [
                   Flexible(
                     child: Text(
-                      'Your .dot name is how people find you on Polkadot — send DOT, message friends, and unlock dApps, all without a long address.',
+                      'Your .rst name is how people find you on Rostro — send RST and message friends, all without a long address.',
                       style: GoogleFonts.dmSans(
                         fontSize: 15,
                         color: AppTheme.textSecondary,
@@ -807,7 +807,7 @@ class PickNamePromptScreen extends StatelessWidget {
                   const SizedBox(width: 6),
                   Tooltip(
                     message:
-                        'Friends and family can send you DOT by typing yourname.dot instead of your 48-character address. Your name also unlocks identity features, governance tools, and other dApps across the Polkadot ecosystem.',
+                        'Friends and family can send you RST by typing yourname.rst instead of your 48-character address. Your name is also your identity across Rostro.',
                     preferBelow: true,
                     triggerMode: TooltipTriggerMode.tap,
                     child: const Icon(Icons.info_outline,
