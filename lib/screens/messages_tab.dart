@@ -9,6 +9,8 @@ import '../theme.dart';
 import '../widgets/chat_avatar.dart';
 import '../widgets/transaction_blade.dart';
 import 'chat_thread_screen.dart';
+import 'message_options_screen.dart';
+import 'name_registration_screen.dart';
 
 class MessagesTab extends StatefulWidget {
   final String address;
@@ -26,6 +28,10 @@ class _MessagesTabState extends State<MessagesTab> {
   List<ChatContact> _contacts = [];
   bool _loading = true;
   Timer? _poll;
+
+  // Messaging-setup ceremony state — drives the top banner/button.
+  ChatKeyState _keyState = ChatKeyState.noName;
+  String _ownedName = '';
 
   @override
   void initState() {
@@ -55,8 +61,23 @@ class _MessagesTabState extends State<MessagesTab> {
       _contentKey = ck;
     });
     await _load();
+    await _loadKeyState();
     if (mounted) setState(() => _loading = false);
     _refresh();
+  }
+
+  /// Poll where this account stands in the messaging-setup ceremony (no name /
+  /// needs keys / ready) so the banner reflects reality. Also refreshes the
+  /// displayed content key once keys are live.
+  Future<void> _loadKeyState() async {
+    final ks = await _store.keyState(widget.address);
+    final ck = await _store.contentKey(widget.address);
+    if (!mounted) return;
+    setState(() {
+      _keyState = ks.state;
+      _ownedName = ks.name;
+      _contentKey = ck;
+    });
   }
 
   Future<void> _load() async {
@@ -79,6 +100,9 @@ class _MessagesTabState extends State<MessagesTab> {
     } catch (_) {
       // silent
     }
+    // Keep watching the setup ceremony until it's ready (then stop re-polling
+    // it — the records won't un-publish themselves).
+    if (_keyState != ChatKeyState.ready) await _loadKeyState();
   }
 
   void _copy(String value, String label) {
@@ -93,6 +117,69 @@ class _MessagesTabState extends State<MessagesTab> {
       context,
       MaterialPageRoute(
         builder: (_) => ChatThreadScreen(address: widget.address, contact: c),
+      ),
+    );
+  }
+
+  /// Banner CTA dispatch by ceremony state:
+  /// • noName    → register a `.rst` name first (the prerequisite)
+  /// • needsKeys → mint + publish CHAT/MESSAGE in a paid blade
+  /// • ready     → open Message Options (rotate keys)
+  Future<void> _onBannerAction() async {
+    switch (_keyState) {
+      case ChatKeyState.noName:
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => NameRegistrationScreen(address: widget.address),
+          ),
+        );
+        await _loadKeyState(); // a name may have been registered
+        break;
+      case ChatKeyState.needsKeys:
+        await _openRegisterKeys();
+        break;
+      case ChatKeyState.ready:
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                MessageOptionsScreen(address: widget.address, name: _ownedName),
+          ),
+        );
+        await _loadKeyState(); // keys may have been rotated
+        break;
+    }
+  }
+
+  /// The paid "Register Keys" action: mint a content keypair in secure silicon
+  /// (public → MESSAGE) and publish the software chat address (→ CHAT) under
+  /// the owned name. The mint happens inside [ChatStore.registerOrRotateKeys]
+  /// when the user authorizes payment.
+  Future<void> _openRegisterKeys() async {
+    final rpc = await _store.nodeRpc();
+    if (!mounted) return;
+    TransactionBlade.show(
+      context,
+      TransactionBlade(
+        transactionType: 'Register Chat Keys',
+        rpcUrl: rpc,
+        rows: [
+          TxRow('Name', '$_ownedName.rst'),
+          const TxRow('MESSAGE', 'silicon content key (StrongBox P-256)'),
+          const TxRow('CHAT', 'software chat address (Ed25519)'),
+        ],
+        costLabel: 'Network Fee',
+        onConfirm: (phrase) =>
+            _store.registerOrRotateKeys(widget.address, _ownedName, phrase),
+        onSuccess: () async {
+          await _loadKeyState();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Chat keys registered')),
+            );
+          }
+        },
       ),
     );
   }
@@ -130,6 +217,12 @@ class _MessagesTabState extends State<MessagesTab> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   children: [
+                    _KeyStateBanner(
+                      state: _keyState,
+                      onAction: _onBannerAction,
+                    ),
+                    if (_keyState != ChatKeyState.noName)
+                      const SizedBox(height: 16),
                     _IdentityCard(
                       identity: _identity,
                       contentKey: _contentKey,
@@ -415,6 +508,78 @@ class _MessagesTabState extends State<MessagesTab> {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── setup-ceremony banner ────────────────────────────────────────────
+
+/// Top-of-screen CTA reflecting messaging-setup state: register a name, then
+/// register keys, then (once live) message options. Tapping runs the action
+/// for the current state.
+class _KeyStateBanner extends StatelessWidget {
+  final ChatKeyState state;
+  final Future<void> Function() onAction;
+  const _KeyStateBanner({required this.state, required this.onAction});
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final (IconData icon, String title, String subtitle, Color color, bool primary) =
+        switch (state) {
+      ChatKeyState.noName => (
+        Icons.badge_outlined,
+        'No Name Registered',
+        'Register a .rst name to start messaging',
+        Colors.orangeAccent,
+        true,
+      ),
+      ChatKeyState.needsKeys => (
+        Icons.vpn_key_outlined,
+        'Register Keys',
+        'Publish your CHAT + MESSAGE keys so others can reach you',
+        AppTheme.pink,
+        true,
+      ),
+      ChatKeyState.ready => (
+        Icons.tune,
+        'Message Options',
+        'Manage or rotate your chat keys',
+        Colors.white54,
+        false,
+      ),
+    };
+    return Material(
+      color: primary ? color.withValues(alpha: 0.12) : AppTheme.surface2,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onAction,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Icon(icon, color: color, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: tt.titleSmall?.copyWith(
+                            color: primary ? color : Colors.white,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: tt.bodySmall?.copyWith(color: Colors.white54)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white24, size: 20),
+            ],
+          ),
         ),
       ),
     );

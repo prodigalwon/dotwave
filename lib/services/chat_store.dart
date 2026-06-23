@@ -15,6 +15,20 @@ import '../bridge/bridge_generated.dart/core.dart'
 import '../config/rpc_endpoints.dart';
 import 'content_key_service.dart';
 
+/// Where an account stands in the messaging-setup ceremony — drives the
+/// messages-screen banner/button.
+enum ChatKeyState {
+  /// No `.rst` name owned yet — must register a name first.
+  noName,
+
+  /// Name owned, but its CHAT/MESSAGE records aren't both published — the user
+  /// needs to mint + publish keys (the paid "Register Keys" action).
+  needsKeys,
+
+  /// Name owned and CHAT + MESSAGE both live — messaging is ready.
+  ready,
+}
+
 /// One end-to-end-encrypted message in a thread.
 ///
 /// `outbound` messages are authored on this device; `inbound` messages
@@ -385,30 +399,42 @@ class ChatStore extends ChangeNotifier {
   /// This device's published content key (MESSAGE record value), hex of the
   /// curve-tagged ContentPublicKey. Senders seal inner content to it.
   ///
-  /// Hardware-first: if StrongBox can host a non-extractable P-256 content key
-  /// it publishes that (the Phase-3 silicon path); otherwise it falls back to
-  /// the software seed (the dev stand-in). The choice is recorded under
-  /// [_contentHwKey] so the read path knows which seam to use.
+  /// RETRIEVAL ONLY — never mints. Returns the StrongBox content key if one has
+  /// been minted (the Phase-3 silicon path, recorded under [_contentHwKey]),
+  /// else a software-seed key IF a seed already exists, else '' (keys not yet
+  /// registered). Minting is the explicit, paid [registerOrRotateKeys] action —
+  /// it must NOT happen as a side effect of opening the messages screen.
   Future<String> contentKey(String address) async {
-    final hw = await _ensureHardwareContentKey(address);
-    if (hw != null) return hw;
-    final seed = await contentSeedHex(address);
-    return chatGenContentKey(curve: _contentCurve, contentSeedHex: seed);
+    final hw = await _storage.read(key: _contentHwKey(address));
+    if (hw != null && hw.isNotEmpty) return hw;
+    final seed = await _storage.read(key: _contentSeedKey(address));
+    if (seed != null && seed.length == 64) {
+      return chatGenContentKey(curve: _contentCurve, contentSeedHex: seed);
+    }
+    return ''; // not registered yet
   }
 
-  /// Resolve (and cache) this device's HARDWARE content key as a published
-  /// MESSAGE value, or null when StrongBox/API-31 is unavailable. Reuses an
-  /// existing StrongBox key if present, else generates one. The private scalar
-  /// stays in the secure element — only its public SEC1 ever surfaces here.
-  Future<String?> _ensureHardwareContentKey(String address) async {
-    final cached = await _storage.read(key: _contentHwKey(address));
-    if (cached != null && cached.isNotEmpty) return cached;
-    var sec1 = await _contentKeys.publicKeyHex();
-    sec1 ??= await _contentKeys.generateHex();
-    if (sec1 == null || sec1.isEmpty) return null; // no StrongBox → software path
-    final ck = await chatContentPubkeyFromSec1(curve: _contentCurve, sec1Hex: sec1);
-    await _storage.write(key: _contentHwKey(address), value: ck);
-    return ck;
+  /// MINT (or rotate) this device's content key and return the publishable
+  /// MESSAGE value. Hardware-first: a fresh non-extractable StrongBox P-256
+  /// key (rotating the alias); the private scalar never leaves the chip. Falls
+  /// back to a fresh software seed when StrongBox/API-31 is unavailable (dev
+  /// box / emulator). Records which seam is in use under [_contentHwKey] so the
+  /// read path branches correctly. Called only from [registerOrRotateKeys].
+  Future<String> _mintContentKey(String address) async {
+    final sec1 = await _contentKeys.generateHex();
+    if (sec1 != null && sec1.isNotEmpty) {
+      final ck = await chatContentPubkeyFromSec1(curve: _contentCurve, sec1Hex: sec1);
+      await _storage.write(key: _contentHwKey(address), value: ck);
+      return ck;
+    }
+    // Software fallback: a fresh seed, and clear any stale hardware marker so
+    // the read path uses the software seam.
+    final rng = Random.secure();
+    final bytes = List<int>.generate(32, (_) => rng.nextInt(256));
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    await _storage.write(key: _contentSeedKey(address), value: hex);
+    await _storage.delete(key: _contentHwKey(address));
+    return chatGenContentKey(curve: _contentCurve, contentSeedHex: hex);
   }
 
   /// This account's own `.rst` chat name (claimed in the signed inner so the
@@ -476,13 +502,19 @@ class ChatStore extends ChangeNotifier {
 
   // ── onboarding + resolution (F1) ────────────────────────────────
 
-  /// One-step "set up messaging": register `name` and publish this device's
-  /// typed CHAT (Ed25519 address) + MESSAGE (content key) records under it.
-  /// `phrase` is the account's signing secret. Persists the name locally so it
-  /// can be claimed as the sender name on outbound messages.
-  Future<ChatSetupOutcome> setupMessaging(String address, String name, String phrase) async {
+  /// Register (or rotate) this account's chat keys — the "Register Keys" /
+  /// "Rotate Keys" action, run inside a paid transaction blade.
+  ///
+  /// MINTS a fresh content keypair in secure silicon (private scalar stays in
+  /// the chip) and publishes the two typed RNS records under the already-owned
+  /// `name`: CHAT = the software Ed25519 address; MESSAGE = the hardware content
+  /// public key. Rotating just repeats the mint+publish, superseding the old
+  /// records. `phrase` is the account's signing secret (the blade has it after
+  /// the user authorizes payment). Requires `name` to already be registered.
+  Future<ChatSetupOutcome> registerOrRotateKeys(
+      String address, String name, String phrase) async {
     final seed = await seedHex(address);
-    final ck = await contentKey(address);
+    final ck = await _mintContentKey(address); // silicon mint (or software dev)
     final node = await nodeRpc();
     final outcome = await chatSetupMessaging(
       name: name,
@@ -493,16 +525,42 @@ class ChatStore extends ChangeNotifier {
     );
     if (outcome.published) {
       await _setMyName(address, name);
-      // Step 1: ensure the account can also AUTHENTICATE to drop (admission
-      // cert). Minted here while the phrase is in hand; idempotent. Tolerated
-      // if it fails (e.g. chain not producing) — onboarding's addressability
-      // (CHAT/MESSAGE) still stands and the cert can be minted later.
+      // Also ensure the account can AUTHENTICATE to drop (admission cert).
+      // Minted here while the phrase is in hand; idempotent. Tolerated if it
+      // fails (e.g. chain not producing) — addressability (CHAT/MESSAGE) stands.
       try {
         await ensureCert(address, phrase);
       } catch (_) {/* cert mint deferred; ensureCert is idempotent on retry */}
       notifyListeners();
     }
     return outcome;
+  }
+
+  /// The `.rst` name this account owns, as tracked by the name-registration
+  /// flow (kept reconciled against chain ownership there). '' if none. This is
+  /// the prerequisite for messaging: RNS has no SS58→name reverse lookup, so
+  /// the owned name is held locally.
+  Future<String> ownedName(String address) async =>
+      (await _storage.read(key: 'owned_name_$address')) ?? '';
+
+  /// Where this account stands in the messaging-setup ceremony, for the
+  /// messages-screen banner. Polls the owned name + its on-chain CHAT/MESSAGE
+  /// records. `name` is the owned name ('' when [ChatKeyState.noName]).
+  Future<({ChatKeyState state, String name})> keyState(String address) async {
+    final name = await ownedName(address);
+    if (name.isEmpty) return (state: ChatKeyState.noName, name: '');
+    try {
+      final r = await chatResolveIdentity(name: name, rpcUrl: await nodeRpc());
+      final ready = r.found && r.ed25519PubkeyHex.isNotEmpty && r.hasMessageKey;
+      return (
+        state: ready ? ChatKeyState.ready : ChatKeyState.needsKeys,
+        name: name,
+      );
+    } catch (_) {
+      // Can't resolve right now (node down / not producing) — treat as
+      // not-yet-confirmed rather than asserting readiness.
+      return (state: ChatKeyState.needsKeys, name: name);
+    }
   }
 
   /// Start (or refresh) a conversation by `.rst` name: resolve the name's
