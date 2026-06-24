@@ -526,9 +526,14 @@ class ChatStore extends ChangeNotifier {
     if (outcome.published) {
       await _setMyName(address, name);
       // Also ensure the account can AUTHENTICATE to drop (admission cert).
-      // Minted here while the phrase is in hand; idempotent. Tolerated if it
-      // fails (e.g. chain not producing) — addressability (CHAT/MESSAGE) stands.
+      // Minted here while the phrase is in hand. Clear any cached thumbprint
+      // first so the cert is RE-registered on the current chain: a cached
+      // thumbprint from a prior chain (e.g. a lab redeploy) is no longer
+      // Active, and `ensureCert` would otherwise return it without re-minting,
+      // leaving every onion send rejected. Tolerated if it fails (chain not
+      // producing) — addressability (CHAT/MESSAGE) still stands.
       try {
+        await _storage.delete(key: _certThumbprintKey(address));
         await ensureCert(address, phrase);
       } catch (_) {/* cert mint deferred; ensureCert is idempotent on retry */}
       notifyListeners();
@@ -867,6 +872,89 @@ class ChatStore extends ChangeNotifier {
     await upsertContact(address, contactPubkey);
     notifyListeners();
     return msg;
+  }
+
+  /// Send a DEAD DROP opener to a recipient's [callsign] — routed by the
+  /// callsign (the opaque label), sealed to the recipient's REAL out-of-band
+  /// keys ([recipientPubkeyHex] + [recipientContentKeyHex]). The sender is
+  /// always canonically named (no anonymous send); recipient-side privacy
+  /// comes from the label + rotating return addresses. The recipient polls
+  /// the same callsign. See docs/DOTWAVE-CHAT-DEAD-DROPS.md.
+  Future<ChatSendOutcome> sendDeaddrop(
+    String address,
+    String callsign,
+    String recipientName,
+    String text,
+  ) async {
+    final seed = await seedHex(address);
+    final node = await nodeRpc();
+    // Resolve the recipient's published CHAT + MESSAGE keys from RNS — the
+    // user names the recipient by their canonical name; they never hand-enter
+    // raw keys. The dead drop still routes by the opaque callsign (the relay
+    // never learns the recipient); resolution is a sender-side read.
+    final r = await chatResolveIdentity(name: recipientName, rpcUrl: node);
+    if (!r.found) {
+      throw StateError("'$recipientName.rst' isn't registered");
+    }
+    if (!r.hasMessageKey || r.innerContentKeyHex.isEmpty) {
+      throw StateError("'$recipientName.rst' has no published content key");
+    }
+    final relay2 = await relay2Rpc();
+    if (relay2.isEmpty) {
+      throw StateError('no relay-2 configured — the 2-hop onion needs one '
+          '(Settings → Relay-2 node)');
+    }
+    final auth = await certAuth(address);
+    if (auth == null) {
+      throw StateError('no admission cert — mint your device cert first');
+    }
+    final guard = await chatNodeInfo(nodeRpc: node);
+    final relay2Pubkey = await chatNodeInfo(nodeRpc: relay2);
+    final composedAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return chatSendDeaddrop(
+      nodeRpc: node,
+      guardPubkeyHex: guard,
+      relay2PubkeyHex: relay2Pubkey,
+      senderSeedHex: seed,
+      recipientPubkeyHex: r.ed25519PubkeyHex,
+      recipientContentKeyHex: r.innerContentKeyHex,
+      label: callsign,
+      message: text,
+      senderName: await myName(address),
+      totalShares: 5,
+      authCertThumbprintHex: auth.thumbprint,
+      authCertSeedHex: auth.certSeedHex,
+      prevSelfHashHex: null,
+      composedAtSecs: BigInt.from(composedAt),
+    );
+  }
+
+  /// Decrypt a dead drop's sealed content and surface its return address.
+  /// Uses the hardware seam (StrongBox, biometric-gated in-chip ECDH) when a
+  /// chip content key is present — the same path [_readOne] takes — else the
+  /// software seam.
+  Future<DeadDropRead> readDeaddrop(
+      String address, String sealedContentHex) async {
+    final hwCk = await _storage.read(key: _contentHwKey(address));
+    if (hwCk != null && hwCk.isNotEmpty) {
+      final ephemeral =
+          await chatContentEphemeralOf(sealedContentHex: sealedContentHex);
+      final shared = await _contentKeys.ecdhHex(ephemeral);
+      if (shared == null || shared.isEmpty) {
+        throw StateError(
+            'content ECDH failed (biometric declined or no chip key)');
+      }
+      return chatReadDeaddropHw(
+        sealedContentHex: sealedContentHex,
+        recipientContentKeyHex: hwCk,
+        sharedSecretHex: shared,
+      );
+    }
+    return chatReadDeaddrop(
+      sealedContentHex: sealedContentHex,
+      curve: _contentCurve,
+      contentSeedHex: await contentSeedHex(address),
+    );
   }
 
   /// Pull shares from the relay, reassemble + outer-unseal + sender-verify

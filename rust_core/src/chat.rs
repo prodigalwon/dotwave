@@ -142,6 +142,12 @@ struct InnerPayload {
     /// directional streams. A display hint; clocks lie, so it never
     /// overrides a chain link.
     composed_at: u64,
+    /// Dead-drop reply address: a fresh random 32-byte pickup key the
+    /// sender mints so the recipient knows where to send replies — the
+    /// ping-pong return address, kept INSIDE the content seal so it is
+    /// invisible to relays and to anyone who is not the recipient. `None`
+    /// for a normal addressed DM. See docs/DOTWAVE-CHAT-DEAD-DROPS.md.
+    return_pickup: Option<[u8; 32]>,
 }
 
 impl InnerPayload {
@@ -151,7 +157,7 @@ impl InnerPayload {
     /// the 1-hop onion (`chat_send_onion`). Only the live 2-hop send
     /// chains messages.
     fn unordered(sender_name: Vec<u8>, body: Vec<u8>) -> Self {
-        InnerPayload { sender_name, body, prev_self_hash: None, composed_at: 0 }
+        InnerPayload { sender_name, body, prev_self_hash: None, composed_at: 0, return_pickup: None }
     }
 
     /// The chain link a *successor* message references: `blake2_256` over
@@ -329,6 +335,91 @@ pub fn chat_read_content(
     let inner_bytes = content_unseal_software(curve, &scalar, &sealed)
         .map_err(|e| format!("content unseal: {e:?}"))?;
     finish_read(inner_bytes, dr_session_state_hex, identity_seed_hex, opk_secrets)
+}
+
+/// A dead drop's decrypted content plus its return address — the field
+/// `chat_read_content` does not surface (it predates dead drops and stays
+/// untouched to avoid a bridge regen). Dead-drop content is always
+/// `ContentPayload::Plain`. See docs/DOTWAVE-CHAT-DEAD-DROPS.md.
+pub struct DeadDropRead {
+    pub claimed_sender_name: String,
+    pub plaintext: String,
+    pub plaintext_hex: String,
+    pub self_hash_hex: String,
+    pub prev_self_hash_hex: String,
+    pub composed_at: u64,
+    /// The sender's minted reply address (raw 32-byte pickup key, hex).
+    /// Empty if the message carried none (a normal DM, not a dead drop).
+    pub return_pickup_hex: String,
+}
+
+/// Read a DEAD DROP's content (software seam) and surface its return
+/// address so the recipient knows where to reply (the ping-pong hop).
+pub fn chat_read_deaddrop(
+    sealed_content_hex: String,
+    curve: u8,
+    content_seed_hex: String,
+) -> Result<DeadDropRead, String> {
+    let curve = content_curve_from_u8(curve)?;
+    let scalar = decode_content_scalar(curve, &content_seed_hex)?;
+    let sealed = decode_sealed(&sealed_content_hex)?;
+    let inner_bytes = content_unseal_software(curve, &scalar, &sealed)
+        .map_err(|e| format!("content unseal: {e:?}"))?;
+    deaddrop_read_from_inner(&inner_bytes)
+}
+
+/// Read a DEAD DROP via the HARDWARE seam (StrongBox/TPM): the content
+/// scalar lives in the secure element, so the caller hands in the in-chip
+/// ECDH `shared_secret_hex` (biometric-gated) — the same shape
+/// [`chat_read_content_hw`] takes. Surfaces the return address. P-256 only
+/// (the hardware content path is StrongBox-class silicon).
+pub fn chat_read_deaddrop_hw(
+    sealed_content_hex: String,
+    recipient_content_key_hex: String,
+    shared_secret_hex: String,
+) -> Result<DeadDropRead, String> {
+    let sealed = decode_sealed(&sealed_content_hex)?;
+    if sealed.curve != ContentCurve::P256 {
+        return Err("hardware dead-drop read is P-256 only".into());
+    }
+    let ck_bytes = hex::decode(recipient_content_key_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("recipient content key hex: {e}"))?;
+    let recipient = ContentPublicKey::decode(&mut &ck_bytes[..])
+        .map_err(|e| format!("ContentPublicKey decode: {e}"))?;
+    if recipient.curve != ContentCurve::P256 {
+        return Err("hardware dead-drop read is P-256 only".into());
+    }
+    let shared = hex::decode(shared_secret_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("shared secret hex: {e}"))?;
+    let provider = PrecomputedEcdh { curve: ContentCurve::P256, shared };
+    // The seal binds the recipient key's published `sec1` into the salt.
+    let inner_bytes = unseal_with(&provider, &recipient.sec1, &sealed)
+        .map_err(|e| format!("content unseal (hw): {e:?}"))?;
+    deaddrop_read_from_inner(&inner_bytes)
+}
+
+/// Decode unsealed inner bytes (from either read seam) into a
+/// [`DeadDropRead`]. Dead-drop content is always `ContentPayload::Plain`.
+fn deaddrop_read_from_inner(inner_bytes: &[u8]) -> Result<DeadDropRead, String> {
+    let content = ContentPayload::decode(&mut &inner_bytes[..])
+        .map_err(|e| format!("ContentPayload decode: {e}"))?;
+    match content {
+        ContentPayload::Plain(payload) => {
+            let self_hash_hex = hex::encode(payload.self_hash());
+            Ok(DeadDropRead {
+                claimed_sender_name: String::from_utf8(payload.sender_name).unwrap_or_default(),
+                plaintext: String::from_utf8(payload.body.clone()).unwrap_or_default(),
+                plaintext_hex: hex::encode(&payload.body),
+                self_hash_hex,
+                prev_self_hash_hex: payload.prev_self_hash.map(hex::encode).unwrap_or_default(),
+                composed_at: payload.composed_at,
+                return_pickup_hex: payload.return_pickup.map(hex::encode).unwrap_or_default(),
+            })
+        }
+        ContentPayload::Ratcheted { .. } => {
+            Err("dead drop content must be Plain, got Ratcheted".to_string())
+        }
+    }
 }
 
 /// Decode a hex-encoded SCALE `ContentSealed` blob (shared by the software
@@ -744,6 +835,7 @@ pub fn chat_send_onion(
         total_shares,
         auth_cert_thumbprint_hex,
         auth_cert_seed_hex,
+        None,
     )
 }
 
@@ -786,6 +878,7 @@ pub fn chat_send_onion_2hop(
         body: message.into_bytes(),
         prev_self_hash,
         composed_at: composed_at_secs,
+        return_pickup: None,
     };
     // The tip the NEXT message in this conversation will reference.
     let new_self_hash = inner.self_hash();
@@ -801,6 +894,233 @@ pub fn chat_send_onion_2hop(
         total_shares,
         auth_cert_thumbprint_hex,
         auth_cert_seed_hex,
+        None,
+    )?;
+    outcome.new_self_hash_hex = hex::encode(new_self_hash);
+    Ok(outcome)
+}
+
+/// Send a DEAD DROP: routed by an opaque `label` (a callsign) instead of
+/// by recipient identity, and carrying a freshly-minted return address in
+/// the content seal. The message is still sealed to the recipient's REAL
+/// keys (`recipient_pubkey_hex` + `recipient_content_key_hex`, held
+/// out-of-band) — the label is pure routing, fully decoupled from the
+/// crypto, so relays only ever see an opaque pickup key. The recipient
+/// polls `chat_fetch_deaddrop` with the same `label`. The conversation
+/// then walks rotating `return_pickup`s (ping-pong) — Phase 3 owns the
+/// rotation state machine. See docs/DOTWAVE-CHAT-DEAD-DROPS.md.
+#[allow(clippy::too_many_arguments)]
+pub fn chat_send_deaddrop(
+    node_rpc: String,
+    guard_pubkey_hex: String,
+    relay2_pubkey_hex: String,
+    sender_seed_hex: String,
+    recipient_pubkey_hex: String,
+    recipient_content_key_hex: String,
+    label: String,
+    message: String,
+    sender_name: String,
+    total_shares: u8,
+    auth_cert_thumbprint_hex: Option<String>,
+    auth_cert_seed_hex: Option<String>,
+    prev_self_hash_hex: Option<String>,
+    composed_at_secs: u64,
+) -> Result<ChatSendOutcome, String> {
+    let prev_self_hash = match prev_self_hash_hex.filter(|h| !h.is_empty()) {
+        Some(h) => Some(decode_hex32(&h)?),
+        None => None,
+    };
+    // Mint a fresh return address — a raw 32-byte pickup key the recipient
+    // replies to (used directly, no hashing; never human-facing).
+    let mut return_pickup = [0u8; 32];
+    OsRng.fill_bytes(&mut return_pickup);
+    let inner = InnerPayload {
+        sender_name: sender_name.into_bytes(),
+        body: message.into_bytes(),
+        prev_self_hash,
+        composed_at: composed_at_secs,
+        return_pickup: Some(return_pickup),
+    };
+    let new_self_hash = inner.self_hash();
+    let content = ContentPayload::Plain(inner).encode();
+    // Route by the callsign, NOT by recipient identity.
+    let pickup = PickupKey::for_deaddrop(label.as_bytes()).0;
+    let mut outcome = send_content_onion(
+        node_rpc,
+        &guard_pubkey_hex,
+        Some(&relay2_pubkey_hex),
+        &sender_seed_hex,
+        &recipient_pubkey_hex,
+        &recipient_content_key_hex,
+        content,
+        total_shares,
+        auth_cert_thumbprint_hex,
+        auth_cert_seed_hex,
+        Some(pickup),
+    )?;
+    outcome.new_self_hash_hex = hex::encode(new_self_hash);
+    Ok(outcome)
+}
+
+/// The pickup-key (hex) a dead-drop `label` (callsign) routes to. The
+/// sender uses it as the opener's send target; the recipient uses it as
+/// the poll bucket. Pure (no I/O) — just `for_deaddrop(label)`.
+pub fn chat_deaddrop_pickup(label: String) -> String {
+    hex::encode(PickupKey::for_deaddrop(label.as_bytes()).0)
+}
+
+/// Mint a fresh random 32-byte dead-drop return address (hex). The
+/// rotation state machine calls this to advertise a new inbound address
+/// each turn; the value is never human-facing and is used directly as a
+/// pickup key (no hashing).
+pub fn chat_mint_return_pickup() -> String {
+    let mut b = [0u8; 32];
+    OsRng.fill_bytes(&mut b);
+    hex::encode(b)
+}
+
+// ── FRB bridge for the ping-pong rotation (Phase 4) ──────────────────
+// Plain-data mirror of `dead_drop::DeadDropThread` + thin delegating
+// wrappers, so the rotation logic stays in ONE place (core) while Dart
+// holds and persists the state. Hex strings keep it FRB-friendly and
+// easy to serialise; an empty string means `None`.
+
+/// One live grace-window entry: a superseded return address still polled.
+pub struct DeadDropGraceEntry {
+    pub pickup_hex: String,
+    pub rounds_left: u8,
+}
+
+/// FRB mirror of a conversation's ping-pong rotation state. The app
+/// persists this per thread and feeds it back into the transition fns.
+pub struct DeadDropThreadDto {
+    /// Where this party sends next ("" before a responder's first receive).
+    pub outbound_target_hex: String,
+    /// The return address this party advertises ("" before first receive).
+    pub inbound_current_hex: String,
+    /// Superseded inbound addresses still being polled (the grace window).
+    pub grace: Vec<DeadDropGraceEntry>,
+}
+
+impl DeadDropThreadDto {
+    fn from_core(t: &crate::dead_drop::DeadDropThread) -> Self {
+        DeadDropThreadDto {
+            outbound_target_hex: t.outbound_target.map(hex::encode).unwrap_or_default(),
+            inbound_current_hex: t.inbound_current.map(hex::encode).unwrap_or_default(),
+            grace: t
+                .grace
+                .iter()
+                .map(|(p, r)| DeadDropGraceEntry { pickup_hex: hex::encode(p), rounds_left: *r })
+                .collect(),
+        }
+    }
+    fn to_core(&self) -> Result<crate::dead_drop::DeadDropThread, String> {
+        let opt = |s: &str| -> Result<Option<[u8; 32]>, String> {
+            if s.is_empty() { Ok(None) } else { Ok(Some(decode_hex32(s)?)) }
+        };
+        let grace = self
+            .grace
+            .iter()
+            .map(|g| Ok((decode_hex32(&g.pickup_hex)?, g.rounds_left)))
+            .collect::<Result<Vec<_>, String>>()?;
+        Ok(crate::dead_drop::DeadDropThread {
+            outbound_target: opt(&self.outbound_target_hex)?,
+            inbound_current: opt(&self.inbound_current_hex)?,
+            grace,
+        })
+    }
+}
+
+/// Opener (Alice): start a thread addressing `callsign_pickup_hex`
+/// (= `chat_deaddrop_pickup(label)`), advertising freshly-minted
+/// `first_inbound_hex` (= `chat_mint_return_pickup()`).
+pub fn deaddrop_open(
+    callsign_pickup_hex: String,
+    first_inbound_hex: String,
+) -> Result<DeadDropThreadDto, String> {
+    let t = crate::dead_drop::DeadDropThread::open(
+        decode_hex32(&callsign_pickup_hex)?,
+        decode_hex32(&first_inbound_hex)?,
+    );
+    Ok(DeadDropThreadDto::from_core(&t))
+}
+
+/// Responder (Bob): an empty thread, initialised on its first receive.
+pub fn deaddrop_responder() -> DeadDropThreadDto {
+    DeadDropThreadDto::from_core(&crate::dead_drop::DeadDropThread::responder())
+}
+
+/// A receive→send turn: the peer replied with `received_return_hex` (their
+/// new inbound, from the message's return address); rotate to advertise
+/// caller-minted `new_inbound_hex`, retiring the old one into the 3-round
+/// grace window. Returns the updated state for the app to persist.
+pub fn deaddrop_on_turn(
+    state: DeadDropThreadDto,
+    received_return_hex: String,
+    new_inbound_hex: String,
+) -> Result<DeadDropThreadDto, String> {
+    let mut t = state.to_core()?;
+    t.on_turn(decode_hex32(&received_return_hex)?, decode_hex32(&new_inbound_hex)?);
+    Ok(DeadDropThreadDto::from_core(&t))
+}
+
+/// Every bucket this party must poll for replies (current inbound + grace),
+/// as hex pickup keys. Callsign polling is the separate standing pool.
+pub fn deaddrop_poll_set(state: DeadDropThreadDto) -> Result<Vec<String>, String> {
+    Ok(state.to_core()?.poll_set().iter().map(hex::encode).collect())
+}
+
+/// Send a dead-drop message to a RAW 32-byte pickup key — the ping-pong
+/// REPLY hop, where the target is a return address the peer minted (or
+/// `chat_deaddrop_pickup(label)` for the opener). Unlike
+/// `chat_send_deaddrop`, the caller supplies `return_pickup_hex` (its own
+/// current inbound address, owned by the rotation state machine) rather
+/// than minting one internally. Still sealed to the recipient's REAL keys.
+#[allow(clippy::too_many_arguments)]
+pub fn chat_send_to_pickup(
+    node_rpc: String,
+    guard_pubkey_hex: String,
+    relay2_pubkey_hex: String,
+    sender_seed_hex: String,
+    recipient_pubkey_hex: String,
+    recipient_content_key_hex: String,
+    target_pickup_hex: String,
+    return_pickup_hex: String,
+    message: String,
+    sender_name: String,
+    total_shares: u8,
+    auth_cert_thumbprint_hex: Option<String>,
+    auth_cert_seed_hex: Option<String>,
+    prev_self_hash_hex: Option<String>,
+    composed_at_secs: u64,
+) -> Result<ChatSendOutcome, String> {
+    let prev_self_hash = match prev_self_hash_hex.filter(|h| !h.is_empty()) {
+        Some(h) => Some(decode_hex32(&h)?),
+        None => None,
+    };
+    let target = decode_hex32(&target_pickup_hex)?;
+    let return_pickup = decode_hex32(&return_pickup_hex)?;
+    let inner = InnerPayload {
+        sender_name: sender_name.into_bytes(),
+        body: message.into_bytes(),
+        prev_self_hash,
+        composed_at: composed_at_secs,
+        return_pickup: Some(return_pickup),
+    };
+    let new_self_hash = inner.self_hash();
+    let content = ContentPayload::Plain(inner).encode();
+    let mut outcome = send_content_onion(
+        node_rpc,
+        &guard_pubkey_hex,
+        Some(&relay2_pubkey_hex),
+        &sender_seed_hex,
+        &recipient_pubkey_hex,
+        &recipient_content_key_hex,
+        content,
+        total_shares,
+        auth_cert_thumbprint_hex,
+        auth_cert_seed_hex,
+        Some(target),
     )?;
     outcome.new_self_hash_hex = hex::encode(new_self_hash);
     Ok(outcome)
@@ -893,6 +1213,9 @@ fn send_content_onion(
     total_shares: u8,
     auth_cert_thumbprint_hex: Option<String>,
     auth_cert_seed_hex: Option<String>,
+    // `Some(pickup)` routes by a caller-derived pickup key (a dead drop's
+    // for_deaddrop(label)); `None` derives for_pairwise over the recipient.
+    pickup_override: Option<[u8; 32]>,
 ) -> Result<ChatSendOutcome, String> {
     let (envelope, recipient_ed) = build_sealed_envelope(
         sender_seed_hex,
@@ -906,8 +1229,21 @@ fn send_content_onion(
     // each preceding hop gets a Forward to the next. The guard peels its
     // layer and either delivers (1-hop) or forwards to relay-2 (2-hop).
     let guard = NodeIdentity::from_ed25519_pubkey(decode_hex32(guard_pubkey_hex)?);
+    // Sender derives the pickup key — relays are dumb infra that only ever
+    // see opaque pickup keys, so a dead drop (for_deaddrop label) and a
+    // normal DM (for_pairwise) are indistinguishable on the wire.
+    let pickup_key = match pickup_override {
+        Some(pk) => pk,
+        None => {
+            // recipient_ed was already on-curve-validated by
+            // build_sealed_envelope, so this cannot fail.
+            let recipient_x = ed25519_to_x25519_pubkey(&recipient_ed)
+                .ok_or_else(|| "recipient pubkey not on Edwards curve".to_string())?;
+            PickupKey::for_pairwise(&recipient_x).0
+        }
+    };
     let deliver = OnionDeliverPayload {
-        recipient_chat_pubkey: recipient_ed,
+        pickup_key,
         envelope_bytes: envelope.encode(),
     };
     let path: Vec<NodeIdentity> = match relay2_pubkey_hex {
@@ -1017,6 +1353,7 @@ fn send_content(
 /// sender-verify any complete message stripes on-device. The content
 /// stays SEALED (encrypted at rest) — background-safe, no biometric.
 /// Decrypt individual messages with [`chat_read_content`].
+/// Poll the recipient's own pairwise pickup bucket (normal DMs).
 pub fn chat_fetch(
     node_rpc: String,
     recipient_seed_hex: String,
@@ -1024,6 +1361,48 @@ pub fn chat_fetch(
 ) -> Result<Vec<AtRestMessage>, String> {
     let recipient_seed = decode_hex32(&recipient_seed_hex)?;
     let (_recipient_ed, _recipient_x_pub, pickup_bytes) = identity_from_seed(&recipient_seed)?;
+    fetch_and_decrypt(node_rpc, pickup_bytes, recipient_seed, relay_peer)
+}
+
+/// Poll a DEAD-DROP `label` (callsign): fetch at `for_deaddrop(label)` and
+/// decrypt with the recipient's REAL seed. The message is sealed to the
+/// recipient's keys (the label is only routing), so the same seed that
+/// opens a normal DM opens a dead drop. See docs/DOTWAVE-CHAT-DEAD-DROPS.md.
+pub fn chat_fetch_deaddrop(
+    node_rpc: String,
+    recipient_seed_hex: String,
+    label: String,
+    relay_peer: Option<String>,
+) -> Result<Vec<AtRestMessage>, String> {
+    let recipient_seed = decode_hex32(&recipient_seed_hex)?;
+    let pickup_bytes = PickupKey::for_deaddrop(label.as_bytes()).0;
+    fetch_and_decrypt(node_rpc, pickup_bytes, recipient_seed, relay_peer)
+}
+
+/// Poll a RAW 32-byte pickup key — used for your own minted return
+/// addresses (the ping-pong inbound + its grace window), where the bucket
+/// is not derived from a label. Decrypts with the recipient's real seed.
+pub fn chat_fetch_at_pickup(
+    node_rpc: String,
+    recipient_seed_hex: String,
+    pickup_hex: String,
+    relay_peer: Option<String>,
+) -> Result<Vec<AtRestMessage>, String> {
+    let recipient_seed = decode_hex32(&recipient_seed_hex)?;
+    let pickup_bytes = decode_hex32(&pickup_hex)?;
+    fetch_and_decrypt(node_rpc, pickup_bytes, recipient_seed, relay_peer)
+}
+
+/// Shared fetch → reconstruct → sealed-sender-unseal for both the normal
+/// (`chat_fetch`) and dead-drop (`chat_fetch_deaddrop`) paths. `pickup_bytes`
+/// selects the bucket; `recipient_seed` yields the X25519 secret that
+/// unseals the sealed-sender layer.
+fn fetch_and_decrypt(
+    node_rpc: String,
+    pickup_bytes: [u8; 32],
+    recipient_seed: [u8; 32],
+    relay_peer: Option<String>,
+) -> Result<Vec<AtRestMessage>, String> {
     let recipient_x_secret = ed25519_seed_to_x25519_secret(&recipient_seed);
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -1125,6 +1504,7 @@ mod ordering_tests {
             body: b"hi".to_vec(),
             prev_self_hash: None,
             composed_at: 1_700_000_000,
+            return_pickup: None,
         };
         assert_eq!(p.self_hash(), sp_core::hashing::blake2_256(&p.encode()));
         assert_eq!(p.self_hash(), p.self_hash());
@@ -1145,6 +1525,7 @@ mod ordering_tests {
             body: b"one".to_vec(),
             prev_self_hash: None,
             composed_at: 10,
+            return_pickup: None,
         };
         let tip = m1.self_hash();
         let m2 = InnerPayload {
@@ -1152,6 +1533,7 @@ mod ordering_tests {
             body: b"two".to_vec(),
             prev_self_hash: Some(tip),
             composed_at: 20,
+            return_pickup: None,
         };
         // Decode m2 as the recipient would, after content-unseal.
         let decoded = InnerPayload::decode(&mut &m2.encode()[..]).unwrap();
