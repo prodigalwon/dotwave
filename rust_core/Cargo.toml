@@ -21,24 +21,23 @@ subxt = { version = "0.50", default-features = false, features = ["jsonrpsee", "
 # without going through subxt's transitive re-export (subxt 0.50 doesn't
 # expose it under `subxt::ext`).
 scale-info = { version = "2.11", default-features = false }
-# All Rostro chat + client crates are path-depped from the ONE
-# chat-deaddrop-v0 worktree so every crate (and their shared internal
-# deps like rostro-chat-primitives) resolves to a single copy — no
-# two-versions-of-a-crate type mismatches. The worktree is rostro-main +
-# the dead-drop wire cutover (OnionDeliverPayload.pickup_key). Repoint to
-# /home/coder/Rostro once chat-deaddrop-v0 merges.
-rostro-client = { path = "/home/coder/Rostro-chat-deaddrop/substrate/utils/rostro-client" }
-rostro-chat-primitives = { path = "/home/coder/Rostro-chat-deaddrop/substrate/utils/rostro-chat-primitives" }
-rostro-chat-sealed-sender = { path = "/home/coder/Rostro-chat-deaddrop/substrate/utils/rostro-chat-sealed-sender" }
+# All Rostro chat + client crates are path-depped from the rostro-main
+# checkout (/home/coder/Rostro) — one copy each, so their shared internal
+# deps (e.g. rostro-chat-primitives) resolve to a single version, no
+# two-versions-of-a-crate type mismatches. The dead-drop engine (the
+# OnionDeliverPayload.pickup_key wire cutover) is merged into rostro-main.
+rostro-client = { path = "/home/coder/Rostro/substrate/utils/rostro-client" }
+rostro-chat-primitives = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-primitives" }
+rostro-chat-sealed-sender = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-sealed-sender" }
 # Phase 3: inner content sealed to the recipient's silicon content key
 # (P-256 StrongBox / P-384 TPM; software stand-in on the dev box).
-rostro-chat-content-seal = { path = "/home/coder/Rostro-chat-deaddrop/substrate/utils/rostro-chat-content-seal" }
+rostro-chat-content-seal = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-content-seal" }
 # Phase 5: Double Ratchet + full X3DH for forward-secret 1:1.
-rostro-chat-dr = { path = "/home/coder/Rostro-chat-deaddrop/substrate/utils/rostro-chat-dr" }
+rostro-chat-dr = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-dr" }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 # Phase 4: one-hop onion (network-origin anonymity) + node identity.
-rostro-chat-onion = { path = "/home/coder/Rostro-chat-deaddrop/substrate/utils/rostro-chat-onion" }
-rostro-node-identity = { path = "/home/coder/Rostro-chat-deaddrop/substrate/utils/rostro-node-identity" }
+rostro-chat-onion = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-onion" }
+rostro-node-identity = { path = "/home/coder/Rostro/substrate/utils/rostro-node-identity" }
 # Matched to the Rostro workspace so the chat-crate types unify.
 ed25519-zebra = "4.0.3"
 # Phase 2 chat-auth: software P-256 ECDSA stand-in for the StrongBox/TPM
