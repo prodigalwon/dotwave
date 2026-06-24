@@ -187,23 +187,20 @@ class _MessagesTabState extends State<MessagesTab> {
             icon: const Icon(Icons.dns_outlined),
             onPressed: _showNodeSheet,
           ),
-          IconButton(
-            tooltip: 'New message',
-            icon: const Icon(Icons.edit_outlined, color: AppTheme.pink),
-            onPressed: _showNewMessageSheet,
-          ),
         ],
       ),
       body: SafeArea(
         top: false,
-        child: RefreshIndicator(
-          color: AppTheme.pink,
-          backgroundColor: AppTheme.surface2,
-          onRefresh: _refresh,
-          child: _loading
-              ? const Center(
-                  child: CircularProgressIndicator(color: AppTheme.pink, strokeWidth: 2))
-              : ListView(
+        child: Stack(
+          children: [
+            RefreshIndicator(
+              color: AppTheme.pink,
+              backgroundColor: AppTheme.surface2,
+              onRefresh: _refresh,
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: AppTheme.pink, strokeWidth: 2))
+                  : ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   children: [
@@ -246,6 +243,27 @@ class _MessagesTabState extends State<MessagesTab> {
                     ],
                   ],
                 ),
+            ),
+            // New-message pencil — pinned to the bottom of the body (just above
+            // HomeShell's nav bar) with a small standard margin, and pulled 20%
+            // in from the right edge toward centre via fractional Alignment. No
+            // pixel positioning → uniform across screen sizes.
+            Align(
+              alignment: const Alignment(0.8, 1.0),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: FloatingActionButton.large(
+                  heroTag: 'newMessageFab',
+                  tooltip: 'New message',
+                  backgroundColor: AppTheme.pink,
+                  foregroundColor: Colors.white,
+                  shape: const CircleBorder(),
+                  onPressed: _showNewMessageSheet,
+                  child: const Icon(Icons.edit_outlined, size: 34),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
