@@ -15,18 +15,32 @@
 //! agree across runs. These are LAB seeds — never used anywhere real.
 
 use rust_core::chat::{
-    chat_fetch, chat_fetch_deaddrop, chat_gen_content_key, chat_gen_identity, chat_node_info,
-    chat_read_content, chat_send_deaddrop, chat_send_onion_2hop,
+    chat_deaddrop_pickup, chat_fetch, chat_fetch_at_pickup, chat_fetch_deaddrop,
+    chat_gen_content_key, chat_gen_identity, chat_mint_return_pickup, chat_node_info,
+    chat_read_content, chat_read_deaddrop, chat_send_deaddrop, chat_send_onion_2hop,
+    chat_send_to_pickup,
 };
 use rust_core::core::{
     chat_mint_test_cert, chat_resolve_identity, chat_setup_messaging, dev_cert_seed_hex,
     fetch_balance, send_dot,
 };
+use rust_core::dead_drop::DeadDropThread;
 
 const FERDIE_CHAT_SEED: &str = "f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1";
 const FERDIE_CONTENT_SEED: &str = "f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2";
+// Bob: a second lab identity (Alice = Ferdie) for the ping-pong gate.
+const BOB_CHAT_SEED: &str = "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1";
+const BOB_CONTENT_SEED: &str = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
 const CURVE_P256: u8 = 0;
 const DEFAULT_RPC: &str = "ws://127.0.0.1:9944";
+
+/// Decode a 32-byte hex pickup key into the array the state machine uses.
+fn decode32(h: &str) -> [u8; 32] {
+    hex::decode(h.trim_start_matches("0x"))
+        .expect("pickup hex")
+        .try_into()
+        .expect("pickup must be 32 bytes")
+}
 
 fn ferdie_content_key() -> String {
     chat_gen_content_key(CURVE_P256, FERDIE_CONTENT_SEED.to_string())
@@ -512,8 +526,113 @@ fn main() {
                 }
             }
         }
+        "deaddrop-pingpong" => {
+            // deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]
+            // Alice (Ferdie) opens to callsign <label>; the conversation then
+            // walks rotating return addresses for <rounds> turns each way,
+            // driven by the dead_drop::DeadDropThread state machine. GATE:
+            // the callsign bucket must hold EXACTLY ONE drop (the opener) at
+            // the end — every reply rides a rotating return address.
+            let label = args.get(2).expect("need <label>").to_string();
+            let rounds: u32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(3);
+            let guard = args.get(4).map(String::as_str).unwrap_or("ws://127.0.0.1:9954").to_string();
+            let relay2 = args.get(5).map(String::as_str).unwrap_or("ws://127.0.0.1:9955").to_string();
+            let chain = args.get(6).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+
+            let alice = chat_gen_identity(FERDIE_CHAT_SEED.to_string()).expect("alice id");
+            let alice_ck = ferdie_content_key();
+            let bob = chat_gen_identity(BOB_CHAT_SEED.to_string()).expect("bob id");
+            let bob_ck = chat_gen_content_key(CURVE_P256, BOB_CONTENT_SEED.to_string()).expect("bob ck");
+
+            let alice_cert_seed = dev_cert_seed_hex("//Ferdie".to_string());
+            let alice_thumb = chat_mint_test_cert(chain.clone(), "//Ferdie".to_string(), alice_cert_seed.clone(), 1_000_000).expect("alice cert");
+            let bob_cert_seed = dev_cert_seed_hex("//Eve".to_string());
+            let bob_thumb = chat_mint_test_cert(chain.clone(), "//Eve".to_string(), bob_cert_seed.clone(), 1_000_000).expect("bob cert");
+
+            let guard_pk = chat_node_info(guard.clone()).expect("guard node info");
+            let relay2_pk = chat_node_info(relay2.clone()).expect("relay2 node info");
+            let base_ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+
+            // Poll a set of buckets as `seed`/`content_seed` until one decodes;
+            // returns (plaintext, advertised return_pickup_hex).
+            let poll_first = |pickups: Vec<String>, seed: &str, content_seed: &str, who: &str| -> (String, String) {
+                for _attempt in 0..12 {
+                    for pk in &pickups {
+                        let msgs = chat_fetch_at_pickup(guard.clone(), seed.to_string(), pk.clone(), None).unwrap_or_default();
+                        for m in &msgs {
+                            if let Ok(r) = chat_read_deaddrop(m.sealed_content_hex.clone(), CURVE_P256, content_seed.to_string()) {
+                                return (r.plaintext, r.return_pickup_hex);
+                            }
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+                panic!("{who}: no message at {} bucket(s) after retries", pickups.len());
+            };
+            let enc = |v: &[[u8; 32]]| v.iter().map(hex::encode).collect::<Vec<_>>();
+
+            // OPENER: Alice -> for_deaddrop(label), advertising A1.
+            let callsign_pickup = chat_deaddrop_pickup(label.clone());
+            let a1 = chat_mint_return_pickup();
+            let mut alice_t = DeadDropThread::open(decode32(&callsign_pickup), decode32(&a1));
+            let mut bob_t = DeadDropThread::responder();
+            chat_send_to_pickup(
+                guard.clone(), guard_pk.clone(), relay2_pk.clone(),
+                FERDIE_CHAT_SEED.to_string(), bob.ed25519_pubkey_hex.clone(), bob_ck.clone(),
+                callsign_pickup.clone(), a1.clone(),
+                "open".to_string(), "alice".to_string(), 5,
+                Some(alice_thumb.clone()), Some(alice_cert_seed.clone()), None, base_ts,
+            ).expect("opener");
+            println!("opener: alice -> callsign '{label}' (bucket {}) advertising A1={}", short(&callsign_pickup), short(&a1));
+
+            let mut ts = base_ts + 1;
+            for round in 1..=rounds {
+                // Bob's turn: receive (callsign on round 1, else his inbound+grace), reply.
+                let bob_polls = if bob_t.inbound_current.is_none() { vec![callsign_pickup.clone()] } else { enc(&bob_t.poll_set()) };
+                let (_btxt, alice_ret) = poll_first(bob_polls, BOB_CHAT_SEED, BOB_CONTENT_SEED, "bob");
+                let b_new = chat_mint_return_pickup();
+                bob_t.on_turn(decode32(&alice_ret), decode32(&b_new));
+                let b_target = hex::encode(bob_t.outbound_target.unwrap());
+                chat_send_to_pickup(
+                    guard.clone(), guard_pk.clone(), relay2_pk.clone(),
+                    BOB_CHAT_SEED.to_string(), alice.ed25519_pubkey_hex.clone(), alice_ck.clone(),
+                    b_target.clone(), b_new.clone(),
+                    format!("bob-{round}"), "bob".to_string(), 5,
+                    Some(bob_thumb.clone()), Some(bob_cert_seed.clone()), None, ts,
+                ).expect("bob reply");
+                ts += 1;
+                println!("  round {round}: bob recv A-ret={} -> reply to {} advertising B={}", short(&alice_ret), short(&b_target), short(&b_new));
+
+                // Alice's turn: receive on her poll set (current + grace), reply.
+                let (_atxt, bob_ret) = poll_first(enc(&alice_t.poll_set()), FERDIE_CHAT_SEED, FERDIE_CONTENT_SEED, "alice");
+                let a_new = chat_mint_return_pickup();
+                alice_t.on_turn(decode32(&bob_ret), decode32(&a_new));
+                let a_target = hex::encode(alice_t.outbound_target.unwrap());
+                chat_send_to_pickup(
+                    guard.clone(), guard_pk.clone(), relay2_pk.clone(),
+                    FERDIE_CHAT_SEED.to_string(), bob.ed25519_pubkey_hex.clone(), bob_ck.clone(),
+                    a_target.clone(), a_new.clone(),
+                    format!("alice-{round}"), "alice".to_string(), 5,
+                    Some(alice_thumb.clone()), Some(alice_cert_seed.clone()), None, ts,
+                ).expect("alice reply");
+                ts += 1;
+                println!("  round {round}: alice recv B-ret={} -> reply to {} advertising A={} (alice grace={})", short(&bob_ret), short(&a_target), short(&a_new), alice_t.grace.len());
+            }
+
+            // GATE: the callsign bucket holds exactly ONE drop (the opener).
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            let callsign_msgs = chat_fetch_at_pickup(guard.clone(), BOB_CHAT_SEED.to_string(), callsign_pickup.clone(), None).unwrap_or_default();
+            println!();
+            println!("=== GATE: callsign '{label}' bucket holds {} drop(s) after {rounds} round(s) each way ===", callsign_msgs.len());
+            if callsign_msgs.len() == 1 {
+                println!(">>> PASS: the callsign saw exactly the opener; all replies rode rotating return addresses");
+            } else {
+                println!(">>> FAIL: expected exactly 1 drop in the callsign bucket, got {}", callsign_msgs.len());
+                std::process::exit(1);
+            }
+        }
         _ => {
-            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-poll <label> [guard]>");
+            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-poll <label> [guard]|deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]>");
             std::process::exit(2);
         }
     }

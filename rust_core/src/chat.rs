@@ -337,6 +337,55 @@ pub fn chat_read_content(
     finish_read(inner_bytes, dr_session_state_hex, identity_seed_hex, opk_secrets)
 }
 
+/// A dead drop's decrypted content plus its return address — the field
+/// `chat_read_content` does not surface (it predates dead drops and stays
+/// untouched to avoid a bridge regen). Dead-drop content is always
+/// `ContentPayload::Plain`. See docs/DOTWAVE-CHAT-DEAD-DROPS.md.
+pub struct DeadDropRead {
+    pub claimed_sender_name: String,
+    pub plaintext: String,
+    pub plaintext_hex: String,
+    pub self_hash_hex: String,
+    pub prev_self_hash_hex: String,
+    pub composed_at: u64,
+    /// The sender's minted reply address (raw 32-byte pickup key, hex).
+    /// Empty if the message carried none (a normal DM, not a dead drop).
+    pub return_pickup_hex: String,
+}
+
+/// Read a DEAD DROP's content (software seam) and surface its return
+/// address so the recipient knows where to reply (the ping-pong hop).
+pub fn chat_read_deaddrop(
+    sealed_content_hex: String,
+    curve: u8,
+    content_seed_hex: String,
+) -> Result<DeadDropRead, String> {
+    let curve = content_curve_from_u8(curve)?;
+    let scalar = decode_content_scalar(curve, &content_seed_hex)?;
+    let sealed = decode_sealed(&sealed_content_hex)?;
+    let inner_bytes = content_unseal_software(curve, &scalar, &sealed)
+        .map_err(|e| format!("content unseal: {e:?}"))?;
+    let content = ContentPayload::decode(&mut &inner_bytes[..])
+        .map_err(|e| format!("ContentPayload decode: {e}"))?;
+    match content {
+        ContentPayload::Plain(payload) => {
+            let self_hash_hex = hex::encode(payload.self_hash());
+            Ok(DeadDropRead {
+                claimed_sender_name: String::from_utf8(payload.sender_name).unwrap_or_default(),
+                plaintext: String::from_utf8(payload.body.clone()).unwrap_or_default(),
+                plaintext_hex: hex::encode(&payload.body),
+                self_hash_hex,
+                prev_self_hash_hex: payload.prev_self_hash.map(hex::encode).unwrap_or_default(),
+                composed_at: payload.composed_at,
+                return_pickup_hex: payload.return_pickup.map(hex::encode).unwrap_or_default(),
+            })
+        }
+        ContentPayload::Ratcheted { .. } => {
+            Err("dead drop content must be Plain, got Ratcheted".to_string())
+        }
+    }
+}
+
 /// Decode a hex-encoded SCALE `ContentSealed` blob (shared by the software
 /// and hardware read seams).
 fn decode_sealed(sealed_content_hex: &str) -> Result<ContentSealed, String> {
@@ -877,6 +926,79 @@ pub fn chat_send_deaddrop(
     Ok(outcome)
 }
 
+/// The pickup-key (hex) a dead-drop `label` (callsign) routes to. The
+/// sender uses it as the opener's send target; the recipient uses it as
+/// the poll bucket. Pure (no I/O) — just `for_deaddrop(label)`.
+pub fn chat_deaddrop_pickup(label: String) -> String {
+    hex::encode(PickupKey::for_deaddrop(label.as_bytes()).0)
+}
+
+/// Mint a fresh random 32-byte dead-drop return address (hex). The
+/// rotation state machine calls this to advertise a new inbound address
+/// each turn; the value is never human-facing and is used directly as a
+/// pickup key (no hashing).
+pub fn chat_mint_return_pickup() -> String {
+    let mut b = [0u8; 32];
+    OsRng.fill_bytes(&mut b);
+    hex::encode(b)
+}
+
+/// Send a dead-drop message to a RAW 32-byte pickup key — the ping-pong
+/// REPLY hop, where the target is a return address the peer minted (or
+/// `chat_deaddrop_pickup(label)` for the opener). Unlike
+/// `chat_send_deaddrop`, the caller supplies `return_pickup_hex` (its own
+/// current inbound address, owned by the rotation state machine) rather
+/// than minting one internally. Still sealed to the recipient's REAL keys.
+#[allow(clippy::too_many_arguments)]
+pub fn chat_send_to_pickup(
+    node_rpc: String,
+    guard_pubkey_hex: String,
+    relay2_pubkey_hex: String,
+    sender_seed_hex: String,
+    recipient_pubkey_hex: String,
+    recipient_content_key_hex: String,
+    target_pickup_hex: String,
+    return_pickup_hex: String,
+    message: String,
+    sender_name: String,
+    total_shares: u8,
+    auth_cert_thumbprint_hex: Option<String>,
+    auth_cert_seed_hex: Option<String>,
+    prev_self_hash_hex: Option<String>,
+    composed_at_secs: u64,
+) -> Result<ChatSendOutcome, String> {
+    let prev_self_hash = match prev_self_hash_hex.filter(|h| !h.is_empty()) {
+        Some(h) => Some(decode_hex32(&h)?),
+        None => None,
+    };
+    let target = decode_hex32(&target_pickup_hex)?;
+    let return_pickup = decode_hex32(&return_pickup_hex)?;
+    let inner = InnerPayload {
+        sender_name: sender_name.into_bytes(),
+        body: message.into_bytes(),
+        prev_self_hash,
+        composed_at: composed_at_secs,
+        return_pickup: Some(return_pickup),
+    };
+    let new_self_hash = inner.self_hash();
+    let content = ContentPayload::Plain(inner).encode();
+    let mut outcome = send_content_onion(
+        node_rpc,
+        &guard_pubkey_hex,
+        Some(&relay2_pubkey_hex),
+        &sender_seed_hex,
+        &recipient_pubkey_hex,
+        &recipient_content_key_hex,
+        content,
+        total_shares,
+        auth_cert_thumbprint_hex,
+        auth_cert_seed_hex,
+        Some(target),
+    )?;
+    outcome.new_self_hash_hex = hex::encode(new_self_hash);
+    Ok(outcome)
+}
+
 /// Build the SealedEnvelope (content-seal → sign → sealed-sender) for a
 /// pairwise send. Shared by the direct (`send_content`) and onion
 /// (`send_content_onion`) dispatch paths. Returns the envelope + the
@@ -1127,6 +1249,20 @@ pub fn chat_fetch_deaddrop(
 ) -> Result<Vec<AtRestMessage>, String> {
     let recipient_seed = decode_hex32(&recipient_seed_hex)?;
     let pickup_bytes = PickupKey::for_deaddrop(label.as_bytes()).0;
+    fetch_and_decrypt(node_rpc, pickup_bytes, recipient_seed, relay_peer)
+}
+
+/// Poll a RAW 32-byte pickup key — used for your own minted return
+/// addresses (the ping-pong inbound + its grace window), where the bucket
+/// is not derived from a label. Decrypts with the recipient's real seed.
+pub fn chat_fetch_at_pickup(
+    node_rpc: String,
+    recipient_seed_hex: String,
+    pickup_hex: String,
+    relay_peer: Option<String>,
+) -> Result<Vec<AtRestMessage>, String> {
+    let recipient_seed = decode_hex32(&recipient_seed_hex)?;
+    let pickup_bytes = decode_hex32(&pickup_hex)?;
     fetch_and_decrypt(node_rpc, pickup_bytes, recipient_seed, relay_peer)
 }
 
