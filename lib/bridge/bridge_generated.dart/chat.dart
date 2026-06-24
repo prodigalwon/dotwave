@@ -7,7 +7,7 @@ import 'chat_dr.dart';
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `decode_sealed`, `finish_read`, `identity_from_seed`, `p256_signing_key`, `self_hash`, `send_content_onion`, `send_content`, `unordered`
+// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `decode_sealed`, `fetch_and_decrypt`, `finish_read`, `from_core`, `identity_from_seed`, `p256_signing_key`, `self_hash`, `send_content_onion`, `send_content`, `to_core`, `unordered`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatFetchedShareRaw`, `ChatSendResultRpc`, `ChatShareDescriptorRpc`, `ContentPayload`, `InnerPayload`, `PrecomputedEcdh`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `curve`, `ecdh`
 
@@ -49,6 +49,18 @@ Future<ReadMessage> chatReadContent({
   drSessionStateHex: drSessionStateHex,
   identitySeedHex: identitySeedHex,
   opkSecrets: opkSecrets,
+);
+
+/// Read a DEAD DROP's content (software seam) and surface its return
+/// address so the recipient knows where to reply (the ping-pong hop).
+Future<DeadDropRead> chatReadDeaddrop({
+  required String sealedContentHex,
+  required int curve,
+  required String contentSeedHex,
+}) => RustLib.instance.api.crateChatChatReadDeaddrop(
+  sealedContentHex: sealedContentHex,
+  curve: curve,
+  contentSeedHex: contentSeedHex,
 );
 
 /// Wrap a hardware content public key (the SEC1 bytes StrongBox/TPM exports
@@ -232,10 +244,139 @@ Future<ChatSendOutcome> chatSendOnion2Hop({
   composedAtSecs: composedAtSecs,
 );
 
+/// Send a DEAD DROP: routed by an opaque `label` (a callsign) instead of
+/// by recipient identity, and carrying a freshly-minted return address in
+/// the content seal. The message is still sealed to the recipient's REAL
+/// keys (`recipient_pubkey_hex` + `recipient_content_key_hex`, held
+/// out-of-band) — the label is pure routing, fully decoupled from the
+/// crypto, so relays only ever see an opaque pickup key. The recipient
+/// polls `chat_fetch_deaddrop` with the same `label`. The conversation
+/// then walks rotating `return_pickup`s (ping-pong) — Phase 3 owns the
+/// rotation state machine. See docs/DOTWAVE-CHAT-DEAD-DROPS.md.
+Future<ChatSendOutcome> chatSendDeaddrop({
+  required String nodeRpc,
+  required String guardPubkeyHex,
+  required String relay2PubkeyHex,
+  required String senderSeedHex,
+  required String recipientPubkeyHex,
+  required String recipientContentKeyHex,
+  required String label,
+  required String message,
+  required String senderName,
+  required int totalShares,
+  String? authCertThumbprintHex,
+  String? authCertSeedHex,
+  String? prevSelfHashHex,
+  required BigInt composedAtSecs,
+}) => RustLib.instance.api.crateChatChatSendDeaddrop(
+  nodeRpc: nodeRpc,
+  guardPubkeyHex: guardPubkeyHex,
+  relay2PubkeyHex: relay2PubkeyHex,
+  senderSeedHex: senderSeedHex,
+  recipientPubkeyHex: recipientPubkeyHex,
+  recipientContentKeyHex: recipientContentKeyHex,
+  label: label,
+  message: message,
+  senderName: senderName,
+  totalShares: totalShares,
+  authCertThumbprintHex: authCertThumbprintHex,
+  authCertSeedHex: authCertSeedHex,
+  prevSelfHashHex: prevSelfHashHex,
+  composedAtSecs: composedAtSecs,
+);
+
+/// The pickup-key (hex) a dead-drop `label` (callsign) routes to. The
+/// sender uses it as the opener's send target; the recipient uses it as
+/// the poll bucket. Pure (no I/O) — just `for_deaddrop(label)`.
+Future<String> chatDeaddropPickup({required String label}) =>
+    RustLib.instance.api.crateChatChatDeaddropPickup(label: label);
+
+/// Mint a fresh random 32-byte dead-drop return address (hex). The
+/// rotation state machine calls this to advertise a new inbound address
+/// each turn; the value is never human-facing and is used directly as a
+/// pickup key (no hashing).
+Future<String> chatMintReturnPickup() =>
+    RustLib.instance.api.crateChatChatMintReturnPickup();
+
+/// Opener (Alice): start a thread addressing `callsign_pickup_hex`
+/// (= `chat_deaddrop_pickup(label)`), advertising freshly-minted
+/// `first_inbound_hex` (= `chat_mint_return_pickup()`).
+Future<DeadDropThreadDto> deaddropOpen({
+  required String callsignPickupHex,
+  required String firstInboundHex,
+}) => RustLib.instance.api.crateChatDeaddropOpen(
+  callsignPickupHex: callsignPickupHex,
+  firstInboundHex: firstInboundHex,
+);
+
+/// Responder (Bob): an empty thread, initialised on its first receive.
+Future<DeadDropThreadDto> deaddropResponder() =>
+    RustLib.instance.api.crateChatDeaddropResponder();
+
+/// A receive→send turn: the peer replied with `received_return_hex` (their
+/// new inbound, from the message's return address); rotate to advertise
+/// caller-minted `new_inbound_hex`, retiring the old one into the 3-round
+/// grace window. Returns the updated state for the app to persist.
+Future<DeadDropThreadDto> deaddropOnTurn({
+  required DeadDropThreadDto state,
+  required String receivedReturnHex,
+  required String newInboundHex,
+}) => RustLib.instance.api.crateChatDeaddropOnTurn(
+  state: state,
+  receivedReturnHex: receivedReturnHex,
+  newInboundHex: newInboundHex,
+);
+
+/// Every bucket this party must poll for replies (current inbound + grace),
+/// as hex pickup keys. Callsign polling is the separate standing pool.
+Future<List<String>> deaddropPollSet({required DeadDropThreadDto state}) =>
+    RustLib.instance.api.crateChatDeaddropPollSet(state: state);
+
+/// Send a dead-drop message to a RAW 32-byte pickup key — the ping-pong
+/// REPLY hop, where the target is a return address the peer minted (or
+/// `chat_deaddrop_pickup(label)` for the opener). Unlike
+/// `chat_send_deaddrop`, the caller supplies `return_pickup_hex` (its own
+/// current inbound address, owned by the rotation state machine) rather
+/// than minting one internally. Still sealed to the recipient's REAL keys.
+Future<ChatSendOutcome> chatSendToPickup({
+  required String nodeRpc,
+  required String guardPubkeyHex,
+  required String relay2PubkeyHex,
+  required String senderSeedHex,
+  required String recipientPubkeyHex,
+  required String recipientContentKeyHex,
+  required String targetPickupHex,
+  required String returnPickupHex,
+  required String message,
+  required String senderName,
+  required int totalShares,
+  String? authCertThumbprintHex,
+  String? authCertSeedHex,
+  String? prevSelfHashHex,
+  required BigInt composedAtSecs,
+}) => RustLib.instance.api.crateChatChatSendToPickup(
+  nodeRpc: nodeRpc,
+  guardPubkeyHex: guardPubkeyHex,
+  relay2PubkeyHex: relay2PubkeyHex,
+  senderSeedHex: senderSeedHex,
+  recipientPubkeyHex: recipientPubkeyHex,
+  recipientContentKeyHex: recipientContentKeyHex,
+  targetPickupHex: targetPickupHex,
+  returnPickupHex: returnPickupHex,
+  message: message,
+  senderName: senderName,
+  totalShares: totalShares,
+  authCertThumbprintHex: authCertThumbprintHex,
+  authCertSeedHex: authCertSeedHex,
+  prevSelfHashHex: prevSelfHashHex,
+  composedAtSecs: composedAtSecs,
+);
+
 /// Fetch shares for the recipient, then reconstruct, OUTER-unseal and
 /// sender-verify any complete message stripes on-device. The content
 /// stays SEALED (encrypted at rest) — background-safe, no biometric.
 /// Decrypt individual messages with [`chat_read_content`].
+/// Poll the recipient's own pairwise pickup bucket (normal DMs).
 Future<List<AtRestMessage>> chatFetch({
   required String nodeRpc,
   required String recipientSeedHex,
@@ -243,6 +384,37 @@ Future<List<AtRestMessage>> chatFetch({
 }) => RustLib.instance.api.crateChatChatFetch(
   nodeRpc: nodeRpc,
   recipientSeedHex: recipientSeedHex,
+  relayPeer: relayPeer,
+);
+
+/// Poll a DEAD-DROP `label` (callsign): fetch at `for_deaddrop(label)` and
+/// decrypt with the recipient's REAL seed. The message is sealed to the
+/// recipient's keys (the label is only routing), so the same seed that
+/// opens a normal DM opens a dead drop. See docs/DOTWAVE-CHAT-DEAD-DROPS.md.
+Future<List<AtRestMessage>> chatFetchDeaddrop({
+  required String nodeRpc,
+  required String recipientSeedHex,
+  required String label,
+  String? relayPeer,
+}) => RustLib.instance.api.crateChatChatFetchDeaddrop(
+  nodeRpc: nodeRpc,
+  recipientSeedHex: recipientSeedHex,
+  label: label,
+  relayPeer: relayPeer,
+);
+
+/// Poll a RAW 32-byte pickup key — used for your own minted return
+/// addresses (the ping-pong inbound + its grace window), where the bucket
+/// is not derived from a label. Decrypts with the recipient's real seed.
+Future<List<AtRestMessage>> chatFetchAtPickup({
+  required String nodeRpc,
+  required String recipientSeedHex,
+  required String pickupHex,
+  String? relayPeer,
+}) => RustLib.instance.api.crateChatChatFetchAtPickup(
+  nodeRpc: nodeRpc,
+  recipientSeedHex: recipientSeedHex,
+  pickupHex: pickupHex,
   relayPeer: relayPeer,
 );
 
@@ -355,6 +527,107 @@ class ChatSendOutcome {
           recipientPickupKeyHex == other.recipientPickupKeyHex &&
           newSessionStateHex == other.newSessionStateHex &&
           newSelfHashHex == other.newSelfHashHex;
+}
+
+/// One live grace-window entry: a superseded return address still polled.
+class DeadDropGraceEntry {
+  final String pickupHex;
+  final int roundsLeft;
+
+  const DeadDropGraceEntry({required this.pickupHex, required this.roundsLeft});
+
+  @override
+  int get hashCode => pickupHex.hashCode ^ roundsLeft.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DeadDropGraceEntry &&
+          runtimeType == other.runtimeType &&
+          pickupHex == other.pickupHex &&
+          roundsLeft == other.roundsLeft;
+}
+
+/// A dead drop's decrypted content plus its return address — the field
+/// `chat_read_content` does not surface (it predates dead drops and stays
+/// untouched to avoid a bridge regen). Dead-drop content is always
+/// `ContentPayload::Plain`. See docs/DOTWAVE-CHAT-DEAD-DROPS.md.
+class DeadDropRead {
+  final String claimedSenderName;
+  final String plaintext;
+  final String plaintextHex;
+  final String selfHashHex;
+  final String prevSelfHashHex;
+  final BigInt composedAt;
+
+  /// The sender's minted reply address (raw 32-byte pickup key, hex).
+  /// Empty if the message carried none (a normal DM, not a dead drop).
+  final String returnPickupHex;
+
+  const DeadDropRead({
+    required this.claimedSenderName,
+    required this.plaintext,
+    required this.plaintextHex,
+    required this.selfHashHex,
+    required this.prevSelfHashHex,
+    required this.composedAt,
+    required this.returnPickupHex,
+  });
+
+  @override
+  int get hashCode =>
+      claimedSenderName.hashCode ^
+      plaintext.hashCode ^
+      plaintextHex.hashCode ^
+      selfHashHex.hashCode ^
+      prevSelfHashHex.hashCode ^
+      composedAt.hashCode ^
+      returnPickupHex.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DeadDropRead &&
+          runtimeType == other.runtimeType &&
+          claimedSenderName == other.claimedSenderName &&
+          plaintext == other.plaintext &&
+          plaintextHex == other.plaintextHex &&
+          selfHashHex == other.selfHashHex &&
+          prevSelfHashHex == other.prevSelfHashHex &&
+          composedAt == other.composedAt &&
+          returnPickupHex == other.returnPickupHex;
+}
+
+/// FRB mirror of a conversation's ping-pong rotation state. The app
+/// persists this per thread and feeds it back into the transition fns.
+class DeadDropThreadDto {
+  /// Where this party sends next ("" before a responder's first receive).
+  final String outboundTargetHex;
+
+  /// The return address this party advertises ("" before first receive).
+  final String inboundCurrentHex;
+
+  /// Superseded inbound addresses still being polled (the grace window).
+  final List<DeadDropGraceEntry> grace;
+
+  const DeadDropThreadDto({
+    required this.outboundTargetHex,
+    required this.inboundCurrentHex,
+    required this.grace,
+  });
+
+  @override
+  int get hashCode =>
+      outboundTargetHex.hashCode ^ inboundCurrentHex.hashCode ^ grace.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DeadDropThreadDto &&
+          runtimeType == other.runtimeType &&
+          outboundTargetHex == other.outboundTargetHex &&
+          inboundCurrentHex == other.inboundCurrentHex &&
+          grace == other.grace;
 }
 
 /// Decrypted content, produced ONLY by [`chat_read_content`].

@@ -943,6 +943,97 @@ pub fn chat_mint_return_pickup() -> String {
     hex::encode(b)
 }
 
+// ── FRB bridge for the ping-pong rotation (Phase 4) ──────────────────
+// Plain-data mirror of `dead_drop::DeadDropThread` + thin delegating
+// wrappers, so the rotation logic stays in ONE place (core) while Dart
+// holds and persists the state. Hex strings keep it FRB-friendly and
+// easy to serialise; an empty string means `None`.
+
+/// One live grace-window entry: a superseded return address still polled.
+pub struct DeadDropGraceEntry {
+    pub pickup_hex: String,
+    pub rounds_left: u8,
+}
+
+/// FRB mirror of a conversation's ping-pong rotation state. The app
+/// persists this per thread and feeds it back into the transition fns.
+pub struct DeadDropThreadDto {
+    /// Where this party sends next ("" before a responder's first receive).
+    pub outbound_target_hex: String,
+    /// The return address this party advertises ("" before first receive).
+    pub inbound_current_hex: String,
+    /// Superseded inbound addresses still being polled (the grace window).
+    pub grace: Vec<DeadDropGraceEntry>,
+}
+
+impl DeadDropThreadDto {
+    fn from_core(t: &crate::dead_drop::DeadDropThread) -> Self {
+        DeadDropThreadDto {
+            outbound_target_hex: t.outbound_target.map(hex::encode).unwrap_or_default(),
+            inbound_current_hex: t.inbound_current.map(hex::encode).unwrap_or_default(),
+            grace: t
+                .grace
+                .iter()
+                .map(|(p, r)| DeadDropGraceEntry { pickup_hex: hex::encode(p), rounds_left: *r })
+                .collect(),
+        }
+    }
+    fn to_core(&self) -> Result<crate::dead_drop::DeadDropThread, String> {
+        let opt = |s: &str| -> Result<Option<[u8; 32]>, String> {
+            if s.is_empty() { Ok(None) } else { Ok(Some(decode_hex32(s)?)) }
+        };
+        let grace = self
+            .grace
+            .iter()
+            .map(|g| Ok((decode_hex32(&g.pickup_hex)?, g.rounds_left)))
+            .collect::<Result<Vec<_>, String>>()?;
+        Ok(crate::dead_drop::DeadDropThread {
+            outbound_target: opt(&self.outbound_target_hex)?,
+            inbound_current: opt(&self.inbound_current_hex)?,
+            grace,
+        })
+    }
+}
+
+/// Opener (Alice): start a thread addressing `callsign_pickup_hex`
+/// (= `chat_deaddrop_pickup(label)`), advertising freshly-minted
+/// `first_inbound_hex` (= `chat_mint_return_pickup()`).
+pub fn deaddrop_open(
+    callsign_pickup_hex: String,
+    first_inbound_hex: String,
+) -> Result<DeadDropThreadDto, String> {
+    let t = crate::dead_drop::DeadDropThread::open(
+        decode_hex32(&callsign_pickup_hex)?,
+        decode_hex32(&first_inbound_hex)?,
+    );
+    Ok(DeadDropThreadDto::from_core(&t))
+}
+
+/// Responder (Bob): an empty thread, initialised on its first receive.
+pub fn deaddrop_responder() -> DeadDropThreadDto {
+    DeadDropThreadDto::from_core(&crate::dead_drop::DeadDropThread::responder())
+}
+
+/// A receive→send turn: the peer replied with `received_return_hex` (their
+/// new inbound, from the message's return address); rotate to advertise
+/// caller-minted `new_inbound_hex`, retiring the old one into the 3-round
+/// grace window. Returns the updated state for the app to persist.
+pub fn deaddrop_on_turn(
+    state: DeadDropThreadDto,
+    received_return_hex: String,
+    new_inbound_hex: String,
+) -> Result<DeadDropThreadDto, String> {
+    let mut t = state.to_core()?;
+    t.on_turn(decode_hex32(&received_return_hex)?, decode_hex32(&new_inbound_hex)?);
+    Ok(DeadDropThreadDto::from_core(&t))
+}
+
+/// Every bucket this party must poll for replies (current inbound + grace),
+/// as hex pickup keys. Callsign polling is the separate standing pool.
+pub fn deaddrop_poll_set(state: DeadDropThreadDto) -> Result<Vec<String>, String> {
+    Ok(state.to_core()?.poll_set().iter().map(hex::encode).collect())
+}
+
 /// Send a dead-drop message to a RAW 32-byte pickup key — the ping-pong
 /// REPLY hop, where the target is a return address the peer minted (or
 /// `chat_deaddrop_pickup(label)` for the opener). Unlike

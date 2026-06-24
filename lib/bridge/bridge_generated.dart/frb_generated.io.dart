@@ -44,6 +44,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
+  DeadDropThreadDto dco_decode_box_autoadd_dead_drop_thread_dto(dynamic raw);
+
+  @protected
   LivenessInputsFields dco_decode_box_autoadd_liveness_inputs_fields(
     dynamic raw,
   );
@@ -92,6 +95,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ChatSetupOutcome dco_decode_chat_setup_outcome(dynamic raw);
 
   @protected
+  DeadDropGraceEntry dco_decode_dead_drop_grace_entry(dynamic raw);
+
+  @protected
+  DeadDropRead dco_decode_dead_drop_read(dynamic raw);
+
+  @protected
+  DeadDropThreadDto dco_decode_dead_drop_thread_dto(dynamic raw);
+
+  @protected
   DnsRecord dco_decode_dns_record(dynamic raw);
 
   @protected
@@ -120,6 +132,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<AtRestMessage> dco_decode_list_at_rest_message(dynamic raw);
+
+  @protected
+  List<DeadDropGraceEntry> dco_decode_list_dead_drop_grace_entry(dynamic raw);
 
   @protected
   List<DnsRecord> dco_decode_list_dns_record(dynamic raw);
@@ -249,6 +264,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
+  DeadDropThreadDto sse_decode_box_autoadd_dead_drop_thread_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   LivenessInputsFields sse_decode_box_autoadd_liveness_inputs_fields(
     SseDeserializer deserializer,
   );
@@ -307,6 +327,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ChatSetupOutcome sse_decode_chat_setup_outcome(SseDeserializer deserializer);
 
   @protected
+  DeadDropGraceEntry sse_decode_dead_drop_grace_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  DeadDropRead sse_decode_dead_drop_read(SseDeserializer deserializer);
+
+  @protected
+  DeadDropThreadDto sse_decode_dead_drop_thread_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   DnsRecord sse_decode_dns_record(SseDeserializer deserializer);
 
   @protected
@@ -335,6 +368,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<AtRestMessage> sse_decode_list_at_rest_message(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<DeadDropGraceEntry> sse_decode_list_dead_drop_grace_entry(
     SseDeserializer deserializer,
   );
 
@@ -495,6 +533,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_dead_drop_thread_dto(
+    DeadDropThreadDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_liveness_inputs_fields(
     LivenessInputsFields self,
     SseSerializer serializer,
@@ -573,6 +617,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_dead_drop_grace_entry(
+    DeadDropGraceEntry self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_dead_drop_read(DeadDropRead self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_dead_drop_thread_dto(
+    DeadDropThreadDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_dns_record(DnsRecord self, SseSerializer serializer);
 
   @protected
@@ -602,6 +661,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_at_rest_message(
     List<AtRestMessage> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_dead_drop_grace_entry(
+    List<DeadDropGraceEntry> self,
     SseSerializer serializer,
   );
 
