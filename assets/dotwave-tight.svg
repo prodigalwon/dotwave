@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 460" width="400" height="460">
+  <defs>
+    <clipPath id="roundClip">
+      <rect width="400" height="460" rx="56" ry="56"/>
+    </clipPath>
+    <filter id="eyeglow" x="-80%" y="-80%" width="360%" height="360%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="400" height="460" rx="56" ry="56" fill="#000000"/>
+
+  <g clip-path="url(#roundClip)">
+
+    <!-- OUTER RING — 6 ovals, no bottom one, deep wine -->
+    <!-- We skip the 180deg bottom oval intentionally -->
+    <g transform="rotate(0, 200, 185)">
+      <!-- top -->
+      <ellipse cx="200" cy="57"  rx="34" ry="16" transform="rotate(0,   200, 57)"  fill="#8b0000"/>
+      <!-- top-right -->
+      <ellipse cx="311" cy="121" rx="34" ry="16" transform="rotate(60,  311, 121)" fill="#8b0000"/>
+      <!-- bot-right -->
+      <ellipse cx="311" cy="249" rx="34" ry="16" transform="rotate(120, 311, 249)" fill="#8b0000"/>
+      <!-- bot-left -->
+      <ellipse cx="89"  cy="249" rx="34" ry="16" transform="rotate(240, 89,  249)" fill="#8b0000"/>
+      <!-- top-left -->
+      <ellipse cx="89"  cy="121" rx="34" ry="16" transform="rotate(300, 89,  121)" fill="#8b0000"/>
+    </g>
+
+    <!-- MID RING — 6 ovals, staggered 30deg, pure red -->
+    <g transform="rotate(30, 200, 185)">
+      <ellipse cx="200" cy="105" rx="26" ry="12" transform="rotate(0,   200, 105)" fill="#d10000"/>
+      <ellipse cx="269" cy="145" rx="26" ry="12" transform="rotate(60,  269, 145)" fill="#d10000"/>
+      <ellipse cx="269" cy="225" rx="26" ry="12" transform="rotate(120, 269, 225)" fill="#d10000"/>
+      <ellipse cx="200" cy="265" rx="26" ry="12" transform="rotate(180, 200, 265)" fill="#d10000"/>
+      <ellipse cx="131" cy="225" rx="26" ry="12" transform="rotate(240, 131, 225)" fill="#d10000"/>
+      <ellipse cx="131" cy="145" rx="26" ry="12" transform="rotate(300, 131, 145)" fill="#d10000"/>
+    </g>
+
+    <!-- INNER RING — top 3 glowing eyes, bottom 3 shadow -->
+    <g transform="rotate(0, 200, 185)">
+      <!-- bottom 3 shadow -->
+      <ellipse cx="233" cy="204" rx="18" ry="9" transform="rotate(120, 233, 204)" fill="#5a0000"/>
+      <ellipse cx="200" cy="223" rx="18" ry="9" transform="rotate(180, 200, 223)" fill="#5a0000"/>
+      <ellipse cx="167" cy="204" rx="18" ry="9" transform="rotate(240, 167, 204)" fill="#5a0000"/>
+
+      <!-- top 3 glow -->
+      <ellipse cx="200" cy="147" rx="18" ry="9" transform="rotate(0,   200, 147)" fill="#ff0000" filter="url(#eyeglow)"/>
+      <ellipse cx="233" cy="166" rx="18" ry="9" transform="rotate(60,  233, 166)" fill="#ff0000" filter="url(#eyeglow)"/>
+      <ellipse cx="167" cy="166" rx="18" ry="9" transform="rotate(300, 167, 166)" fill="#ff0000" filter="url(#eyeglow)"/>
+
+      <!-- top 3 white hot core -->
+      <ellipse cx="200" cy="147" rx="18" ry="9" transform="rotate(0,   200, 147)" fill="#ffffff"/>
+      <ellipse cx="233" cy="166" rx="18" ry="9" transform="rotate(60,  233, 166)" fill="#ffffff"/>
+      <ellipse cx="167" cy="166" rx="18" ry="9" transform="rotate(300, 167, 166)" fill="#ffffff"/>
+    </g>
+
+  </g>
+
+  <!-- Wordmark — tucked up close -->
+  <text
+    x="200" y="340"
+    text-anchor="middle"
+    font-family="'SF Pro Display', 'Helvetica Neue', Helvetica, sans-serif"
+    font-size="52"
+    letter-spacing="-2"
+    fill="white"
+  ><tspan font-weight="700">dot</tspan><tspan font-weight="300">wave</tspan></text>
+
+</svg>

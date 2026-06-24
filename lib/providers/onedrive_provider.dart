@@ -5,7 +5,12 @@ import '../cloud_backup.dart';
 
 class OneDriveProvider implements CloudBackupProvider {
   static const _clientId = 'YOUR_MICROSOFT_CLIENT_ID';
-  static const _redirectUri = 'msauth://com.dotwave.dotwave/callback';
+  // MSAL redirect URI scheme — must match the app's `applicationId` in
+  // `android/app/build.gradle.kts`. OAuth is not yet wired end-to-end
+  // (see `signIn()` below), so there is no Azure registration to keep
+  // in sync today; this stays a placeholder until the flow is
+  // implemented, but the applicationId change should travel with it.
+  static const _redirectUri = 'msauth://com.dotwave.app/callback';
   static const _scopes = 'Files.ReadWrite offline_access';
 
   String? _accessToken;

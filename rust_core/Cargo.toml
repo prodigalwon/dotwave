@@ -4,13 +4,78 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.102"
 argon2 = "0.5.3"
+base32 = "0.5.1"
 bip39 = "2.2.2"
 chacha20poly1305 = "0.10.1"
 flutter_rust_bridge = "=2.11.1"
 getrandom = "0.4.2"
+libc = "0.2.183"
 rand = "0.10.0"
 rand_core = "0.10.0"
+ring = "0.17.14"
 sp-core = { version = "39.0.0", features = ["full_crypto"] }
-zeroize = "1.8.2"
+subxt = { version = "0.50", default-features = false, features = ["jsonrpsee", "native", "runtime"] }
+# Direct dep on scale-info so `rostro_config.rs` can name `PortableRegistry`
+# without going through subxt's transitive re-export (subxt 0.50 doesn't
+# expose it under `subxt::ext`).
+scale-info = { version = "2.11", default-features = false }
+# Native Rostro client. Path-deps the rostro-client crate from the Rostro
+# workspace; the read-side surface (storage + runtime API) goes through this
+# instead of subxt's dynamic API. See Phase 3 / dotwave-port plan.
+rostro-client = { path = "/home/coder/Rostro/substrate/utils/rostro-client" }
+# On-device chat. Cross-repo path-deps the proven Rostro chat crates
+# (same pattern as rostro-client). chat.rs ports rostro-chat-cli's
+# send/recover flow; the node sees only ciphertext + routing metadata.
+rostro-chat-primitives = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-primitives" }
+# Pointed at the chat-onion-v0 worktree so the SealedOutput type unifies
+# with rostro-chat-onion's (which deps sealed-sender from there). The
+# worktree content is rostro-main + the onion commits — identical
+# sealed-sender. Repoint to /home/coder/Rostro once chat-onion-v0 merges.
+rostro-chat-sealed-sender = { path = "/home/coder/Rostro-chat-onion/substrate/utils/rostro-chat-sealed-sender" }
+# Phase 3: inner content sealed to the recipient's silicon content key
+# (P-256 StrongBox / P-384 TPM; software stand-in on the dev box).
+rostro-chat-content-seal = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-content-seal" }
+# Phase 5: Double Ratchet + full X3DH for forward-secret 1:1.
+rostro-chat-dr = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-dr" }
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+# Phase 4: one-hop onion (network-origin anonymity) + node identity.
+# Path-dep the chat-onion-v0 worktree where these crates currently live.
+rostro-chat-onion = { path = "/home/coder/Rostro-chat-onion/substrate/utils/rostro-chat-onion" }
+rostro-node-identity = { path = "/home/coder/Rostro-chat-onion/substrate/utils/rostro-node-identity" }
+# Matched to the Rostro workspace so the chat-crate types unify.
+ed25519-zebra = "4.0.3"
+# Phase 2 chat-auth: software P-256 ECDSA stand-in for the StrongBox/TPM
+# cert key on the dev box. Same crate + version the node's
+# `DevicePublicKey::verify_signature` uses, so sign/verify stay symmetric.
+p256 = { version = "0.13", features = ["ecdsa", "arithmetic"] }
+hex = "0.4.3"
+serde = { version = "1.0.214", features = ["derive"] }
+# rand_core 0.6 ALIAS — the chat crates bind `R: rand_core 0.6
+# RngCore + CryptoRng`; rust_core's other code is on rand_core 0.10
+# (incompatible major). The chat layer uses this 0.6 OsRng only.
+rand_core_06 = { package = "rand_core", version = "0.6.2", features = ["getrandom"] }
+scale-value = "0.18.2"
+frame-metadata = { version = "23.0.1", features = ["current"] }
+parity-scale-codec = { version = "3.7.5", features = ["derive"] }
+tokio = { version = "1.50.0", features = ["rt", "macros"] }
+zeroize = { version = "1.8.2", features = ["zeroize_derive"] }
 zxcvbn = "3.1.0"
+
+# Stage 2 PoC: on-device Groth16 proving via ark-circom. Not production —
+# real rapidsnark (C++ FFI) is the production path if this benchmark
+# confirms the approach is viable but needs more speed. ark-circom
+# pulls ark-groth16, ark-bn254, ark-std, and wasmer (for Circom
+# wasm witness generation) transitively. Adds non-trivial binary
+# size to librust_core.so — acceptable for the PoC debug build.
+ark-circom = "0.5"
+ark-bn254 = { version = "0.5", default-features = false }
+ark-groth16 = { version = "0.5", default-features = false }
+ark-snark = { version = "0.5", default-features = false }
+ark-std = { version = "0.5", default-features = false }
+ark-serialize = { version = "0.5", default-features = false }
+sha2 = "0.10"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]

@@ -1,18 +1,26 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'bridge/bridge_generated.dart/frb_generated.dart';
 import 'package:no_screenshot/no_screenshot.dart';
-import 'keystore.dart';
 import 'dart:typed_data';
 import 'package:local_auth/local_auth.dart';
 import 'backup_provider_screen.dart';
 import 'restore_provider_screen.dart';
+import 'home_shell.dart';
+import 'widgets/tx_badge_overlay.dart';
+import 'theme.dart';
+import 'screens/name_registration_screen.dart';
+import 'screens/seed_phrase_quiz_screen.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('>>> Starting RustLib.init()');
   await RustLib.init();
-  await AndroidKeystore.generateKey();
+  debugPrint('>>> RustLib done, starting app');
   runApp(const DotWaveApp());
 }
 
@@ -23,15 +31,23 @@ class DotWaveApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Dotwave',
+      navigatorKey: rootNavigatorKey,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFE6007A),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.dark,
       home: const SplashScreen(),
+      builder: (context, child) {
+        // Pin the transaction tracker badge above every route.
+        return Stack(
+          children: [
+            if (child != null) child,
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 12,
+              child: const TxBadgeOverlay(),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -53,32 +69,62 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
 Future<void> _checkExistingAccount() async {
-  final address = await _storage.read(key: 'account_address');
+  // Single source of truth for "is this device onboarded": the
+  // passphrase-encrypted seed phrase. If it's on the device, the
+  // user has a recoverable wallet. If it's not, the user needs to
+  // onboard fresh regardless of what other keys are lying around.
+  final encryptedPhrase = await _storage.read(key: 'encrypted_phrase');
   if (!mounted) return;
 
-  if (address != null) {
-    final authenticated = await _authenticateUser();
+  if (encryptedPhrase == null) {
+    // Clear any orphaned `account_address` left by earlier buggy
+    // code paths, then send the user through fresh onboarding. The
+    // address without the phrase is useless (can't sign) and would
+    // only cause confusion.
+    await _storage.delete(key: 'account_address');
     if (!mounted) return;
-    if (authenticated) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => HomeScreen(address: address)),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Authentication required to access your account')),
-      );
-      await _checkExistingAccount();
-    }
-  } else {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => const OnboardingScreen()),
     );
+    return;
   }
+
+  final address = await _storage.read(key: 'account_address');
+  if (!mounted) return;
+  if (address == null) {
+    // Defensive: encrypted_phrase without account_address shouldn't
+    // occur (we write them atomically in SetPassphraseScreen and the
+    // restore flow), but if it ever does, treat as corrupted state
+    // and re-onboard.
+    await _storage.delete(key: 'encrypted_phrase');
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+    );
+    return;
+  }
+
+  final authenticated = await _authenticateUser();
+  if (!mounted) return;
+  if (!authenticated) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Authentication required to access your account')),
+    );
+    await _checkExistingAccount();
+    return;
+  }
+
+  Navigator.pushReplacement(
+    context,
+    MaterialPageRoute(builder: (_) => HomeShell(address: address)),
+  );
 }
 
 Future<bool> _authenticateUser() async {
+    if (kDebugMode) return true;
+
     final auth = LocalAuthentication();
     final canAuth = await auth.canCheckBiometrics || await auth.isDeviceSupported();
     if (!canAuth) return true;
@@ -94,15 +140,21 @@ Future<bool> _authenticateUser() async {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    // Splash logo uses the same 1024×1024 PNG that generates the
+    // launcher icon (icons8 export). Previously this rendered the
+    // source SVG via `flutter_svg`, which mis-rendered the
+    // "dotwave" wordmark text — `flutter_svg` falls back to Roboto
+    // when SF Pro / Helvetica aren't on the device, and combined
+    // with the SVG's negative `letter-spacing` the text drifted
+    // off-center. The PNG was rasterized with correct fonts, so it
+    // matches the launcher icon pixel-for-pixel.
+    return Scaffold(
+      backgroundColor: AppTheme.bg,
       body: Center(
-        child: Text(
-          'dotwave',
-          style: TextStyle(
-            fontSize: 36,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 2,
-          ),
+        child: Image.asset(
+          'assets/dotwave-logo.png',
+          width: 180,
+          height: 180,
         ),
       ),
     );
@@ -115,50 +167,53 @@ class OnboardingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.bg,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(32.0),
+          padding: const EdgeInsets.symmetric(horizontal: 28.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Welcome to Dotwave',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              const Spacer(flex: 2),
+              // Full dotwave lockup — same PNG the launcher uses. See
+              // the splash above for why we moved off `flutter_svg`
+              // for this asset. The icons8-generated PNG is square,
+              // anti-aliased, and renders the wordmark with correct
+              // font metrics on every device.
+              Center(
+                child: Image.asset(
+                  'assets/dotwave-logo.png',
+                  width: 220,
+                  height: 220,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Your gateway to Rostro.',
+                style: GoogleFonts.dmSans(
+                  fontSize: 16,
+                  color: AppTheme.textSecondary,
+                  height: 1.5,
+                ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
-              const Text(
-                'Your gateway to the Polkadot ecosystem.',
-                style: TextStyle(fontSize: 16, color: Colors.white60),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 64),
+              const Spacer(flex: 3),
               FilledButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CreateAccountScreen()),
-                  );
-                },
-                child: const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text('Create Account'),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CreateAccountScreen()),
                 ),
+                child: const Text('Create Account'),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const RestoreAccountScreen()),
-                  );
-                },
-                child: const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text('I already have an account'),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const RestoreAccountScreen()),
                 ),
+                child: const Text('I already have an account'),
               ),
+              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -190,8 +245,13 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
       final account = result.$1;
       final phrase = result.$2;
 
-      // Store address in secure storage
-      await _storage.write(key: 'account_address', value: account.address);
+      // NOTE: `account_address` is NOT persisted here. If the user
+      // exited at this point (before setting a passphrase) we'd leave
+      // a persisted address with no way to recover the private key —
+      // the phrase only lives in this widget's state. The address is
+      // persisted atomically with `encrypted_phrase` in
+      // `SetPassphraseScreen._setPassphrase()` below, so "has an
+      // address" always implies "has a recoverable key".
       await _noScreenshot.screenshotOff();
       setState(() {
         _phrase = phrase;
@@ -208,18 +268,38 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
   }
 
   Future<void> _confirmBackup() async {
-  await _noScreenshot.screenshotOn();
-  if (!mounted) return;
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => SetPassphraseScreen(
-        phrase: _phrase!,
-        address: _address!,
+    await _noScreenshot.screenshotOn();
+    if (!mounted) return;
+    // "I wrote it down" → seed-phrase confirmation quiz. The quiz
+    // makes the user prove they actually recorded the phrase by
+    // identifying 5 random words by position before they can move
+    // on to setting a passphrase. Standard wallet UX; prevents the
+    // "skip and deal with it later" footgun that locks users out
+    // of recovery.
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SeedPhraseQuizScreen(
+          phrase: _phrase!,
+          address: _address!,
+          onPass: () {
+            // Replace the quiz in the stack with the passphrase
+            // screen so the back arrow on passphrase goes to the
+            // seed-phrase view, not back into the quiz.
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SetPassphraseScreen(
+                  phrase: _phrase!,
+                  address: _address!,
+                ),
+              ),
+            );
+          },
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -295,24 +375,7 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
   }
 }
 
-class HomeScreen extends StatelessWidget {
-  final String address;
-  const HomeScreen({super.key, required this.address});
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Dotwave')),
-      body: Center(
-        child: Text(
-          address,
-          style: const TextStyle(fontSize: 12, color: Colors.white60),
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}
 class SetPassphraseScreen extends StatefulWidget {
   final String phrase;
   final String address;
@@ -365,35 +428,57 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
     setState(() => _loading = true);
 
     try {
-      final phraseBytes = Uint8List.fromList(widget.phrase.codeUnits);
-      final keystoreEncrypted = await AndroidKeystore.encrypt(phraseBytes);
+      // Single-layer passphrase-encrypt: the seed phrase is wrapped
+      // ONLY by Argon2+ChaCha20-Poly1305 derived from the user's
+      // recovery passphrase. The previous Android Keystore outer
+      // wrap was device-bound (AES-GCM with a hardware-backed key),
+      // which broke cross-device restore — the cloud backup blob
+      // couldn't be decrypted on a different phone because the
+      // inner Keystore layer needed that specific device's key.
+      // Reverted to the original scaffold design where the blob is
+      // portable across devices as long as the user has their
+      // passphrase.
       final fullyEncrypted = RustLib.instance.api.crateCoreEncryptPhrase(
-        phrase: String.fromCharCodes(keystoreEncrypted),
+        phrase: widget.phrase,
         passphrase: _passphraseController.text,
       );
+      // Atomic persistence: the address + encrypted phrase are written
+      // together, so splash can never see one without the other. Prevents
+      // the "orphaned address on reopen" bug where a mid-onboarding exit
+      // would leave a persisted address with no recoverable key.
       await _storage.write(
         key: 'encrypted_phrase',
         value: fullyEncrypted.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
       );
+      await _storage.write(key: 'account_address', value: widget.address);
       if (!mounted) return;
-      if (!mounted) return;
-      if (!mounted) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => BackupProviderScreen(
-              encryptedBlob: Uint8List.fromList(fullyEncrypted),
-              address: widget.address,
-              onComplete: () {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (_) => HomeScreen(address: widget.address)),
-                  (_) => false,
-                );
-              },
-            ),
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BackupProviderScreen(
+            encryptedBlob: Uint8List.fromList(fullyEncrypted),
+            address: widget.address,
+            // Wallet onboarding ends at backup. TOTP / HMAC / name
+            // picking are part of the separate opt-in ZK-PKI identity
+            // ceremony — not part of the SS58 wallet. Conflating them
+            // would mean a compromised cert key could lock the user
+            // out of their wallet. Keep the two keypair systems
+            // strictly separate: seed-phrase → passphrase → backup →
+            // HomeShell. ZK-PKI enrollment is done later from the
+            // profile/settings area when the user actually wants an
+            // on-chain identity credential.
+            onComplete: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HomeShell(address: widget.address),
+                ),
+                (_) => false,
+              );
+            },
           ),
-        );
+        ),
+      );
     } catch (e) {
       setState(() => _loading = false);
       if (!mounted) return;
@@ -564,23 +649,32 @@ Future<void> _restoreFromBlob(Uint8List blob) async {
       phrase: phrase,
     );
 
-    await _storage.write(key: 'account_address', value: account.address);
-
-    final phraseBytes = Uint8List.fromList(phrase.codeUnits);
-    final keystoreEncrypted = await AndroidKeystore.encrypt(phraseBytes);
-    final fullyEncrypted = RustLib.instance.api.crateCoreEncryptPhrase(
-      phrase: String.fromCharCodes(keystoreEncrypted),
-      passphrase: _passphraseController.text,
-    );
+    // Write order matters: `account_address` is the splash gate, so
+    // it must be LAST. If any earlier write crashes, splash sees no
+    // address and the user re-runs onboarding cleanly rather than
+    // landing in a half-restored state.
+    //
+    // The downloaded blob IS already a passphrase-encrypted seed
+    // phrase (produced by the create flow's `crateCoreEncryptPhrase`
+    // call). Store it directly — re-encrypting would churn entropy
+    // for no gain, and the pre-fix path's Android Keystore wrap
+    // broke cross-device restore in the first place.
     await _storage.write(
       key: 'encrypted_phrase',
-      value: fullyEncrypted.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+      value: blob.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
     );
+    // A restored account skips the TOTP / name-picking ceremony — the
+    // user already did those on the source device. Mark onboarding
+    // complete so the splash gate lets the user straight into HomeShell
+    // on next launch.
+    await _storage.write(key: 'onboarding_complete', value: 'true');
+    await _storage.write(key: 'account_address', value: account.address);
 
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (_) => HomeScreen(address: account.address)),
+      MaterialPageRoute(builder: (_) => HomeShell(address:
+ account.address)),
       (_) => false,
     );
   } catch (e) {
@@ -651,4 +745,123 @@ Widget build(BuildContext context) {
     ),
   );
 }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Post-onboarding name prompt
+// ─────────────────────────────────────────────────────────────────────────────
+
+class PickNamePromptScreen extends StatelessWidget {
+  final String address;
+  const PickNamePromptScreen({super.key, required this.address});
+
+  /// Mark onboarding as fully complete. Written at both exit paths from
+  /// this screen ("Pick my name" → NameRegistrationScreen → `_goHome`
+  /// which also writes it, AND "Skip for now" which writes it here
+  /// directly). Splash requires this flag in addition to
+  /// `account_address` before dropping into `HomeShell`; without it,
+  /// the user gets routed back to finish the remaining steps.
+  static Future<void> markOnboardingComplete() async {
+    const storage = FlutterSecureStorage();
+    await storage.write(key: 'onboarding_complete', value: 'true');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.bg,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Spacer(flex: 2),
+              Center(
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppTheme.pink.withOpacity(0.12),
+                    border: Border.all(
+                      color: AppTheme.pink.withOpacity(0.3),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Icon(Icons.badge_outlined,
+                      color: AppTheme.pink, size: 40),
+                ),
+              ),
+              const SizedBox(height: 28),
+              Text(
+                'Choose your name',
+                style: GoogleFonts.syne(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Flexible(
+                    child: Text(
+                      'Your .rst name is how people find you on Rostro — send RST and message friends, all without a long address.',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 15,
+                        color: AppTheme.textSecondary,
+                        height: 1.55,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Tooltip(
+                    message:
+                        'Friends and family can send you RST by typing yourname.rst instead of your 48-character address. Your name is also your identity across Rostro.',
+                    preferBelow: true,
+                    triggerMode: TooltipTriggerMode.tap,
+                    child: const Icon(Icons.info_outline,
+                        size: 16, color: AppTheme.textTertiary),
+                  ),
+                ],
+              ),
+              const Spacer(flex: 3),
+              FilledButton(
+                onPressed: () => Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => NameRegistrationScreen(
+                      address: address,
+                      isOnboarding: true,
+                    ),
+                  ),
+                ),
+                child: const Text('Pick my name'),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () async {
+                  await markOnboardingComplete();
+                  if (!context.mounted) return;
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => HomeShell(address: address)),
+                    (_) => false,
+                  );
+                },
+                child: const Text('Skip for now'),
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

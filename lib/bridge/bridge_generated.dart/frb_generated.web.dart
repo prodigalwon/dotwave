@@ -6,11 +6,18 @@
 // Static analysis wrongly picks the IO variant, thus ignore this
 // ignore_for_file: argument_type_not_assignable
 
+import 'chat.dart';
+import 'chat_dr.dart';
+import 'chat_session.dart';
 import 'core.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
+import 'mime_wrap_client.dart';
+import 'mime_wrap_prover.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
+import 'personhood.dart';
+import 'totp_enrollment.dart';
 
 abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RustLibApiImplPlatform({
@@ -21,16 +28,112 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   });
 
   @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw);
+
+  @protected
+  RustStreamSink<TxUpdate> dco_decode_StreamSink_tx_update_Sse(dynamic raw);
+
+  @protected
   String dco_decode_String(dynamic raw);
+
+  @protected
+  AccountDashboardInfo dco_decode_account_dashboard_info(dynamic raw);
+
+  @protected
+  AtRestMessage dco_decode_at_rest_message(dynamic raw);
+
+  @protected
+  bool dco_decode_bool(dynamic raw);
+
+  @protected
+  LivenessInputsFields dco_decode_box_autoadd_liveness_inputs_fields(
+    dynamic raw,
+  );
+
+  @protected
+  NameListing dco_decode_box_autoadd_name_listing(dynamic raw);
+
+  @protected
+  PassportInputsFields dco_decode_box_autoadd_passport_inputs_fields(
+    dynamic raw,
+  );
+
+  @protected
+  PopCertInfo dco_decode_box_autoadd_pop_cert_info(dynamic raw);
+
+  @protected
+  ResolvedName dco_decode_box_autoadd_resolved_name(dynamic raw);
+
+  @protected
+  StrongBoxCeremonyBundle dco_decode_box_autoadd_strong_box_ceremony_bundle(
+    dynamic raw,
+  );
+
+  @protected
+  TxAction dco_decode_box_autoadd_tx_action(dynamic raw);
+
+  @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  ChatIdentity dco_decode_chat_identity(dynamic raw);
+
+  @protected
+  ChatSendOutcome dco_decode_chat_send_outcome(dynamic raw);
+
+  @protected
+  ChatSessionKeypair dco_decode_chat_session_keypair(dynamic raw);
+
+  @protected
+  ChatSessionOutcome dco_decode_chat_session_outcome(dynamic raw);
+
+  @protected
+  ChatSessionPrepared dco_decode_chat_session_prepared(dynamic raw);
+
+  @protected
+  ChatSetupOutcome dco_decode_chat_setup_outcome(dynamic raw);
+
+  @protected
+  DnsRecord dco_decode_dns_record(dynamic raw);
 
   @protected
   DotAccount dco_decode_dot_account(dynamic raw);
 
   @protected
+  DrFetchedOpk dco_decode_dr_fetched_opk(dynamic raw);
+
+  @protected
+  DrInitiation dco_decode_dr_initiation(dynamic raw);
+
+  @protected
+  DrOpkSecret dco_decode_dr_opk_secret(dynamic raw);
+
+  @protected
+  DrPrekeySetup dco_decode_dr_prekey_setup(dynamic raw);
+
+  @protected
   double dco_decode_f_64(dynamic raw);
 
   @protected
+  int dco_decode_i_32(dynamic raw);
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
+  List<AtRestMessage> dco_decode_list_at_rest_message(dynamic raw);
+
+  @protected
+  List<DnsRecord> dco_decode_list_dns_record(dynamic raw);
+
+  @protected
+  List<DrOpkSecret> dco_decode_list_dr_opk_secret(dynamic raw);
+
+  @protected
+  List<int> dco_decode_list_prim_u_32_loose(dynamic raw);
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
 
   @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
@@ -39,13 +142,85 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  LivenessInputsFields dco_decode_liveness_inputs_fields(dynamic raw);
+
+  @protected
+  MimeWrapProofBenchmark dco_decode_mime_wrap_proof_benchmark(dynamic raw);
+
+  @protected
+  MimeWrapProofResult dco_decode_mime_wrap_proof_result(dynamic raw);
+
+  @protected
+  MimeWrapSetupResult dco_decode_mime_wrap_setup_result(dynamic raw);
+
+  @protected
+  NameAvailability dco_decode_name_availability(dynamic raw);
+
+  @protected
+  NameListing dco_decode_name_listing(dynamic raw);
+
+  @protected
   String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  NameListing? dco_decode_opt_box_autoadd_name_listing(dynamic raw);
+
+  @protected
+  PopCertInfo? dco_decode_opt_box_autoadd_pop_cert_info(dynamic raw);
+
+  @protected
+  ResolvedName? dco_decode_opt_box_autoadd_resolved_name(dynamic raw);
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  OsAttestation dco_decode_os_attestation(dynamic raw);
 
   @protected
   PassphraseStrength dco_decode_passphrase_strength(dynamic raw);
 
   @protected
+  PassportInputsFields dco_decode_passport_inputs_fields(dynamic raw);
+
+  @protected
+  PopCertInfo dco_decode_pop_cert_info(dynamic raw);
+
+  @protected
+  ReadMessage dco_decode_read_message(dynamic raw);
+
+  @protected
   (DotAccount, String) dco_decode_record_dot_account_string(dynamic raw);
+
+  @protected
+  ResolvedChatIdentity dco_decode_resolved_chat_identity(dynamic raw);
+
+  @protected
+  ResolvedName dco_decode_resolved_name(dynamic raw);
+
+  @protected
+  StrongBoxCeremonyBundle dco_decode_strong_box_ceremony_bundle(dynamic raw);
+
+  @protected
+  TxAction dco_decode_tx_action(dynamic raw);
+
+  @protected
+  TxActionKind dco_decode_tx_action_kind(dynamic raw);
+
+  @protected
+  TxUpdate dco_decode_tx_update(dynamic raw);
+
+  @protected
+  TxUpdateKind dco_decode_tx_update_kind(dynamic raw);
+
+  @protected
+  int dco_decode_u_16(dynamic raw);
+
+  @protected
+  int dco_decode_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw);
 
   @protected
   int dco_decode_u_8(dynamic raw);
@@ -54,16 +229,128 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void dco_decode_unit(dynamic raw);
 
   @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<TxUpdate> sse_decode_StreamSink_tx_update_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer);
+
+  @protected
+  AccountDashboardInfo sse_decode_account_dashboard_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  AtRestMessage sse_decode_at_rest_message(SseDeserializer deserializer);
+
+  @protected
+  bool sse_decode_bool(SseDeserializer deserializer);
+
+  @protected
+  LivenessInputsFields sse_decode_box_autoadd_liveness_inputs_fields(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  NameListing sse_decode_box_autoadd_name_listing(SseDeserializer deserializer);
+
+  @protected
+  PassportInputsFields sse_decode_box_autoadd_passport_inputs_fields(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PopCertInfo sse_decode_box_autoadd_pop_cert_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ResolvedName sse_decode_box_autoadd_resolved_name(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  StrongBoxCeremonyBundle sse_decode_box_autoadd_strong_box_ceremony_bundle(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TxAction sse_decode_box_autoadd_tx_action(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  ChatIdentity sse_decode_chat_identity(SseDeserializer deserializer);
+
+  @protected
+  ChatSendOutcome sse_decode_chat_send_outcome(SseDeserializer deserializer);
+
+  @protected
+  ChatSessionKeypair sse_decode_chat_session_keypair(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ChatSessionOutcome sse_decode_chat_session_outcome(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ChatSessionPrepared sse_decode_chat_session_prepared(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ChatSetupOutcome sse_decode_chat_setup_outcome(SseDeserializer deserializer);
+
+  @protected
+  DnsRecord sse_decode_dns_record(SseDeserializer deserializer);
 
   @protected
   DotAccount sse_decode_dot_account(SseDeserializer deserializer);
 
   @protected
+  DrFetchedOpk sse_decode_dr_fetched_opk(SseDeserializer deserializer);
+
+  @protected
+  DrInitiation sse_decode_dr_initiation(SseDeserializer deserializer);
+
+  @protected
+  DrOpkSecret sse_decode_dr_opk_secret(SseDeserializer deserializer);
+
+  @protected
+  DrPrekeySetup sse_decode_dr_prekey_setup(SseDeserializer deserializer);
+
+  @protected
   double sse_decode_f_64(SseDeserializer deserializer);
 
   @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
+
+  @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
+  List<AtRestMessage> sse_decode_list_at_rest_message(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<DnsRecord> sse_decode_list_dns_record(SseDeserializer deserializer);
+
+  @protected
+  List<DrOpkSecret> sse_decode_list_dr_opk_secret(SseDeserializer deserializer);
+
+  @protected
+  List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer);
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
 
   @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
@@ -72,7 +359,54 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
+  LivenessInputsFields sse_decode_liveness_inputs_fields(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  MimeWrapProofBenchmark sse_decode_mime_wrap_proof_benchmark(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  MimeWrapProofResult sse_decode_mime_wrap_proof_result(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  MimeWrapSetupResult sse_decode_mime_wrap_setup_result(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  NameAvailability sse_decode_name_availability(SseDeserializer deserializer);
+
+  @protected
+  NameListing sse_decode_name_listing(SseDeserializer deserializer);
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  NameListing? sse_decode_opt_box_autoadd_name_listing(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PopCertInfo? sse_decode_opt_box_autoadd_pop_cert_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ResolvedName? sse_decode_opt_box_autoadd_resolved_name(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  OsAttestation sse_decode_os_attestation(SseDeserializer deserializer);
 
   @protected
   PassphraseStrength sse_decode_passphrase_strength(
@@ -80,9 +414,54 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  PassportInputsFields sse_decode_passport_inputs_fields(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PopCertInfo sse_decode_pop_cert_info(SseDeserializer deserializer);
+
+  @protected
+  ReadMessage sse_decode_read_message(SseDeserializer deserializer);
+
+  @protected
   (DotAccount, String) sse_decode_record_dot_account_string(
     SseDeserializer deserializer,
   );
+
+  @protected
+  ResolvedChatIdentity sse_decode_resolved_chat_identity(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ResolvedName sse_decode_resolved_name(SseDeserializer deserializer);
+
+  @protected
+  StrongBoxCeremonyBundle sse_decode_strong_box_ceremony_bundle(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TxAction sse_decode_tx_action(SseDeserializer deserializer);
+
+  @protected
+  TxActionKind sse_decode_tx_action_kind(SseDeserializer deserializer);
+
+  @protected
+  TxUpdate sse_decode_tx_update(SseDeserializer deserializer);
+
+  @protected
+  TxUpdateKind sse_decode_tx_update_kind(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_u_16(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
@@ -91,22 +470,166 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
+  void sse_encode_AnyhowException(
+    AnyhowException self,
+    SseSerializer serializer,
+  );
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer);
+  void sse_encode_StreamSink_tx_update_Sse(
+    RustStreamSink<TxUpdate> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
+  void sse_encode_account_dashboard_info(
+    AccountDashboardInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_at_rest_message(AtRestMessage self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_liveness_inputs_fields(
+    LivenessInputsFields self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_name_listing(
+    NameListing self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_passport_inputs_fields(
+    PassportInputsFields self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_pop_cert_info(
+    PopCertInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_resolved_name(
+    ResolvedName self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_strong_box_ceremony_bundle(
+    StrongBoxCeremonyBundle self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_tx_action(
+    TxAction self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_chat_identity(ChatIdentity self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_chat_send_outcome(
+    ChatSendOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_chat_session_keypair(
+    ChatSessionKeypair self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_chat_session_outcome(
+    ChatSessionOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_chat_session_prepared(
+    ChatSessionPrepared self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_chat_setup_outcome(
+    ChatSetupOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_dns_record(DnsRecord self, SseSerializer serializer);
+
+  @protected
   void sse_encode_dot_account(DotAccount self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_dr_fetched_opk(DrFetchedOpk self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_dr_initiation(DrInitiation self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_dr_opk_secret(DrOpkSecret self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_dr_prekey_setup(DrPrekeySetup self, SseSerializer serializer);
 
   @protected
   void sse_encode_f_64(double self, SseSerializer serializer);
 
   @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_at_rest_message(
+    List<AtRestMessage> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_dns_record(
+    List<DnsRecord> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_dr_opk_secret(
+    List<DrOpkSecret> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_32_loose(
+    List<int> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
@@ -118,7 +641,64 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_liveness_inputs_fields(
+    LivenessInputsFields self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_mime_wrap_proof_benchmark(
+    MimeWrapProofBenchmark self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_mime_wrap_proof_result(
+    MimeWrapProofResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_mime_wrap_setup_result(
+    MimeWrapSetupResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_name_availability(
+    NameAvailability self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_name_listing(NameListing self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_name_listing(
+    NameListing? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_pop_cert_info(
+    PopCertInfo? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_resolved_name(
+    ResolvedName? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_os_attestation(OsAttestation self, SseSerializer serializer);
 
   @protected
   void sse_encode_passphrase_strength(
@@ -127,22 +707,64 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_passport_inputs_fields(
+    PassportInputsFields self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_pop_cert_info(PopCertInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_read_message(ReadMessage self, SseSerializer serializer);
+
+  @protected
   void sse_encode_record_dot_account_string(
     (DotAccount, String) self,
     SseSerializer serializer,
   );
 
   @protected
+  void sse_encode_resolved_chat_identity(
+    ResolvedChatIdentity self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_resolved_name(ResolvedName self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_strong_box_ceremony_bundle(
+    StrongBoxCeremonyBundle self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_tx_action(TxAction self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tx_action_kind(TxActionKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tx_update(TxUpdate self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tx_update_kind(TxUpdateKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_16(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
   void sse_encode_u_8(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer);
 }
 
 // Section: wire_class

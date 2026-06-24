@@ -3,13 +3,20 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'chat.dart';
+import 'chat_dr.dart';
+import 'chat_session.dart';
 import 'core.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
 import 'frb_generated.io.dart'
     if (dart.library.js_interop) 'frb_generated.web.dart';
+import 'mime_wrap_client.dart';
+import 'mime_wrap_prover.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+import 'personhood.dart';
+import 'totp_enrollment.dart';
 
 /// Main entrypoint of the Rust API
 class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
@@ -64,7 +71,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 1683306123;
+  int get rustContentHash => 1214945567;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -75,8 +82,244 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<String> crateCoreAcceptOfferedName({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreAcceptSubdomain({
+    required String parent,
+    required String label,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<AccountDashboardInfo> crateCoreAccountDashboard({
+    required String address,
+    required String rpcUrl,
+  });
+
+  Future<OsAttestation> crateCoreAttestRuntimeOs({required String expected});
+
+  Future<MimeWrapProofBenchmark> crateMimeWrapProverBenchmarkMimeWrapProof({
+    required String wasmPath,
+    required String r1CsPath,
+    required String zkeyPath,
+  });
+
+  Uint8List crateCoreBuildDevicePubkeyP256({required List<int> rawPubkey});
+
+  Uint8List crateCoreBuildDevicePubkeyP521({required List<int> rawPubkey});
+
+  String crateTotpEnrollmentBuildOtpauthUri({
+    required List<int> seed,
+    required String username,
+  });
+
+  Future<String> crateCoreBuyName({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreBuyNameFor({
+    required String name,
+    required String recipient,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreCancelListing({
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateChatChatCertPubkey({required String certSeedHex});
+
+  Future<String> crateChatChatContentEphemeralOf({
+    required String sealedContentHex,
+  });
+
+  Future<String> crateChatChatContentPubkeyFromSec1({
+    required int curve,
+    required String sec1Hex,
+  });
+
+  Future<DrFetchedOpk> crateChatDrChatDrFetchOpk({
+    required String nodeRpc,
+    required String identityPubkeyHex,
+    required List<int> excludeIds,
+  });
+
+  Future<DrPrekeySetup> crateChatDrChatDrGenPrekeys({
+    required String identitySeedHex,
+    required int opkStartId,
+    required int opkCount,
+  });
+
+  Future<DrInitiation> crateChatDrChatDrInitiate({
+    required String identitySeedHex,
+    required String recipientIdentityPubkeyHex,
+    required String recipientSpkHex,
+    required String recipientSpkSignatureHex,
+    int? opkId,
+    String? opkPubkeyHex,
+  });
+
+  Future<ChatSendOutcome> crateChatDrChatDrPublishOpks({
+    required String nodeRpc,
+    required String identitySeedHex,
+    required String opkBundleHex,
+    required int totalShares,
+    String? authCertThumbprintHex,
+    String? authCertSeedHex,
+  });
+
+  Future<List<AtRestMessage>> crateChatChatFetch({
+    required String nodeRpc,
+    required String recipientSeedHex,
+    String? relayPeer,
+  });
+
+  Future<String> crateChatChatGenContentKey({
+    required int curve,
+    required String contentSeedHex,
+  });
+
+  ChatIdentity crateChatChatGenIdentity({required String seedHex});
+
+  Future<String> crateCoreChatMintTestCert({
+    required String rpcUrl,
+    required String phrase,
+    required String certSeedHex,
+    required int ttlBlocks,
+  });
+
+  Future<String> crateChatChatNodeInfo({required String nodeRpc});
+
+  Future<String> crateCoreChatPublishIdentity({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+    required String identitySeedHex,
+    required String innerContentKeyHex,
+  });
+
+  Future<ReadMessage> crateChatChatReadContent({
+    required String sealedContentHex,
+    required int curve,
+    required String contentSeedHex,
+    String? drSessionStateHex,
+    required String identitySeedHex,
+    required List<DrOpkSecret> opkSecrets,
+  });
+
+  Future<ReadMessage> crateChatChatReadContentHw({
+    required String sealedContentHex,
+    required String recipientContentKeyHex,
+    required String sharedSecretHex,
+    String? drSessionStateHex,
+    required String identitySeedHex,
+    required List<DrOpkSecret> opkSecrets,
+  });
+
+  Future<ResolvedChatIdentity> crateCoreChatResolveIdentity({
+    required String name,
+    required String rpcUrl,
+  });
+
+  Future<ChatSendOutcome> crateChatChatSend({
+    required String nodeRpc,
+    required String senderSeedHex,
+    required String recipientPubkeyHex,
+    required String recipientContentKeyHex,
+    required String message,
+    required String senderName,
+    required int totalShares,
+    required String drSessionStateHex,
+    String? x3DhInitHex,
+    String? authCertThumbprintHex,
+    String? authCertSeedHex,
+  });
+
+  Future<ChatSendOutcome> crateChatChatSendOnion({
+    required String nodeRpc,
+    required String guardPubkeyHex,
+    required String senderSeedHex,
+    required String recipientPubkeyHex,
+    required String recipientContentKeyHex,
+    required String message,
+    required String senderName,
+    required int totalShares,
+    String? authCertThumbprintHex,
+    String? authCertSeedHex,
+  });
+
+  Future<ChatSendOutcome> crateChatChatSendOnion2Hop({
+    required String nodeRpc,
+    required String guardPubkeyHex,
+    required String relay2PubkeyHex,
+    required String senderSeedHex,
+    required String recipientPubkeyHex,
+    required String recipientContentKeyHex,
+    required String message,
+    required String senderName,
+    required int totalShares,
+    String? authCertThumbprintHex,
+    String? authCertSeedHex,
+    String? prevSelfHashHex,
+    required BigInt composedAtSecs,
+  });
+
+  Future<ChatSessionOutcome> crateChatSessionChatSessionAuthenticate({
+    required String nodeRpc,
+    required String certThumbprintHex,
+    required String hipProofHex,
+    required BigInt anchorBlockNumber,
+    required String sessionPubkeyHex,
+  });
+
+  Future<ChatSessionKeypair> crateChatSessionChatSessionGenKeypair();
+
+  Future<ChatSessionPrepared> crateChatSessionChatSessionPrepare({
+    required String nodeRpc,
+    required String certThumbprintHex,
+    required String sessionPubkeyHex,
+  });
+
+  Future<String> crateChatSessionChatSessionSignDrop({
+    required String sessionSeedHex,
+    required String onionPacketHex,
+  });
+
+  Future<ChatSetupOutcome> crateCoreChatSetupMessaging({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+    required String identitySeedHex,
+    required String innerContentKeyHex,
+  });
+
+  Future<NameAvailability> crateCoreCheckNameAvailability({
+    required String name,
+    required String rpcUrl,
+  });
+
   PassphraseStrength crateCoreCheckPassphraseStrength({
     required String passphrase,
+  });
+
+  Future<Uint8List> crateMimeWrapClientComputeCommitment({
+    required List<int> ecKeyPub,
+    required List<int> seed,
+  });
+
+  Future<String> crateCoreCreateListing({
+    required String pricePlanck,
+    required BigInt expiresAtMs,
+    required String phrase,
+    required String rpcUrl,
   });
 
   String crateCoreDecryptPhrase({
@@ -84,14 +327,266 @@ abstract class RustLibApi extends BaseApi {
     required String passphrase,
   });
 
+  Future<Uint8List> crateMimeWrapClientDeriveEcKeyPubFromDer({
+    required List<int> der,
+  });
+
+  Future<String> crateCoreDevCertSeedHex({required String phrase});
+
   Uint8List crateCoreEncryptPhrase({
     required String phrase,
     required String passphrase,
   });
 
+  Future<String> crateCoreEstimateFee({
+    required TxAction action,
+    required String rpcUrl,
+  });
+
+  Future<Uint8List> crateCoreExtractSec1FromX509Leaf({
+    required List<int> leafDer,
+  });
+
+  Future<String> crateCoreFetchAssetBalance({
+    required String address,
+    required String assetHubRpc,
+    required int assetId,
+  });
+
+  Future<String> crateCoreFetchBalance({
+    required String address,
+    required String rpcUrl,
+  });
+
+  Future<Uint8List> crateCoreFetchZkpkiOfferNonce({
+    required String user,
+    required String issuer,
+    required String rpcUrl,
+  });
+
   (DotAccount, String) crateCoreGenerateAccount();
 
+  Future<MimeWrapProofResult> crateMimeWrapClientGenerateMimeWrapSigningProof({
+    required String wasmPath,
+    required String r1CsPath,
+    required List<int> ecKeyPub,
+    required List<int> seed,
+    required BigInt bucket,
+    required int userOtp,
+  });
+
+  Uint8List crateTotpEnrollmentGenerateTotpSeedProtected();
+
+  Future<NameListing?> crateCoreGetNameListing({
+    required String name,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreGetNamePrice({
+    required String name,
+    required String rpcUrl,
+  });
+
+  Future<bool> crateCoreHasCanonicalName({
+    required String address,
+    required String rpcUrl,
+  });
+
+  Future<List<DnsRecord>> crateCoreLookupRecords({
+    required String name,
+    required List<int> recordTypes,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreOfferSubdomain({
+    required String label,
+    required String targetAddress,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<MimeWrapSetupResult> crateMimeWrapClientPrepareMimeWrapSetup({
+    required String wasmPath,
+    required String r1CsPath,
+  });
+
+  Future<PopCertInfo?> cratePersonhoodQueryPopCert({
+    required String account,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreRegisterName({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreRegisterNameFor({
+    required String name,
+    required String phrase,
+    required String recipient,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreRejectSubdomain({
+    required String parent,
+    required String label,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreReleaseName({
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreReleaseSubdomain({
+    required String parent,
+    required String label,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreRenewName({
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String?> crateCoreResolveAddressToName({
+    required String address,
+    required String rpcUrl,
+  });
+
+  Future<ResolvedName?> crateCoreResolveNameVerified({
+    required String name,
+    required String rpcUrl,
+  });
+
   DotAccount crateCoreRestoreAccount({required String phrase});
+
+  Future<String> crateCoreRevokeSubdomain({
+    required String label,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreSendDot({
+    required String toAddress,
+    required String amountPlanck,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreSetRecord({
+    required String name,
+    required String recordType,
+    required List<int> content,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreSetText({
+    required String name,
+    required String kind,
+    required String content,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Stream<TxUpdate> crateCoreSubmitAction({
+    required TxAction action,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> cratePersonhoodSubmitDiscardPop({
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreSubmitMintCertStrongbox({
+    required String contractNonceHex,
+    required int offerCreatedAtBlock,
+    required String integrityBlobForMockVerdictHex,
+    required StrongBoxCeremonyBundle bundle,
+    required String commitmentCHex,
+    required String ecKeyPubClaimedHex,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> cratePersonhoodSubmitMintPop({
+    required String passportProofHex,
+    required PassportInputsFields passportInputs,
+    required String livenessProofHex,
+    required LivenessInputsFields livenessInputs,
+    required String hwCertThumbprintHex,
+    required StrongBoxCeremonyBundle hipBundle,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreSubmitSelfDiscardCertMimeWrap({
+    required String certThumbprintHex,
+    required BigInt bucket,
+    required String mimeWrapNonceHex,
+    required int userOtp,
+    required String proofBytesHex,
+    required StrongBoxCeremonyBundle bundle,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreSubmitSetMimeWrapVk({
+    required String vkBytesHex,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> cratePersonhoodSubmitSrtSetCscaRoot({
+    required String newRootHex,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> cratePersonhoodSubmitSrtSetSeatsRoot({
+    required String newRootHex,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> cratePersonhoodSubmitSrtSetVk({
+    required String which,
+    required String newVkBytesHex,
+    required int newVersion,
+    required String ceremonyHashHex,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreTransferName({
+    required String toAddress,
+    required String phrase,
+    required String rpcUrl,
+  });
+
+  Future<bool> crateCoreVerifyNameOwnership({
+    required String name,
+    required String blockHashHex,
+    required String expectedOwner,
+    required String rpcUrl,
+  });
+
+  Future<String> crateCoreVoteOnReferendum({
+    required int referendumIndex,
+    required bool aye,
+    required String balancePlanck,
+    required int conviction,
+    required String rpcUrl,
+    required String phrase,
+  });
+
+  void crateTotpEnrollmentZeroizeBytes({required List<int> data});
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -103,6 +598,1476 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  Future<String> crateCoreAcceptOfferedName({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 1,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreAcceptOfferedNameConstMeta,
+        argValues: [name, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreAcceptOfferedNameConstMeta => const TaskConstMeta(
+    debugName: "accept_offered_name",
+    argNames: ["name", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreAcceptSubdomain({
+    required String parent,
+    required String label,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(parent, serializer);
+          sse_encode_String(label, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreAcceptSubdomainConstMeta,
+        argValues: [parent, label, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreAcceptSubdomainConstMeta => const TaskConstMeta(
+    debugName: "accept_subdomain",
+    argNames: ["parent", "label", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<AccountDashboardInfo> crateCoreAccountDashboard({
+    required String address,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(address, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_dashboard_info,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreAccountDashboardConstMeta,
+        argValues: [address, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreAccountDashboardConstMeta => const TaskConstMeta(
+    debugName: "account_dashboard",
+    argNames: ["address", "rpcUrl"],
+  );
+
+  @override
+  Future<OsAttestation> crateCoreAttestRuntimeOs({required String expected}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(expected, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_os_attestation,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreAttestRuntimeOsConstMeta,
+        argValues: [expected],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreAttestRuntimeOsConstMeta => const TaskConstMeta(
+    debugName: "attest_runtime_os",
+    argNames: ["expected"],
+  );
+
+  @override
+  Future<MimeWrapProofBenchmark> crateMimeWrapProverBenchmarkMimeWrapProof({
+    required String wasmPath,
+    required String r1CsPath,
+    required String zkeyPath,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(wasmPath, serializer);
+          sse_encode_String(r1CsPath, serializer);
+          sse_encode_String(zkeyPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_mime_wrap_proof_benchmark,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateMimeWrapProverBenchmarkMimeWrapProofConstMeta,
+        argValues: [wasmPath, r1CsPath, zkeyPath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateMimeWrapProverBenchmarkMimeWrapProofConstMeta =>
+      const TaskConstMeta(
+        debugName: "benchmark_mime_wrap_proof",
+        argNames: ["wasmPath", "r1CsPath", "zkeyPath"],
+      );
+
+  @override
+  Uint8List crateCoreBuildDevicePubkeyP256({required List<int> rawPubkey}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(rawPubkey, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateCoreBuildDevicePubkeyP256ConstMeta,
+        argValues: [rawPubkey],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreBuildDevicePubkeyP256ConstMeta =>
+      const TaskConstMeta(
+        debugName: "build_device_pubkey_p256",
+        argNames: ["rawPubkey"],
+      );
+
+  @override
+  Uint8List crateCoreBuildDevicePubkeyP521({required List<int> rawPubkey}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(rawPubkey, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateCoreBuildDevicePubkeyP521ConstMeta,
+        argValues: [rawPubkey],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreBuildDevicePubkeyP521ConstMeta =>
+      const TaskConstMeta(
+        debugName: "build_device_pubkey_p521",
+        argNames: ["rawPubkey"],
+      );
+
+  @override
+  String crateTotpEnrollmentBuildOtpauthUri({
+    required List<int> seed,
+    required String username,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(seed, serializer);
+          sse_encode_String(username, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateTotpEnrollmentBuildOtpauthUriConstMeta,
+        argValues: [seed, username],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateTotpEnrollmentBuildOtpauthUriConstMeta =>
+      const TaskConstMeta(
+        debugName: "build_otpauth_uri",
+        argNames: ["seed", "username"],
+      );
+
+  @override
+  Future<String> crateCoreBuyName({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreBuyNameConstMeta,
+        argValues: [name, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreBuyNameConstMeta => const TaskConstMeta(
+    debugName: "buy_name",
+    argNames: ["name", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreBuyNameFor({
+    required String name,
+    required String recipient,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(recipient, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreBuyNameForConstMeta,
+        argValues: [name, recipient, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreBuyNameForConstMeta => const TaskConstMeta(
+    debugName: "buy_name_for",
+    argNames: ["name", "recipient", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreCancelListing({
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreCancelListingConstMeta,
+        argValues: [phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreCancelListingConstMeta => const TaskConstMeta(
+    debugName: "cancel_listing",
+    argNames: ["phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateChatChatCertPubkey({required String certSeedHex}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(certSeedHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatCertPubkeyConstMeta,
+        argValues: [certSeedHex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatCertPubkeyConstMeta => const TaskConstMeta(
+    debugName: "chat_cert_pubkey",
+    argNames: ["certSeedHex"],
+  );
+
+  @override
+  Future<String> crateChatChatContentEphemeralOf({
+    required String sealedContentHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(sealedContentHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 13,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatContentEphemeralOfConstMeta,
+        argValues: [sealedContentHex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatContentEphemeralOfConstMeta =>
+      const TaskConstMeta(
+        debugName: "chat_content_ephemeral_of",
+        argNames: ["sealedContentHex"],
+      );
+
+  @override
+  Future<String> crateChatChatContentPubkeyFromSec1({
+    required int curve,
+    required String sec1Hex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_8(curve, serializer);
+          sse_encode_String(sec1Hex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 14,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatContentPubkeyFromSec1ConstMeta,
+        argValues: [curve, sec1Hex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatContentPubkeyFromSec1ConstMeta =>
+      const TaskConstMeta(
+        debugName: "chat_content_pubkey_from_sec1",
+        argNames: ["curve", "sec1Hex"],
+      );
+
+  @override
+  Future<DrFetchedOpk> crateChatDrChatDrFetchOpk({
+    required String nodeRpc,
+    required String identityPubkeyHex,
+    required List<int> excludeIds,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(nodeRpc, serializer);
+          sse_encode_String(identityPubkeyHex, serializer);
+          sse_encode_list_prim_u_32_loose(excludeIds, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_dr_fetched_opk,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatDrChatDrFetchOpkConstMeta,
+        argValues: [nodeRpc, identityPubkeyHex, excludeIds],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatDrChatDrFetchOpkConstMeta => const TaskConstMeta(
+    debugName: "chat_dr_fetch_opk",
+    argNames: ["nodeRpc", "identityPubkeyHex", "excludeIds"],
+  );
+
+  @override
+  Future<DrPrekeySetup> crateChatDrChatDrGenPrekeys({
+    required String identitySeedHex,
+    required int opkStartId,
+    required int opkCount,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(identitySeedHex, serializer);
+          sse_encode_u_32(opkStartId, serializer);
+          sse_encode_u_32(opkCount, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 16,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_dr_prekey_setup,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatDrChatDrGenPrekeysConstMeta,
+        argValues: [identitySeedHex, opkStartId, opkCount],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatDrChatDrGenPrekeysConstMeta =>
+      const TaskConstMeta(
+        debugName: "chat_dr_gen_prekeys",
+        argNames: ["identitySeedHex", "opkStartId", "opkCount"],
+      );
+
+  @override
+  Future<DrInitiation> crateChatDrChatDrInitiate({
+    required String identitySeedHex,
+    required String recipientIdentityPubkeyHex,
+    required String recipientSpkHex,
+    required String recipientSpkSignatureHex,
+    int? opkId,
+    String? opkPubkeyHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(identitySeedHex, serializer);
+          sse_encode_String(recipientIdentityPubkeyHex, serializer);
+          sse_encode_String(recipientSpkHex, serializer);
+          sse_encode_String(recipientSpkSignatureHex, serializer);
+          sse_encode_opt_box_autoadd_u_32(opkId, serializer);
+          sse_encode_opt_String(opkPubkeyHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_dr_initiation,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatDrChatDrInitiateConstMeta,
+        argValues: [
+          identitySeedHex,
+          recipientIdentityPubkeyHex,
+          recipientSpkHex,
+          recipientSpkSignatureHex,
+          opkId,
+          opkPubkeyHex,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatDrChatDrInitiateConstMeta => const TaskConstMeta(
+    debugName: "chat_dr_initiate",
+    argNames: [
+      "identitySeedHex",
+      "recipientIdentityPubkeyHex",
+      "recipientSpkHex",
+      "recipientSpkSignatureHex",
+      "opkId",
+      "opkPubkeyHex",
+    ],
+  );
+
+  @override
+  Future<ChatSendOutcome> crateChatDrChatDrPublishOpks({
+    required String nodeRpc,
+    required String identitySeedHex,
+    required String opkBundleHex,
+    required int totalShares,
+    String? authCertThumbprintHex,
+    String? authCertSeedHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(nodeRpc, serializer);
+          sse_encode_String(identitySeedHex, serializer);
+          sse_encode_String(opkBundleHex, serializer);
+          sse_encode_u_8(totalShares, serializer);
+          sse_encode_opt_String(authCertThumbprintHex, serializer);
+          sse_encode_opt_String(authCertSeedHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 18,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_chat_send_outcome,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatDrChatDrPublishOpksConstMeta,
+        argValues: [
+          nodeRpc,
+          identitySeedHex,
+          opkBundleHex,
+          totalShares,
+          authCertThumbprintHex,
+          authCertSeedHex,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatDrChatDrPublishOpksConstMeta =>
+      const TaskConstMeta(
+        debugName: "chat_dr_publish_opks",
+        argNames: [
+          "nodeRpc",
+          "identitySeedHex",
+          "opkBundleHex",
+          "totalShares",
+          "authCertThumbprintHex",
+          "authCertSeedHex",
+        ],
+      );
+
+  @override
+  Future<List<AtRestMessage>> crateChatChatFetch({
+    required String nodeRpc,
+    required String recipientSeedHex,
+    String? relayPeer,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(nodeRpc, serializer);
+          sse_encode_String(recipientSeedHex, serializer);
+          sse_encode_opt_String(relayPeer, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_at_rest_message,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatFetchConstMeta,
+        argValues: [nodeRpc, recipientSeedHex, relayPeer],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatFetchConstMeta => const TaskConstMeta(
+    debugName: "chat_fetch",
+    argNames: ["nodeRpc", "recipientSeedHex", "relayPeer"],
+  );
+
+  @override
+  Future<String> crateChatChatGenContentKey({
+    required int curve,
+    required String contentSeedHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_8(curve, serializer);
+          sse_encode_String(contentSeedHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 20,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatGenContentKeyConstMeta,
+        argValues: [curve, contentSeedHex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatGenContentKeyConstMeta => const TaskConstMeta(
+    debugName: "chat_gen_content_key",
+    argNames: ["curve", "contentSeedHex"],
+  );
+
+  @override
+  ChatIdentity crateChatChatGenIdentity({required String seedHex}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(seedHex, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_chat_identity,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatGenIdentityConstMeta,
+        argValues: [seedHex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatGenIdentityConstMeta => const TaskConstMeta(
+    debugName: "chat_gen_identity",
+    argNames: ["seedHex"],
+  );
+
+  @override
+  Future<String> crateCoreChatMintTestCert({
+    required String rpcUrl,
+    required String phrase,
+    required String certSeedHex,
+    required int ttlBlocks,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(rpcUrl, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(certSeedHex, serializer);
+          sse_encode_u_32(ttlBlocks, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 22,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreChatMintTestCertConstMeta,
+        argValues: [rpcUrl, phrase, certSeedHex, ttlBlocks],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreChatMintTestCertConstMeta => const TaskConstMeta(
+    debugName: "chat_mint_test_cert",
+    argNames: ["rpcUrl", "phrase", "certSeedHex", "ttlBlocks"],
+  );
+
+  @override
+  Future<String> crateChatChatNodeInfo({required String nodeRpc}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(nodeRpc, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 23,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatNodeInfoConstMeta,
+        argValues: [nodeRpc],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatNodeInfoConstMeta =>
+      const TaskConstMeta(debugName: "chat_node_info", argNames: ["nodeRpc"]);
+
+  @override
+  Future<String> crateCoreChatPublishIdentity({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+    required String identitySeedHex,
+    required String innerContentKeyHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          sse_encode_String(identitySeedHex, serializer);
+          sse_encode_String(innerContentKeyHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 24,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreChatPublishIdentityConstMeta,
+        argValues: [name, phrase, rpcUrl, identitySeedHex, innerContentKeyHex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreChatPublishIdentityConstMeta =>
+      const TaskConstMeta(
+        debugName: "chat_publish_identity",
+        argNames: [
+          "name",
+          "phrase",
+          "rpcUrl",
+          "identitySeedHex",
+          "innerContentKeyHex",
+        ],
+      );
+
+  @override
+  Future<ReadMessage> crateChatChatReadContent({
+    required String sealedContentHex,
+    required int curve,
+    required String contentSeedHex,
+    String? drSessionStateHex,
+    required String identitySeedHex,
+    required List<DrOpkSecret> opkSecrets,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(sealedContentHex, serializer);
+          sse_encode_u_8(curve, serializer);
+          sse_encode_String(contentSeedHex, serializer);
+          sse_encode_opt_String(drSessionStateHex, serializer);
+          sse_encode_String(identitySeedHex, serializer);
+          sse_encode_list_dr_opk_secret(opkSecrets, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 25,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_read_message,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatReadContentConstMeta,
+        argValues: [
+          sealedContentHex,
+          curve,
+          contentSeedHex,
+          drSessionStateHex,
+          identitySeedHex,
+          opkSecrets,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatReadContentConstMeta => const TaskConstMeta(
+    debugName: "chat_read_content",
+    argNames: [
+      "sealedContentHex",
+      "curve",
+      "contentSeedHex",
+      "drSessionStateHex",
+      "identitySeedHex",
+      "opkSecrets",
+    ],
+  );
+
+  @override
+  Future<ReadMessage> crateChatChatReadContentHw({
+    required String sealedContentHex,
+    required String recipientContentKeyHex,
+    required String sharedSecretHex,
+    String? drSessionStateHex,
+    required String identitySeedHex,
+    required List<DrOpkSecret> opkSecrets,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(sealedContentHex, serializer);
+          sse_encode_String(recipientContentKeyHex, serializer);
+          sse_encode_String(sharedSecretHex, serializer);
+          sse_encode_opt_String(drSessionStateHex, serializer);
+          sse_encode_String(identitySeedHex, serializer);
+          sse_encode_list_dr_opk_secret(opkSecrets, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 26,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_read_message,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatReadContentHwConstMeta,
+        argValues: [
+          sealedContentHex,
+          recipientContentKeyHex,
+          sharedSecretHex,
+          drSessionStateHex,
+          identitySeedHex,
+          opkSecrets,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatReadContentHwConstMeta => const TaskConstMeta(
+    debugName: "chat_read_content_hw",
+    argNames: [
+      "sealedContentHex",
+      "recipientContentKeyHex",
+      "sharedSecretHex",
+      "drSessionStateHex",
+      "identitySeedHex",
+      "opkSecrets",
+    ],
+  );
+
+  @override
+  Future<ResolvedChatIdentity> crateCoreChatResolveIdentity({
+    required String name,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 27,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_resolved_chat_identity,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreChatResolveIdentityConstMeta,
+        argValues: [name, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreChatResolveIdentityConstMeta =>
+      const TaskConstMeta(
+        debugName: "chat_resolve_identity",
+        argNames: ["name", "rpcUrl"],
+      );
+
+  @override
+  Future<ChatSendOutcome> crateChatChatSend({
+    required String nodeRpc,
+    required String senderSeedHex,
+    required String recipientPubkeyHex,
+    required String recipientContentKeyHex,
+    required String message,
+    required String senderName,
+    required int totalShares,
+    required String drSessionStateHex,
+    String? x3DhInitHex,
+    String? authCertThumbprintHex,
+    String? authCertSeedHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(nodeRpc, serializer);
+          sse_encode_String(senderSeedHex, serializer);
+          sse_encode_String(recipientPubkeyHex, serializer);
+          sse_encode_String(recipientContentKeyHex, serializer);
+          sse_encode_String(message, serializer);
+          sse_encode_String(senderName, serializer);
+          sse_encode_u_8(totalShares, serializer);
+          sse_encode_String(drSessionStateHex, serializer);
+          sse_encode_opt_String(x3DhInitHex, serializer);
+          sse_encode_opt_String(authCertThumbprintHex, serializer);
+          sse_encode_opt_String(authCertSeedHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 28,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_chat_send_outcome,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatSendConstMeta,
+        argValues: [
+          nodeRpc,
+          senderSeedHex,
+          recipientPubkeyHex,
+          recipientContentKeyHex,
+          message,
+          senderName,
+          totalShares,
+          drSessionStateHex,
+          x3DhInitHex,
+          authCertThumbprintHex,
+          authCertSeedHex,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatSendConstMeta => const TaskConstMeta(
+    debugName: "chat_send",
+    argNames: [
+      "nodeRpc",
+      "senderSeedHex",
+      "recipientPubkeyHex",
+      "recipientContentKeyHex",
+      "message",
+      "senderName",
+      "totalShares",
+      "drSessionStateHex",
+      "x3DhInitHex",
+      "authCertThumbprintHex",
+      "authCertSeedHex",
+    ],
+  );
+
+  @override
+  Future<ChatSendOutcome> crateChatChatSendOnion({
+    required String nodeRpc,
+    required String guardPubkeyHex,
+    required String senderSeedHex,
+    required String recipientPubkeyHex,
+    required String recipientContentKeyHex,
+    required String message,
+    required String senderName,
+    required int totalShares,
+    String? authCertThumbprintHex,
+    String? authCertSeedHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(nodeRpc, serializer);
+          sse_encode_String(guardPubkeyHex, serializer);
+          sse_encode_String(senderSeedHex, serializer);
+          sse_encode_String(recipientPubkeyHex, serializer);
+          sse_encode_String(recipientContentKeyHex, serializer);
+          sse_encode_String(message, serializer);
+          sse_encode_String(senderName, serializer);
+          sse_encode_u_8(totalShares, serializer);
+          sse_encode_opt_String(authCertThumbprintHex, serializer);
+          sse_encode_opt_String(authCertSeedHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 29,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_chat_send_outcome,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatSendOnionConstMeta,
+        argValues: [
+          nodeRpc,
+          guardPubkeyHex,
+          senderSeedHex,
+          recipientPubkeyHex,
+          recipientContentKeyHex,
+          message,
+          senderName,
+          totalShares,
+          authCertThumbprintHex,
+          authCertSeedHex,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatSendOnionConstMeta => const TaskConstMeta(
+    debugName: "chat_send_onion",
+    argNames: [
+      "nodeRpc",
+      "guardPubkeyHex",
+      "senderSeedHex",
+      "recipientPubkeyHex",
+      "recipientContentKeyHex",
+      "message",
+      "senderName",
+      "totalShares",
+      "authCertThumbprintHex",
+      "authCertSeedHex",
+    ],
+  );
+
+  @override
+  Future<ChatSendOutcome> crateChatChatSendOnion2Hop({
+    required String nodeRpc,
+    required String guardPubkeyHex,
+    required String relay2PubkeyHex,
+    required String senderSeedHex,
+    required String recipientPubkeyHex,
+    required String recipientContentKeyHex,
+    required String message,
+    required String senderName,
+    required int totalShares,
+    String? authCertThumbprintHex,
+    String? authCertSeedHex,
+    String? prevSelfHashHex,
+    required BigInt composedAtSecs,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(nodeRpc, serializer);
+          sse_encode_String(guardPubkeyHex, serializer);
+          sse_encode_String(relay2PubkeyHex, serializer);
+          sse_encode_String(senderSeedHex, serializer);
+          sse_encode_String(recipientPubkeyHex, serializer);
+          sse_encode_String(recipientContentKeyHex, serializer);
+          sse_encode_String(message, serializer);
+          sse_encode_String(senderName, serializer);
+          sse_encode_u_8(totalShares, serializer);
+          sse_encode_opt_String(authCertThumbprintHex, serializer);
+          sse_encode_opt_String(authCertSeedHex, serializer);
+          sse_encode_opt_String(prevSelfHashHex, serializer);
+          sse_encode_u_64(composedAtSecs, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 30,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_chat_send_outcome,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatChatSendOnion2HopConstMeta,
+        argValues: [
+          nodeRpc,
+          guardPubkeyHex,
+          relay2PubkeyHex,
+          senderSeedHex,
+          recipientPubkeyHex,
+          recipientContentKeyHex,
+          message,
+          senderName,
+          totalShares,
+          authCertThumbprintHex,
+          authCertSeedHex,
+          prevSelfHashHex,
+          composedAtSecs,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatChatSendOnion2HopConstMeta => const TaskConstMeta(
+    debugName: "chat_send_onion_2hop",
+    argNames: [
+      "nodeRpc",
+      "guardPubkeyHex",
+      "relay2PubkeyHex",
+      "senderSeedHex",
+      "recipientPubkeyHex",
+      "recipientContentKeyHex",
+      "message",
+      "senderName",
+      "totalShares",
+      "authCertThumbprintHex",
+      "authCertSeedHex",
+      "prevSelfHashHex",
+      "composedAtSecs",
+    ],
+  );
+
+  @override
+  Future<ChatSessionOutcome> crateChatSessionChatSessionAuthenticate({
+    required String nodeRpc,
+    required String certThumbprintHex,
+    required String hipProofHex,
+    required BigInt anchorBlockNumber,
+    required String sessionPubkeyHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(nodeRpc, serializer);
+          sse_encode_String(certThumbprintHex, serializer);
+          sse_encode_String(hipProofHex, serializer);
+          sse_encode_u_64(anchorBlockNumber, serializer);
+          sse_encode_String(sessionPubkeyHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 31,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_chat_session_outcome,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatSessionChatSessionAuthenticateConstMeta,
+        argValues: [
+          nodeRpc,
+          certThumbprintHex,
+          hipProofHex,
+          anchorBlockNumber,
+          sessionPubkeyHex,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatSessionChatSessionAuthenticateConstMeta =>
+      const TaskConstMeta(
+        debugName: "chat_session_authenticate",
+        argNames: [
+          "nodeRpc",
+          "certThumbprintHex",
+          "hipProofHex",
+          "anchorBlockNumber",
+          "sessionPubkeyHex",
+        ],
+      );
+
+  @override
+  Future<ChatSessionKeypair> crateChatSessionChatSessionGenKeypair() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 32,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_chat_session_keypair,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateChatSessionChatSessionGenKeypairConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatSessionChatSessionGenKeypairConstMeta =>
+      const TaskConstMeta(debugName: "chat_session_gen_keypair", argNames: []);
+
+  @override
+  Future<ChatSessionPrepared> crateChatSessionChatSessionPrepare({
+    required String nodeRpc,
+    required String certThumbprintHex,
+    required String sessionPubkeyHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(nodeRpc, serializer);
+          sse_encode_String(certThumbprintHex, serializer);
+          sse_encode_String(sessionPubkeyHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 33,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_chat_session_prepared,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatSessionChatSessionPrepareConstMeta,
+        argValues: [nodeRpc, certThumbprintHex, sessionPubkeyHex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatSessionChatSessionPrepareConstMeta =>
+      const TaskConstMeta(
+        debugName: "chat_session_prepare",
+        argNames: ["nodeRpc", "certThumbprintHex", "sessionPubkeyHex"],
+      );
+
+  @override
+  Future<String> crateChatSessionChatSessionSignDrop({
+    required String sessionSeedHex,
+    required String onionPacketHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(sessionSeedHex, serializer);
+          sse_encode_String(onionPacketHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 34,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateChatSessionChatSessionSignDropConstMeta,
+        argValues: [sessionSeedHex, onionPacketHex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateChatSessionChatSessionSignDropConstMeta =>
+      const TaskConstMeta(
+        debugName: "chat_session_sign_drop",
+        argNames: ["sessionSeedHex", "onionPacketHex"],
+      );
+
+  @override
+  Future<ChatSetupOutcome> crateCoreChatSetupMessaging({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+    required String identitySeedHex,
+    required String innerContentKeyHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          sse_encode_String(identitySeedHex, serializer);
+          sse_encode_String(innerContentKeyHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 35,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_chat_setup_outcome,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreChatSetupMessagingConstMeta,
+        argValues: [name, phrase, rpcUrl, identitySeedHex, innerContentKeyHex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreChatSetupMessagingConstMeta =>
+      const TaskConstMeta(
+        debugName: "chat_setup_messaging",
+        argNames: [
+          "name",
+          "phrase",
+          "rpcUrl",
+          "identitySeedHex",
+          "innerContentKeyHex",
+        ],
+      );
+
+  @override
+  Future<NameAvailability> crateCoreCheckNameAvailability({
+    required String name,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 36,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_name_availability,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreCheckNameAvailabilityConstMeta,
+        argValues: [name, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreCheckNameAvailabilityConstMeta =>
+      const TaskConstMeta(
+        debugName: "check_name_availability",
+        argNames: ["name", "rpcUrl"],
+      );
+
+  @override
   PassphraseStrength crateCoreCheckPassphraseStrength({
     required String passphrase,
   }) {
@@ -111,7 +2076,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(passphrase, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 37)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_passphrase_strength,
@@ -131,6 +2096,79 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<Uint8List> crateMimeWrapClientComputeCommitment({
+    required List<int> ecKeyPub,
+    required List<int> seed,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(ecKeyPub, serializer);
+          sse_encode_list_prim_u_8_loose(seed, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 38,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateMimeWrapClientComputeCommitmentConstMeta,
+        argValues: [ecKeyPub, seed],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateMimeWrapClientComputeCommitmentConstMeta =>
+      const TaskConstMeta(
+        debugName: "compute_commitment",
+        argNames: ["ecKeyPub", "seed"],
+      );
+
+  @override
+  Future<String> crateCoreCreateListing({
+    required String pricePlanck,
+    required BigInt expiresAtMs,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(pricePlanck, serializer);
+          sse_encode_u_64(expiresAtMs, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 39,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreCreateListingConstMeta,
+        argValues: [pricePlanck, expiresAtMs, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreCreateListingConstMeta => const TaskConstMeta(
+    debugName: "create_listing",
+    argNames: ["pricePlanck", "expiresAtMs", "phrase", "rpcUrl"],
+  );
+
+  @override
   String crateCoreDecryptPhrase({
     required List<int> blob,
     required String passphrase,
@@ -141,7 +2179,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_prim_u_8_loose(blob, serializer);
           sse_encode_String(passphrase, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 40)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -160,6 +2198,67 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<Uint8List> crateMimeWrapClientDeriveEcKeyPubFromDer({
+    required List<int> der,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(der, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 41,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateMimeWrapClientDeriveEcKeyPubFromDerConstMeta,
+        argValues: [der],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateMimeWrapClientDeriveEcKeyPubFromDerConstMeta =>
+      const TaskConstMeta(
+        debugName: "derive_ec_key_pub_from_der",
+        argNames: ["der"],
+      );
+
+  @override
+  Future<String> crateCoreDevCertSeedHex({required String phrase}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(phrase, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 42,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateCoreDevCertSeedHexConstMeta,
+        argValues: [phrase],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreDevCertSeedHexConstMeta =>
+      const TaskConstMeta(debugName: "dev_cert_seed_hex", argNames: ["phrase"]);
+
+  @override
   Uint8List crateCoreEncryptPhrase({
     required String phrase,
     required String passphrase,
@@ -170,7 +2269,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(phrase, serializer);
           sse_encode_String(passphrase, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 43)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -189,12 +2288,186 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<String> crateCoreEstimateFee({
+    required TxAction action,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_tx_action(action, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 44,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreEstimateFeeConstMeta,
+        argValues: [action, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreEstimateFeeConstMeta => const TaskConstMeta(
+    debugName: "estimate_fee",
+    argNames: ["action", "rpcUrl"],
+  );
+
+  @override
+  Future<Uint8List> crateCoreExtractSec1FromX509Leaf({
+    required List<int> leafDer,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(leafDer, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 45,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreExtractSec1FromX509LeafConstMeta,
+        argValues: [leafDer],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreExtractSec1FromX509LeafConstMeta =>
+      const TaskConstMeta(
+        debugName: "extract_sec1_from_x509_leaf",
+        argNames: ["leafDer"],
+      );
+
+  @override
+  Future<String> crateCoreFetchAssetBalance({
+    required String address,
+    required String assetHubRpc,
+    required int assetId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(address, serializer);
+          sse_encode_String(assetHubRpc, serializer);
+          sse_encode_u_32(assetId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 46,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateCoreFetchAssetBalanceConstMeta,
+        argValues: [address, assetHubRpc, assetId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreFetchAssetBalanceConstMeta => const TaskConstMeta(
+    debugName: "fetch_asset_balance",
+    argNames: ["address", "assetHubRpc", "assetId"],
+  );
+
+  @override
+  Future<String> crateCoreFetchBalance({
+    required String address,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(address, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 47,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateCoreFetchBalanceConstMeta,
+        argValues: [address, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreFetchBalanceConstMeta => const TaskConstMeta(
+    debugName: "fetch_balance",
+    argNames: ["address", "rpcUrl"],
+  );
+
+  @override
+  Future<Uint8List> crateCoreFetchZkpkiOfferNonce({
+    required String user,
+    required String issuer,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(user, serializer);
+          sse_encode_String(issuer, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 48,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreFetchZkpkiOfferNonceConstMeta,
+        argValues: [user, issuer, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreFetchZkpkiOfferNonceConstMeta =>
+      const TaskConstMeta(
+        debugName: "fetch_zkpki_offer_nonce",
+        argNames: ["user", "issuer", "rpcUrl"],
+      );
+
+  @override
   (DotAccount, String) crateCoreGenerateAccount() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 49)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_record_dot_account_string,
@@ -211,13 +2484,622 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "generate_account", argNames: []);
 
   @override
+  Future<MimeWrapProofResult> crateMimeWrapClientGenerateMimeWrapSigningProof({
+    required String wasmPath,
+    required String r1CsPath,
+    required List<int> ecKeyPub,
+    required List<int> seed,
+    required BigInt bucket,
+    required int userOtp,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(wasmPath, serializer);
+          sse_encode_String(r1CsPath, serializer);
+          sse_encode_list_prim_u_8_loose(ecKeyPub, serializer);
+          sse_encode_list_prim_u_8_loose(seed, serializer);
+          sse_encode_u_64(bucket, serializer);
+          sse_encode_u_32(userOtp, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 50,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_mime_wrap_proof_result,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateMimeWrapClientGenerateMimeWrapSigningProofConstMeta,
+        argValues: [wasmPath, r1CsPath, ecKeyPub, seed, bucket, userOtp],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateMimeWrapClientGenerateMimeWrapSigningProofConstMeta =>
+      const TaskConstMeta(
+        debugName: "generate_mime_wrap_signing_proof",
+        argNames: [
+          "wasmPath",
+          "r1CsPath",
+          "ecKeyPub",
+          "seed",
+          "bucket",
+          "userOtp",
+        ],
+      );
+
+  @override
+  Uint8List crateTotpEnrollmentGenerateTotpSeedProtected() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 51)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateTotpEnrollmentGenerateTotpSeedProtectedConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateTotpEnrollmentGenerateTotpSeedProtectedConstMeta =>
+      const TaskConstMeta(
+        debugName: "generate_totp_seed_protected",
+        argNames: [],
+      );
+
+  @override
+  Future<NameListing?> crateCoreGetNameListing({
+    required String name,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 52,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_name_listing,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreGetNameListingConstMeta,
+        argValues: [name, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreGetNameListingConstMeta => const TaskConstMeta(
+    debugName: "get_name_listing",
+    argNames: ["name", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreGetNamePrice({
+    required String name,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 53,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreGetNamePriceConstMeta,
+        argValues: [name, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreGetNamePriceConstMeta => const TaskConstMeta(
+    debugName: "get_name_price",
+    argNames: ["name", "rpcUrl"],
+  );
+
+  @override
+  Future<bool> crateCoreHasCanonicalName({
+    required String address,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(address, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 54,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreHasCanonicalNameConstMeta,
+        argValues: [address, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreHasCanonicalNameConstMeta => const TaskConstMeta(
+    debugName: "has_canonical_name",
+    argNames: ["address", "rpcUrl"],
+  );
+
+  @override
+  Future<List<DnsRecord>> crateCoreLookupRecords({
+    required String name,
+    required List<int> recordTypes,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_list_prim_u_32_loose(recordTypes, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 55,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_dns_record,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreLookupRecordsConstMeta,
+        argValues: [name, recordTypes, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreLookupRecordsConstMeta => const TaskConstMeta(
+    debugName: "lookup_records",
+    argNames: ["name", "recordTypes", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreOfferSubdomain({
+    required String label,
+    required String targetAddress,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(label, serializer);
+          sse_encode_String(targetAddress, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 56,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreOfferSubdomainConstMeta,
+        argValues: [label, targetAddress, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreOfferSubdomainConstMeta => const TaskConstMeta(
+    debugName: "offer_subdomain",
+    argNames: ["label", "targetAddress", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<MimeWrapSetupResult> crateMimeWrapClientPrepareMimeWrapSetup({
+    required String wasmPath,
+    required String r1CsPath,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(wasmPath, serializer);
+          sse_encode_String(r1CsPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 57,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_mime_wrap_setup_result,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateMimeWrapClientPrepareMimeWrapSetupConstMeta,
+        argValues: [wasmPath, r1CsPath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateMimeWrapClientPrepareMimeWrapSetupConstMeta =>
+      const TaskConstMeta(
+        debugName: "prepare_mime_wrap_setup",
+        argNames: ["wasmPath", "r1CsPath"],
+      );
+
+  @override
+  Future<PopCertInfo?> cratePersonhoodQueryPopCert({
+    required String account,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(account, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 58,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_pop_cert_info,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCratePersonhoodQueryPopCertConstMeta,
+        argValues: [account, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCratePersonhoodQueryPopCertConstMeta =>
+      const TaskConstMeta(
+        debugName: "query_pop_cert",
+        argNames: ["account", "rpcUrl"],
+      );
+
+  @override
+  Future<String> crateCoreRegisterName({
+    required String name,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 59,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreRegisterNameConstMeta,
+        argValues: [name, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreRegisterNameConstMeta => const TaskConstMeta(
+    debugName: "register_name",
+    argNames: ["name", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreRegisterNameFor({
+    required String name,
+    required String phrase,
+    required String recipient,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(recipient, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 60,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreRegisterNameForConstMeta,
+        argValues: [name, phrase, recipient, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreRegisterNameForConstMeta => const TaskConstMeta(
+    debugName: "register_name_for",
+    argNames: ["name", "phrase", "recipient", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreRejectSubdomain({
+    required String parent,
+    required String label,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(parent, serializer);
+          sse_encode_String(label, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 61,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreRejectSubdomainConstMeta,
+        argValues: [parent, label, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreRejectSubdomainConstMeta => const TaskConstMeta(
+    debugName: "reject_subdomain",
+    argNames: ["parent", "label", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreReleaseName({
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 62,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreReleaseNameConstMeta,
+        argValues: [phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreReleaseNameConstMeta => const TaskConstMeta(
+    debugName: "release_name",
+    argNames: ["phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreReleaseSubdomain({
+    required String parent,
+    required String label,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(parent, serializer);
+          sse_encode_String(label, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 63,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreReleaseSubdomainConstMeta,
+        argValues: [parent, label, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreReleaseSubdomainConstMeta => const TaskConstMeta(
+    debugName: "release_subdomain",
+    argNames: ["parent", "label", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreRenewName({
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 64,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreRenewNameConstMeta,
+        argValues: [phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreRenewNameConstMeta => const TaskConstMeta(
+    debugName: "renew_name",
+    argNames: ["phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String?> crateCoreResolveAddressToName({
+    required String address,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(address, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 65,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreResolveAddressToNameConstMeta,
+        argValues: [address, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreResolveAddressToNameConstMeta =>
+      const TaskConstMeta(
+        debugName: "resolve_address_to_name",
+        argNames: ["address", "rpcUrl"],
+      );
+
+  @override
+  Future<ResolvedName?> crateCoreResolveNameVerified({
+    required String name,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 66,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_resolved_name,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreResolveNameVerifiedConstMeta,
+        argValues: [name, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreResolveNameVerifiedConstMeta =>
+      const TaskConstMeta(
+        debugName: "resolve_name_verified",
+        argNames: ["name", "rpcUrl"],
+      );
+
+  @override
   DotAccount crateCoreRestoreAccount({required String phrase}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(phrase, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 67)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_dot_account,
@@ -233,10 +3115,960 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateCoreRestoreAccountConstMeta =>
       const TaskConstMeta(debugName: "restore_account", argNames: ["phrase"]);
 
+  @override
+  Future<String> crateCoreRevokeSubdomain({
+    required String label,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(label, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 68,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreRevokeSubdomainConstMeta,
+        argValues: [label, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreRevokeSubdomainConstMeta => const TaskConstMeta(
+    debugName: "revoke_subdomain",
+    argNames: ["label", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreSendDot({
+    required String toAddress,
+    required String amountPlanck,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(toAddress, serializer);
+          sse_encode_String(amountPlanck, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 69,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreSendDotConstMeta,
+        argValues: [toAddress, amountPlanck, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreSendDotConstMeta => const TaskConstMeta(
+    debugName: "send_dot",
+    argNames: ["toAddress", "amountPlanck", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreSetRecord({
+    required String name,
+    required String recordType,
+    required List<int> content,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(recordType, serializer);
+          sse_encode_list_prim_u_8_loose(content, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 70,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreSetRecordConstMeta,
+        argValues: [name, recordType, content, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreSetRecordConstMeta => const TaskConstMeta(
+    debugName: "set_record",
+    argNames: ["name", "recordType", "content", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<String> crateCoreSetText({
+    required String name,
+    required String kind,
+    required String content,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(kind, serializer);
+          sse_encode_String(content, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 71,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreSetTextConstMeta,
+        argValues: [name, kind, content, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreSetTextConstMeta => const TaskConstMeta(
+    debugName: "set_text",
+    argNames: ["name", "kind", "content", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Stream<TxUpdate> crateCoreSubmitAction({
+    required TxAction action,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    final sink = RustStreamSink<TxUpdate>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_box_autoadd_tx_action(action, serializer);
+            sse_encode_String(phrase, serializer);
+            sse_encode_String(rpcUrl, serializer);
+            sse_encode_StreamSink_tx_update_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 72,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: sse_decode_String,
+          ),
+          constMeta: kCrateCoreSubmitActionConstMeta,
+          argValues: [action, phrase, rpcUrl, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateCoreSubmitActionConstMeta => const TaskConstMeta(
+    debugName: "submit_action",
+    argNames: ["action", "phrase", "rpcUrl", "sink"],
+  );
+
+  @override
+  Future<String> cratePersonhoodSubmitDiscardPop({
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 73,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCratePersonhoodSubmitDiscardPopConstMeta,
+        argValues: [phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCratePersonhoodSubmitDiscardPopConstMeta =>
+      const TaskConstMeta(
+        debugName: "submit_discard_pop",
+        argNames: ["phrase", "rpcUrl"],
+      );
+
+  @override
+  Future<String> crateCoreSubmitMintCertStrongbox({
+    required String contractNonceHex,
+    required int offerCreatedAtBlock,
+    required String integrityBlobForMockVerdictHex,
+    required StrongBoxCeremonyBundle bundle,
+    required String commitmentCHex,
+    required String ecKeyPubClaimedHex,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(contractNonceHex, serializer);
+          sse_encode_u_32(offerCreatedAtBlock, serializer);
+          sse_encode_String(integrityBlobForMockVerdictHex, serializer);
+          sse_encode_box_autoadd_strong_box_ceremony_bundle(bundle, serializer);
+          sse_encode_String(commitmentCHex, serializer);
+          sse_encode_String(ecKeyPubClaimedHex, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 74,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreSubmitMintCertStrongboxConstMeta,
+        argValues: [
+          contractNonceHex,
+          offerCreatedAtBlock,
+          integrityBlobForMockVerdictHex,
+          bundle,
+          commitmentCHex,
+          ecKeyPubClaimedHex,
+          phrase,
+          rpcUrl,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreSubmitMintCertStrongboxConstMeta =>
+      const TaskConstMeta(
+        debugName: "submit_mint_cert_strongbox",
+        argNames: [
+          "contractNonceHex",
+          "offerCreatedAtBlock",
+          "integrityBlobForMockVerdictHex",
+          "bundle",
+          "commitmentCHex",
+          "ecKeyPubClaimedHex",
+          "phrase",
+          "rpcUrl",
+        ],
+      );
+
+  @override
+  Future<String> cratePersonhoodSubmitMintPop({
+    required String passportProofHex,
+    required PassportInputsFields passportInputs,
+    required String livenessProofHex,
+    required LivenessInputsFields livenessInputs,
+    required String hwCertThumbprintHex,
+    required StrongBoxCeremonyBundle hipBundle,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(passportProofHex, serializer);
+          sse_encode_box_autoadd_passport_inputs_fields(
+            passportInputs,
+            serializer,
+          );
+          sse_encode_String(livenessProofHex, serializer);
+          sse_encode_box_autoadd_liveness_inputs_fields(
+            livenessInputs,
+            serializer,
+          );
+          sse_encode_String(hwCertThumbprintHex, serializer);
+          sse_encode_box_autoadd_strong_box_ceremony_bundle(
+            hipBundle,
+            serializer,
+          );
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 75,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCratePersonhoodSubmitMintPopConstMeta,
+        argValues: [
+          passportProofHex,
+          passportInputs,
+          livenessProofHex,
+          livenessInputs,
+          hwCertThumbprintHex,
+          hipBundle,
+          phrase,
+          rpcUrl,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCratePersonhoodSubmitMintPopConstMeta =>
+      const TaskConstMeta(
+        debugName: "submit_mint_pop",
+        argNames: [
+          "passportProofHex",
+          "passportInputs",
+          "livenessProofHex",
+          "livenessInputs",
+          "hwCertThumbprintHex",
+          "hipBundle",
+          "phrase",
+          "rpcUrl",
+        ],
+      );
+
+  @override
+  Future<String> crateCoreSubmitSelfDiscardCertMimeWrap({
+    required String certThumbprintHex,
+    required BigInt bucket,
+    required String mimeWrapNonceHex,
+    required int userOtp,
+    required String proofBytesHex,
+    required StrongBoxCeremonyBundle bundle,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(certThumbprintHex, serializer);
+          sse_encode_u_64(bucket, serializer);
+          sse_encode_String(mimeWrapNonceHex, serializer);
+          sse_encode_u_32(userOtp, serializer);
+          sse_encode_String(proofBytesHex, serializer);
+          sse_encode_box_autoadd_strong_box_ceremony_bundle(bundle, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 76,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreSubmitSelfDiscardCertMimeWrapConstMeta,
+        argValues: [
+          certThumbprintHex,
+          bucket,
+          mimeWrapNonceHex,
+          userOtp,
+          proofBytesHex,
+          bundle,
+          phrase,
+          rpcUrl,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreSubmitSelfDiscardCertMimeWrapConstMeta =>
+      const TaskConstMeta(
+        debugName: "submit_self_discard_cert_mime_wrap",
+        argNames: [
+          "certThumbprintHex",
+          "bucket",
+          "mimeWrapNonceHex",
+          "userOtp",
+          "proofBytesHex",
+          "bundle",
+          "phrase",
+          "rpcUrl",
+        ],
+      );
+
+  @override
+  Future<String> crateCoreSubmitSetMimeWrapVk({
+    required String vkBytesHex,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(vkBytesHex, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 77,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreSubmitSetMimeWrapVkConstMeta,
+        argValues: [vkBytesHex, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreSubmitSetMimeWrapVkConstMeta =>
+      const TaskConstMeta(
+        debugName: "submit_set_mime_wrap_vk",
+        argNames: ["vkBytesHex", "phrase", "rpcUrl"],
+      );
+
+  @override
+  Future<String> cratePersonhoodSubmitSrtSetCscaRoot({
+    required String newRootHex,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(newRootHex, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 78,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCratePersonhoodSubmitSrtSetCscaRootConstMeta,
+        argValues: [newRootHex, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCratePersonhoodSubmitSrtSetCscaRootConstMeta =>
+      const TaskConstMeta(
+        debugName: "submit_srt_set_csca_root",
+        argNames: ["newRootHex", "phrase", "rpcUrl"],
+      );
+
+  @override
+  Future<String> cratePersonhoodSubmitSrtSetSeatsRoot({
+    required String newRootHex,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(newRootHex, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 79,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCratePersonhoodSubmitSrtSetSeatsRootConstMeta,
+        argValues: [newRootHex, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCratePersonhoodSubmitSrtSetSeatsRootConstMeta =>
+      const TaskConstMeta(
+        debugName: "submit_srt_set_seats_root",
+        argNames: ["newRootHex", "phrase", "rpcUrl"],
+      );
+
+  @override
+  Future<String> cratePersonhoodSubmitSrtSetVk({
+    required String which,
+    required String newVkBytesHex,
+    required int newVersion,
+    required String ceremonyHashHex,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(which, serializer);
+          sse_encode_String(newVkBytesHex, serializer);
+          sse_encode_u_32(newVersion, serializer);
+          sse_encode_String(ceremonyHashHex, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 80,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCratePersonhoodSubmitSrtSetVkConstMeta,
+        argValues: [
+          which,
+          newVkBytesHex,
+          newVersion,
+          ceremonyHashHex,
+          phrase,
+          rpcUrl,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCratePersonhoodSubmitSrtSetVkConstMeta =>
+      const TaskConstMeta(
+        debugName: "submit_srt_set_vk",
+        argNames: [
+          "which",
+          "newVkBytesHex",
+          "newVersion",
+          "ceremonyHashHex",
+          "phrase",
+          "rpcUrl",
+        ],
+      );
+
+  @override
+  Future<String> crateCoreTransferName({
+    required String toAddress,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(toAddress, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 81,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreTransferNameConstMeta,
+        argValues: [toAddress, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreTransferNameConstMeta => const TaskConstMeta(
+    debugName: "transfer_name",
+    argNames: ["toAddress", "phrase", "rpcUrl"],
+  );
+
+  @override
+  Future<bool> crateCoreVerifyNameOwnership({
+    required String name,
+    required String blockHashHex,
+    required String expectedOwner,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_String(blockHashHex, serializer);
+          sse_encode_String(expectedOwner, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 82,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreVerifyNameOwnershipConstMeta,
+        argValues: [name, blockHashHex, expectedOwner, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreVerifyNameOwnershipConstMeta =>
+      const TaskConstMeta(
+        debugName: "verify_name_ownership",
+        argNames: ["name", "blockHashHex", "expectedOwner", "rpcUrl"],
+      );
+
+  @override
+  Future<String> crateCoreVoteOnReferendum({
+    required int referendumIndex,
+    required bool aye,
+    required String balancePlanck,
+    required int conviction,
+    required String rpcUrl,
+    required String phrase,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(referendumIndex, serializer);
+          sse_encode_bool(aye, serializer);
+          sse_encode_String(balancePlanck, serializer);
+          sse_encode_u_8(conviction, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          sse_encode_String(phrase, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 83,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreVoteOnReferendumConstMeta,
+        argValues: [
+          referendumIndex,
+          aye,
+          balancePlanck,
+          conviction,
+          rpcUrl,
+          phrase,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreVoteOnReferendumConstMeta => const TaskConstMeta(
+    debugName: "vote_on_referendum",
+    argNames: [
+      "referendumIndex",
+      "aye",
+      "balancePlanck",
+      "conviction",
+      "rpcUrl",
+      "phrase",
+    ],
+  );
+
+  @override
+  void crateTotpEnrollmentZeroizeBytes({required List<int> data}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(data, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 84)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateTotpEnrollmentZeroizeBytesConstMeta,
+        argValues: [data],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateTotpEnrollmentZeroizeBytesConstMeta =>
+      const TaskConstMeta(debugName: "zeroize_bytes", argNames: ["data"]);
+
+  @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AnyhowException(raw as String);
+  }
+
+  @protected
+  RustStreamSink<TxUpdate> dco_decode_StreamSink_tx_update_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
   @protected
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
+  }
+
+  @protected
+  AccountDashboardInfo dco_decode_account_dashboard_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return AccountDashboardInfo(
+      hasPrimaryName: dco_decode_bool(arr[0]),
+      primaryNameHash: dco_decode_opt_String(arr[1]),
+      subnameHashes: dco_decode_list_String(arr[2]),
+      pendingSubnameOffers: dco_decode_list_String(arr[3]),
+      pendingNameOffers: dco_decode_list_String(arr[4]),
+    );
+  }
+
+  @protected
+  AtRestMessage dco_decode_at_rest_message(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return AtRestMessage(
+      messageIdHex: dco_decode_String(arr[0]),
+      senderPubkeyHex: dco_decode_String(arr[1]),
+      sealedContentHex: dco_decode_String(arr[2]),
+    );
+  }
+
+  @protected
+  bool dco_decode_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
+  LivenessInputsFields dco_decode_box_autoadd_liveness_inputs_fields(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_liveness_inputs_fields(raw);
+  }
+
+  @protected
+  NameListing dco_decode_box_autoadd_name_listing(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_name_listing(raw);
+  }
+
+  @protected
+  PassportInputsFields dco_decode_box_autoadd_passport_inputs_fields(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_passport_inputs_fields(raw);
+  }
+
+  @protected
+  PopCertInfo dco_decode_box_autoadd_pop_cert_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_pop_cert_info(raw);
+  }
+
+  @protected
+  ResolvedName dco_decode_box_autoadd_resolved_name(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_resolved_name(raw);
+  }
+
+  @protected
+  StrongBoxCeremonyBundle dco_decode_box_autoadd_strong_box_ceremony_bundle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_strong_box_ceremony_bundle(raw);
+  }
+
+  @protected
+  TxAction dco_decode_box_autoadd_tx_action(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_tx_action(raw);
+  }
+
+  @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  ChatIdentity dco_decode_chat_identity(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return ChatIdentity(
+      ed25519PubkeyHex: dco_decode_String(arr[0]),
+      x25519PubkeyHex: dco_decode_String(arr[1]),
+      pickupKeyHex: dco_decode_String(arr[2]),
+    );
+  }
+
+  @protected
+  ChatSendOutcome dco_decode_chat_send_outcome(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return ChatSendOutcome(
+      messageIdHex: dco_decode_String(arr[0]),
+      shareCount: dco_decode_u_32(arr[1]),
+      recipientPickupKeyHex: dco_decode_String(arr[2]),
+      newSessionStateHex: dco_decode_String(arr[3]),
+      newSelfHashHex: dco_decode_String(arr[4]),
+    );
+  }
+
+  @protected
+  ChatSessionKeypair dco_decode_chat_session_keypair(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return ChatSessionKeypair(
+      seedHex: dco_decode_String(arr[0]),
+      pubkeyHex: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  ChatSessionOutcome dco_decode_chat_session_outcome(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return ChatSessionOutcome(
+      boundAccountHex: dco_decode_String(arr[0]),
+      expiryUnixSecs: dco_decode_u_64(arr[1]),
+      sessionTtlSecs: dco_decode_u_64(arr[2]),
+    );
+  }
+
+  @protected
+  ChatSessionPrepared dco_decode_chat_session_prepared(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return ChatSessionPrepared(
+      anchorBlockNumber: dco_decode_u_64(arr[0]),
+      anchorBlockHashHex: dco_decode_String(arr[1]),
+      guardNodeIdHex: dco_decode_String(arr[2]),
+      nonceHex: dco_decode_String(arr[3]),
+    );
+  }
+
+  @protected
+  ChatSetupOutcome dco_decode_chat_setup_outcome(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return ChatSetupOutcome(
+      name: dco_decode_String(arr[0]),
+      registered: dco_decode_bool(arr[1]),
+      published: dco_decode_bool(arr[2]),
+      registerTx: dco_decode_String(arr[3]),
+      publishTx: dco_decode_String(arr[4]),
+    );
+  }
+
+  @protected
+  DnsRecord dco_decode_dns_record(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return DnsRecord(
+      recordType: dco_decode_u_32(arr[0]),
+      content: dco_decode_list_prim_u_8_strict(arr[1]),
+    );
   }
 
   @protected
@@ -252,15 +4084,102 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  DrFetchedOpk dco_decode_dr_fetched_opk(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return DrFetchedOpk(
+      found: dco_decode_bool(arr[0]),
+      id: dco_decode_u_32(arr[1]),
+      pubkeyHex: dco_decode_String(arr[2]),
+    );
+  }
+
+  @protected
+  DrInitiation dco_decode_dr_initiation(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return DrInitiation(
+      sessionStateHex: dco_decode_String(arr[0]),
+      x3DhInitHex: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  DrOpkSecret dco_decode_dr_opk_secret(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return DrOpkSecret(
+      id: dco_decode_u_32(arr[0]),
+      secretHex: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  DrPrekeySetup dco_decode_dr_prekey_setup(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return DrPrekeySetup(
+      spkPubkeyHex: dco_decode_String(arr[0]),
+      spkSignatureHex: dco_decode_String(arr[1]),
+      opkBundleHex: dco_decode_String(arr[2]),
+      opkSecrets: dco_decode_list_dr_opk_secret(arr[3]),
+    );
+  }
+
+  @protected
   double dco_decode_f_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as double;
   }
 
   @protected
+  int dco_decode_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_String).toList();
+  }
+
+  @protected
+  List<AtRestMessage> dco_decode_list_at_rest_message(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_at_rest_message).toList();
+  }
+
+  @protected
+  List<DnsRecord> dco_decode_list_dns_record(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_dns_record).toList();
+  }
+
+  @protected
+  List<DrOpkSecret> dco_decode_list_dr_opk_secret(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_dr_opk_secret).toList();
+  }
+
+  @protected
+  List<int> dco_decode_list_prim_u_32_loose(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as List<int>;
+  }
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Uint32List;
   }
 
   @protected
@@ -276,9 +4195,134 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  LivenessInputsFields dco_decode_liveness_inputs_fields(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return LivenessInputsFields(
+      dg2HashHex: dco_decode_String(arr[0]),
+      boundAccount: dco_decode_String(arr[1]),
+      livenessPassed: dco_decode_bool(arr[2]),
+      anchorBlock: dco_decode_u_32(arr[3]),
+      anchorHashHex: dco_decode_String(arr[4]),
+    );
+  }
+
+  @protected
+  MimeWrapProofBenchmark dco_decode_mime_wrap_proof_benchmark(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    return MimeWrapProofBenchmark(
+      success: dco_decode_bool(arr[0]),
+      errorMessage: dco_decode_opt_String(arr[1]),
+      zkeyLoadMs: dco_decode_u_32(arr[2]),
+      zkeyCacheHit: dco_decode_bool(arr[3]),
+      witnessGenMs: dco_decode_u_32(arr[4]),
+      proofGenMs: dco_decode_u_32(arr[5]),
+      totalMs: dco_decode_u_32(arr[6]),
+      proofBytes: dco_decode_list_prim_u_8_strict(arr[7]),
+      publicInputsCount: dco_decode_u_32(arr[8]),
+    );
+  }
+
+  @protected
+  MimeWrapProofResult dco_decode_mime_wrap_proof_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return MimeWrapProofResult(
+      success: dco_decode_bool(arr[0]),
+      errorMessage: dco_decode_opt_String(arr[1]),
+      proofBytesHex: dco_decode_String(arr[2]),
+      totalMs: dco_decode_u_32(arr[3]),
+    );
+  }
+
+  @protected
+  MimeWrapSetupResult dco_decode_mime_wrap_setup_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return MimeWrapSetupResult(
+      success: dco_decode_bool(arr[0]),
+      errorMessage: dco_decode_opt_String(arr[1]),
+      vkBytesHex: dco_decode_String(arr[2]),
+      freshSetup: dco_decode_bool(arr[3]),
+      setupMs: dco_decode_u_32(arr[4]),
+    );
+  }
+
+  @protected
+  NameAvailability dco_decode_name_availability(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return NameAvailability(
+      available: dco_decode_bool(arr[0]),
+      forSale: dco_decode_bool(arr[1]),
+    );
+  }
+
+  @protected
+  NameListing dco_decode_name_listing(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return NameListing(
+      price: dco_decode_String(arr[0]),
+      seller: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
   String? dco_decode_opt_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  NameListing? dco_decode_opt_box_autoadd_name_listing(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_name_listing(raw);
+  }
+
+  @protected
+  PopCertInfo? dco_decode_opt_box_autoadd_pop_cert_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_pop_cert_info(raw);
+  }
+
+  @protected
+  ResolvedName? dco_decode_opt_box_autoadd_resolved_name(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_resolved_name(raw);
+  }
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  OsAttestation dco_decode_os_attestation(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return OsAttestation(
+      expected: dco_decode_String(arr[0]),
+      runtimeOs: dco_decode_String(arr[1]),
+      signalsChecked: dco_decode_u_32(arr[2]),
+      evidence: dco_decode_String(arr[3]),
+    );
   }
 
   @protected
@@ -296,6 +4340,59 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  PassportInputsFields dco_decode_passport_inputs_fields(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 10)
+      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
+    return PassportInputsFields(
+      nullifierHex: dco_decode_String(arr[0]),
+      boundAccount: dco_decode_String(arr[1]),
+      ttlBlock: dco_decode_u_32(arr[2]),
+      adult: dco_decode_bool(arr[3]),
+      seatId: dco_decode_u_16(arr[4]),
+      anchorBlock: dco_decode_u_32(arr[5]),
+      anchorHashHex: dco_decode_String(arr[6]),
+      cscaRootHex: dco_decode_String(arr[7]),
+      seatsRootHex: dco_decode_String(arr[8]),
+      dg2HashHex: dco_decode_String(arr[9]),
+    );
+  }
+
+  @protected
+  PopCertInfo dco_decode_pop_cert_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return PopCertInfo(
+      nullifierHex: dco_decode_String(arr[0]),
+      ttlBlock: dco_decode_u_32(arr[1]),
+      adult: dco_decode_bool(arr[2]),
+      seatId: dco_decode_u_16(arr[3]),
+      mintedAt: dco_decode_u_32(arr[4]),
+    );
+  }
+
+  @protected
+  ReadMessage dco_decode_read_message(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return ReadMessage(
+      claimedSenderName: dco_decode_String(arr[0]),
+      plaintext: dco_decode_String(arr[1]),
+      plaintextHex: dco_decode_String(arr[2]),
+      ratcheted: dco_decode_bool(arr[3]),
+      newSessionStateHex: dco_decode_String(arr[4]),
+      selfHashHex: dco_decode_String(arr[5]),
+      prevSelfHashHex: dco_decode_String(arr[6]),
+      composedAt: dco_decode_u_64(arr[7]),
+    );
+  }
+
+  @protected
   (DotAccount, String) dco_decode_record_dot_account_string(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -303,6 +4400,110 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       throw Exception('Expected 2 elements, got ${arr.length}');
     }
     return (dco_decode_dot_account(arr[0]), dco_decode_String(arr[1]));
+  }
+
+  @protected
+  ResolvedChatIdentity dco_decode_resolved_chat_identity(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return ResolvedChatIdentity(
+      found: dco_decode_bool(arr[0]),
+      ed25519PubkeyHex: dco_decode_String(arr[1]),
+      innerContentKeyHex: dco_decode_String(arr[2]),
+      hasMessageKey: dco_decode_bool(arr[3]),
+    );
+  }
+
+  @protected
+  ResolvedName dco_decode_resolved_name(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return ResolvedName(
+      owner: dco_decode_String(arr[0]),
+      lastBlock: dco_decode_u_32(arr[1]),
+      blockHash: dco_decode_String(arr[2]),
+    );
+  }
+
+  @protected
+  StrongBoxCeremonyBundle dco_decode_strong_box_ceremony_bundle(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    return StrongBoxCeremonyBundle(
+      certEcPublicSec1Hex: dco_decode_String(arr[0]),
+      attestEcPublicSec1Hex: dco_decode_String(arr[1]),
+      certEcChainLeafHex: dco_decode_String(arr[2]),
+      attestEcChainLeafHex: dco_decode_String(arr[3]),
+      hmacBindingOutputHex: dco_decode_String(arr[4]),
+      hmacBindingSignatureHex: dco_decode_String(arr[5]),
+      integrityBlobHex: dco_decode_String(arr[6]),
+      integritySignatureHex: dco_decode_String(arr[7]),
+      challengeHex: dco_decode_String(arr[8]),
+    );
+  }
+
+  @protected
+  TxAction dco_decode_tx_action(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return TxAction(
+      kind: dco_decode_tx_action_kind(arr[0]),
+      name: dco_decode_String(arr[1]),
+      to: dco_decode_String(arr[2]),
+      amountPlanck: dco_decode_String(arr[3]),
+      recipient: dco_decode_String(arr[4]),
+    );
+  }
+
+  @protected
+  TxActionKind dco_decode_tx_action_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return TxActionKind.values[raw as int];
+  }
+
+  @protected
+  TxUpdate dco_decode_tx_update(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return TxUpdate(
+      kind: dco_decode_tx_update_kind(arr[0]),
+      hash: dco_decode_String(arr[1]),
+      error: dco_decode_String(arr[2]),
+    );
+  }
+
+  @protected
+  TxUpdateKind dco_decode_tx_update_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return TxUpdateKind.values[raw as int];
+  }
+
+  @protected
+  int dco_decode_u_16(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  int dco_decode_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeU64(raw);
   }
 
   @protected
@@ -318,10 +4519,220 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_String(deserializer);
+    return AnyhowException(inner);
+  }
+
+  @protected
+  RustStreamSink<TxUpdate> sse_decode_StreamSink_tx_update_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_prim_u_8_strict(deserializer);
     return utf8.decoder.convert(inner);
+  }
+
+  @protected
+  AccountDashboardInfo sse_decode_account_dashboard_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_hasPrimaryName = sse_decode_bool(deserializer);
+    var var_primaryNameHash = sse_decode_opt_String(deserializer);
+    var var_subnameHashes = sse_decode_list_String(deserializer);
+    var var_pendingSubnameOffers = sse_decode_list_String(deserializer);
+    var var_pendingNameOffers = sse_decode_list_String(deserializer);
+    return AccountDashboardInfo(
+      hasPrimaryName: var_hasPrimaryName,
+      primaryNameHash: var_primaryNameHash,
+      subnameHashes: var_subnameHashes,
+      pendingSubnameOffers: var_pendingSubnameOffers,
+      pendingNameOffers: var_pendingNameOffers,
+    );
+  }
+
+  @protected
+  AtRestMessage sse_decode_at_rest_message(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_messageIdHex = sse_decode_String(deserializer);
+    var var_senderPubkeyHex = sse_decode_String(deserializer);
+    var var_sealedContentHex = sse_decode_String(deserializer);
+    return AtRestMessage(
+      messageIdHex: var_messageIdHex,
+      senderPubkeyHex: var_senderPubkeyHex,
+      sealedContentHex: var_sealedContentHex,
+    );
+  }
+
+  @protected
+  bool sse_decode_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
+  LivenessInputsFields sse_decode_box_autoadd_liveness_inputs_fields(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_liveness_inputs_fields(deserializer));
+  }
+
+  @protected
+  NameListing sse_decode_box_autoadd_name_listing(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_name_listing(deserializer));
+  }
+
+  @protected
+  PassportInputsFields sse_decode_box_autoadd_passport_inputs_fields(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_passport_inputs_fields(deserializer));
+  }
+
+  @protected
+  PopCertInfo sse_decode_box_autoadd_pop_cert_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_pop_cert_info(deserializer));
+  }
+
+  @protected
+  ResolvedName sse_decode_box_autoadd_resolved_name(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_resolved_name(deserializer));
+  }
+
+  @protected
+  StrongBoxCeremonyBundle sse_decode_box_autoadd_strong_box_ceremony_bundle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_strong_box_ceremony_bundle(deserializer));
+  }
+
+  @protected
+  TxAction sse_decode_box_autoadd_tx_action(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_tx_action(deserializer));
+  }
+
+  @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_u_32(deserializer));
+  }
+
+  @protected
+  ChatIdentity sse_decode_chat_identity(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_ed25519PubkeyHex = sse_decode_String(deserializer);
+    var var_x25519PubkeyHex = sse_decode_String(deserializer);
+    var var_pickupKeyHex = sse_decode_String(deserializer);
+    return ChatIdentity(
+      ed25519PubkeyHex: var_ed25519PubkeyHex,
+      x25519PubkeyHex: var_x25519PubkeyHex,
+      pickupKeyHex: var_pickupKeyHex,
+    );
+  }
+
+  @protected
+  ChatSendOutcome sse_decode_chat_send_outcome(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_messageIdHex = sse_decode_String(deserializer);
+    var var_shareCount = sse_decode_u_32(deserializer);
+    var var_recipientPickupKeyHex = sse_decode_String(deserializer);
+    var var_newSessionStateHex = sse_decode_String(deserializer);
+    var var_newSelfHashHex = sse_decode_String(deserializer);
+    return ChatSendOutcome(
+      messageIdHex: var_messageIdHex,
+      shareCount: var_shareCount,
+      recipientPickupKeyHex: var_recipientPickupKeyHex,
+      newSessionStateHex: var_newSessionStateHex,
+      newSelfHashHex: var_newSelfHashHex,
+    );
+  }
+
+  @protected
+  ChatSessionKeypair sse_decode_chat_session_keypair(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_seedHex = sse_decode_String(deserializer);
+    var var_pubkeyHex = sse_decode_String(deserializer);
+    return ChatSessionKeypair(seedHex: var_seedHex, pubkeyHex: var_pubkeyHex);
+  }
+
+  @protected
+  ChatSessionOutcome sse_decode_chat_session_outcome(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_boundAccountHex = sse_decode_String(deserializer);
+    var var_expiryUnixSecs = sse_decode_u_64(deserializer);
+    var var_sessionTtlSecs = sse_decode_u_64(deserializer);
+    return ChatSessionOutcome(
+      boundAccountHex: var_boundAccountHex,
+      expiryUnixSecs: var_expiryUnixSecs,
+      sessionTtlSecs: var_sessionTtlSecs,
+    );
+  }
+
+  @protected
+  ChatSessionPrepared sse_decode_chat_session_prepared(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_anchorBlockNumber = sse_decode_u_64(deserializer);
+    var var_anchorBlockHashHex = sse_decode_String(deserializer);
+    var var_guardNodeIdHex = sse_decode_String(deserializer);
+    var var_nonceHex = sse_decode_String(deserializer);
+    return ChatSessionPrepared(
+      anchorBlockNumber: var_anchorBlockNumber,
+      anchorBlockHashHex: var_anchorBlockHashHex,
+      guardNodeIdHex: var_guardNodeIdHex,
+      nonceHex: var_nonceHex,
+    );
+  }
+
+  @protected
+  ChatSetupOutcome sse_decode_chat_setup_outcome(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_name = sse_decode_String(deserializer);
+    var var_registered = sse_decode_bool(deserializer);
+    var var_published = sse_decode_bool(deserializer);
+    var var_registerTx = sse_decode_String(deserializer);
+    var var_publishTx = sse_decode_String(deserializer);
+    return ChatSetupOutcome(
+      name: var_name,
+      registered: var_registered,
+      published: var_published,
+      registerTx: var_registerTx,
+      publishTx: var_publishTx,
+    );
+  }
+
+  @protected
+  DnsRecord sse_decode_dns_record(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_recordType = sse_decode_u_32(deserializer);
+    var var_content = sse_decode_list_prim_u_8_strict(deserializer);
+    return DnsRecord(recordType: var_recordType, content: var_content);
   }
 
   @protected
@@ -333,9 +4744,58 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  DrFetchedOpk sse_decode_dr_fetched_opk(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_found = sse_decode_bool(deserializer);
+    var var_id = sse_decode_u_32(deserializer);
+    var var_pubkeyHex = sse_decode_String(deserializer);
+    return DrFetchedOpk(found: var_found, id: var_id, pubkeyHex: var_pubkeyHex);
+  }
+
+  @protected
+  DrInitiation sse_decode_dr_initiation(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_sessionStateHex = sse_decode_String(deserializer);
+    var var_x3DhInitHex = sse_decode_String(deserializer);
+    return DrInitiation(
+      sessionStateHex: var_sessionStateHex,
+      x3DhInitHex: var_x3DhInitHex,
+    );
+  }
+
+  @protected
+  DrOpkSecret sse_decode_dr_opk_secret(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_u_32(deserializer);
+    var var_secretHex = sse_decode_String(deserializer);
+    return DrOpkSecret(id: var_id, secretHex: var_secretHex);
+  }
+
+  @protected
+  DrPrekeySetup sse_decode_dr_prekey_setup(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_spkPubkeyHex = sse_decode_String(deserializer);
+    var var_spkSignatureHex = sse_decode_String(deserializer);
+    var var_opkBundleHex = sse_decode_String(deserializer);
+    var var_opkSecrets = sse_decode_list_dr_opk_secret(deserializer);
+    return DrPrekeySetup(
+      spkPubkeyHex: var_spkPubkeyHex,
+      spkSignatureHex: var_spkSignatureHex,
+      opkBundleHex: var_opkBundleHex,
+      opkSecrets: var_opkSecrets,
+    );
+  }
+
+  @protected
   double sse_decode_f_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getFloat64();
+  }
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getInt32();
   }
 
   @protected
@@ -348,6 +4808,60 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       ans_.add(sse_decode_String(deserializer));
     }
     return ans_;
+  }
+
+  @protected
+  List<AtRestMessage> sse_decode_list_at_rest_message(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <AtRestMessage>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_at_rest_message(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<DnsRecord> sse_decode_list_dns_record(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <DnsRecord>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_dns_record(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<DrOpkSecret> sse_decode_list_dr_opk_secret(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <DrOpkSecret>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_dr_opk_secret(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint32List(len_);
+  }
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint32List(len_);
   }
 
   @protected
@@ -365,6 +4879,104 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  LivenessInputsFields sse_decode_liveness_inputs_fields(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_dg2HashHex = sse_decode_String(deserializer);
+    var var_boundAccount = sse_decode_String(deserializer);
+    var var_livenessPassed = sse_decode_bool(deserializer);
+    var var_anchorBlock = sse_decode_u_32(deserializer);
+    var var_anchorHashHex = sse_decode_String(deserializer);
+    return LivenessInputsFields(
+      dg2HashHex: var_dg2HashHex,
+      boundAccount: var_boundAccount,
+      livenessPassed: var_livenessPassed,
+      anchorBlock: var_anchorBlock,
+      anchorHashHex: var_anchorHashHex,
+    );
+  }
+
+  @protected
+  MimeWrapProofBenchmark sse_decode_mime_wrap_proof_benchmark(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_success = sse_decode_bool(deserializer);
+    var var_errorMessage = sse_decode_opt_String(deserializer);
+    var var_zkeyLoadMs = sse_decode_u_32(deserializer);
+    var var_zkeyCacheHit = sse_decode_bool(deserializer);
+    var var_witnessGenMs = sse_decode_u_32(deserializer);
+    var var_proofGenMs = sse_decode_u_32(deserializer);
+    var var_totalMs = sse_decode_u_32(deserializer);
+    var var_proofBytes = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_publicInputsCount = sse_decode_u_32(deserializer);
+    return MimeWrapProofBenchmark(
+      success: var_success,
+      errorMessage: var_errorMessage,
+      zkeyLoadMs: var_zkeyLoadMs,
+      zkeyCacheHit: var_zkeyCacheHit,
+      witnessGenMs: var_witnessGenMs,
+      proofGenMs: var_proofGenMs,
+      totalMs: var_totalMs,
+      proofBytes: var_proofBytes,
+      publicInputsCount: var_publicInputsCount,
+    );
+  }
+
+  @protected
+  MimeWrapProofResult sse_decode_mime_wrap_proof_result(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_success = sse_decode_bool(deserializer);
+    var var_errorMessage = sse_decode_opt_String(deserializer);
+    var var_proofBytesHex = sse_decode_String(deserializer);
+    var var_totalMs = sse_decode_u_32(deserializer);
+    return MimeWrapProofResult(
+      success: var_success,
+      errorMessage: var_errorMessage,
+      proofBytesHex: var_proofBytesHex,
+      totalMs: var_totalMs,
+    );
+  }
+
+  @protected
+  MimeWrapSetupResult sse_decode_mime_wrap_setup_result(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_success = sse_decode_bool(deserializer);
+    var var_errorMessage = sse_decode_opt_String(deserializer);
+    var var_vkBytesHex = sse_decode_String(deserializer);
+    var var_freshSetup = sse_decode_bool(deserializer);
+    var var_setupMs = sse_decode_u_32(deserializer);
+    return MimeWrapSetupResult(
+      success: var_success,
+      errorMessage: var_errorMessage,
+      vkBytesHex: var_vkBytesHex,
+      freshSetup: var_freshSetup,
+      setupMs: var_setupMs,
+    );
+  }
+
+  @protected
+  NameAvailability sse_decode_name_availability(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_available = sse_decode_bool(deserializer);
+    var var_forSale = sse_decode_bool(deserializer);
+    return NameAvailability(available: var_available, forSale: var_forSale);
+  }
+
+  @protected
+  NameListing sse_decode_name_listing(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_price = sse_decode_String(deserializer);
+    var var_seller = sse_decode_String(deserializer);
+    return NameListing(price: var_price, seller: var_seller);
+  }
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -373,6 +4985,71 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     } else {
       return null;
     }
+  }
+
+  @protected
+  NameListing? sse_decode_opt_box_autoadd_name_listing(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_name_listing(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  PopCertInfo? sse_decode_opt_box_autoadd_pop_cert_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_pop_cert_info(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  ResolvedName? sse_decode_opt_box_autoadd_resolved_name(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_resolved_name(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_u_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  OsAttestation sse_decode_os_attestation(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_expected = sse_decode_String(deserializer);
+    var var_runtimeOs = sse_decode_String(deserializer);
+    var var_signalsChecked = sse_decode_u_32(deserializer);
+    var var_evidence = sse_decode_String(deserializer);
+    return OsAttestation(
+      expected: var_expected,
+      runtimeOs: var_runtimeOs,
+      signalsChecked: var_signalsChecked,
+      evidence: var_evidence,
+    );
   }
 
   @protected
@@ -393,6 +5070,75 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  PassportInputsFields sse_decode_passport_inputs_fields(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_nullifierHex = sse_decode_String(deserializer);
+    var var_boundAccount = sse_decode_String(deserializer);
+    var var_ttlBlock = sse_decode_u_32(deserializer);
+    var var_adult = sse_decode_bool(deserializer);
+    var var_seatId = sse_decode_u_16(deserializer);
+    var var_anchorBlock = sse_decode_u_32(deserializer);
+    var var_anchorHashHex = sse_decode_String(deserializer);
+    var var_cscaRootHex = sse_decode_String(deserializer);
+    var var_seatsRootHex = sse_decode_String(deserializer);
+    var var_dg2HashHex = sse_decode_String(deserializer);
+    return PassportInputsFields(
+      nullifierHex: var_nullifierHex,
+      boundAccount: var_boundAccount,
+      ttlBlock: var_ttlBlock,
+      adult: var_adult,
+      seatId: var_seatId,
+      anchorBlock: var_anchorBlock,
+      anchorHashHex: var_anchorHashHex,
+      cscaRootHex: var_cscaRootHex,
+      seatsRootHex: var_seatsRootHex,
+      dg2HashHex: var_dg2HashHex,
+    );
+  }
+
+  @protected
+  PopCertInfo sse_decode_pop_cert_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_nullifierHex = sse_decode_String(deserializer);
+    var var_ttlBlock = sse_decode_u_32(deserializer);
+    var var_adult = sse_decode_bool(deserializer);
+    var var_seatId = sse_decode_u_16(deserializer);
+    var var_mintedAt = sse_decode_u_32(deserializer);
+    return PopCertInfo(
+      nullifierHex: var_nullifierHex,
+      ttlBlock: var_ttlBlock,
+      adult: var_adult,
+      seatId: var_seatId,
+      mintedAt: var_mintedAt,
+    );
+  }
+
+  @protected
+  ReadMessage sse_decode_read_message(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_claimedSenderName = sse_decode_String(deserializer);
+    var var_plaintext = sse_decode_String(deserializer);
+    var var_plaintextHex = sse_decode_String(deserializer);
+    var var_ratcheted = sse_decode_bool(deserializer);
+    var var_newSessionStateHex = sse_decode_String(deserializer);
+    var var_selfHashHex = sse_decode_String(deserializer);
+    var var_prevSelfHashHex = sse_decode_String(deserializer);
+    var var_composedAt = sse_decode_u_64(deserializer);
+    return ReadMessage(
+      claimedSenderName: var_claimedSenderName,
+      plaintext: var_plaintext,
+      plaintextHex: var_plaintextHex,
+      ratcheted: var_ratcheted,
+      newSessionStateHex: var_newSessionStateHex,
+      selfHashHex: var_selfHashHex,
+      prevSelfHashHex: var_prevSelfHashHex,
+      composedAt: var_composedAt,
+    );
+  }
+
+  @protected
   (DotAccount, String) sse_decode_record_dot_account_string(
     SseDeserializer deserializer,
   ) {
@@ -400,6 +5146,121 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_field0 = sse_decode_dot_account(deserializer);
     var var_field1 = sse_decode_String(deserializer);
     return (var_field0, var_field1);
+  }
+
+  @protected
+  ResolvedChatIdentity sse_decode_resolved_chat_identity(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_found = sse_decode_bool(deserializer);
+    var var_ed25519PubkeyHex = sse_decode_String(deserializer);
+    var var_innerContentKeyHex = sse_decode_String(deserializer);
+    var var_hasMessageKey = sse_decode_bool(deserializer);
+    return ResolvedChatIdentity(
+      found: var_found,
+      ed25519PubkeyHex: var_ed25519PubkeyHex,
+      innerContentKeyHex: var_innerContentKeyHex,
+      hasMessageKey: var_hasMessageKey,
+    );
+  }
+
+  @protected
+  ResolvedName sse_decode_resolved_name(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_owner = sse_decode_String(deserializer);
+    var var_lastBlock = sse_decode_u_32(deserializer);
+    var var_blockHash = sse_decode_String(deserializer);
+    return ResolvedName(
+      owner: var_owner,
+      lastBlock: var_lastBlock,
+      blockHash: var_blockHash,
+    );
+  }
+
+  @protected
+  StrongBoxCeremonyBundle sse_decode_strong_box_ceremony_bundle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_certEcPublicSec1Hex = sse_decode_String(deserializer);
+    var var_attestEcPublicSec1Hex = sse_decode_String(deserializer);
+    var var_certEcChainLeafHex = sse_decode_String(deserializer);
+    var var_attestEcChainLeafHex = sse_decode_String(deserializer);
+    var var_hmacBindingOutputHex = sse_decode_String(deserializer);
+    var var_hmacBindingSignatureHex = sse_decode_String(deserializer);
+    var var_integrityBlobHex = sse_decode_String(deserializer);
+    var var_integritySignatureHex = sse_decode_String(deserializer);
+    var var_challengeHex = sse_decode_String(deserializer);
+    return StrongBoxCeremonyBundle(
+      certEcPublicSec1Hex: var_certEcPublicSec1Hex,
+      attestEcPublicSec1Hex: var_attestEcPublicSec1Hex,
+      certEcChainLeafHex: var_certEcChainLeafHex,
+      attestEcChainLeafHex: var_attestEcChainLeafHex,
+      hmacBindingOutputHex: var_hmacBindingOutputHex,
+      hmacBindingSignatureHex: var_hmacBindingSignatureHex,
+      integrityBlobHex: var_integrityBlobHex,
+      integritySignatureHex: var_integritySignatureHex,
+      challengeHex: var_challengeHex,
+    );
+  }
+
+  @protected
+  TxAction sse_decode_tx_action(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_kind = sse_decode_tx_action_kind(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_to = sse_decode_String(deserializer);
+    var var_amountPlanck = sse_decode_String(deserializer);
+    var var_recipient = sse_decode_String(deserializer);
+    return TxAction(
+      kind: var_kind,
+      name: var_name,
+      to: var_to,
+      amountPlanck: var_amountPlanck,
+      recipient: var_recipient,
+    );
+  }
+
+  @protected
+  TxActionKind sse_decode_tx_action_kind(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return TxActionKind.values[inner];
+  }
+
+  @protected
+  TxUpdate sse_decode_tx_update(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_kind = sse_decode_tx_update_kind(deserializer);
+    var var_hash = sse_decode_String(deserializer);
+    var var_error = sse_decode_String(deserializer);
+    return TxUpdate(kind: var_kind, hash: var_hash, error: var_error);
+  }
+
+  @protected
+  TxUpdateKind sse_decode_tx_update_kind(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return TxUpdateKind.values[inner];
+  }
+
+  @protected
+  int sse_decode_u_16(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint16();
+  }
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint32();
+  }
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getBigUint64();
   }
 
   @protected
@@ -414,21 +5275,208 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer) {
+  void sse_encode_AnyhowException(
+    AnyhowException self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getInt32();
+    sse_encode_String(self.message, serializer);
   }
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer) {
+  void sse_encode_StreamSink_tx_update_Sse(
+    RustStreamSink<TxUpdate> self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getUint8() != 0;
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_tx_update,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
   }
 
   @protected
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_account_dashboard_info(
+    AccountDashboardInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.hasPrimaryName, serializer);
+    sse_encode_opt_String(self.primaryNameHash, serializer);
+    sse_encode_list_String(self.subnameHashes, serializer);
+    sse_encode_list_String(self.pendingSubnameOffers, serializer);
+    sse_encode_list_String(self.pendingNameOffers, serializer);
+  }
+
+  @protected
+  void sse_encode_at_rest_message(
+    AtRestMessage self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.messageIdHex, serializer);
+    sse_encode_String(self.senderPubkeyHex, serializer);
+    sse_encode_String(self.sealedContentHex, serializer);
+  }
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint8(self ? 1 : 0);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_liveness_inputs_fields(
+    LivenessInputsFields self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_liveness_inputs_fields(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_name_listing(
+    NameListing self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_name_listing(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_passport_inputs_fields(
+    PassportInputsFields self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_passport_inputs_fields(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_pop_cert_info(
+    PopCertInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_pop_cert_info(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_resolved_name(
+    ResolvedName self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_resolved_name(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_strong_box_ceremony_bundle(
+    StrongBoxCeremonyBundle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_strong_box_ceremony_bundle(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_tx_action(
+    TxAction self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_tx_action(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self, serializer);
+  }
+
+  @protected
+  void sse_encode_chat_identity(ChatIdentity self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.ed25519PubkeyHex, serializer);
+    sse_encode_String(self.x25519PubkeyHex, serializer);
+    sse_encode_String(self.pickupKeyHex, serializer);
+  }
+
+  @protected
+  void sse_encode_chat_send_outcome(
+    ChatSendOutcome self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.messageIdHex, serializer);
+    sse_encode_u_32(self.shareCount, serializer);
+    sse_encode_String(self.recipientPickupKeyHex, serializer);
+    sse_encode_String(self.newSessionStateHex, serializer);
+    sse_encode_String(self.newSelfHashHex, serializer);
+  }
+
+  @protected
+  void sse_encode_chat_session_keypair(
+    ChatSessionKeypair self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.seedHex, serializer);
+    sse_encode_String(self.pubkeyHex, serializer);
+  }
+
+  @protected
+  void sse_encode_chat_session_outcome(
+    ChatSessionOutcome self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.boundAccountHex, serializer);
+    sse_encode_u_64(self.expiryUnixSecs, serializer);
+    sse_encode_u_64(self.sessionTtlSecs, serializer);
+  }
+
+  @protected
+  void sse_encode_chat_session_prepared(
+    ChatSessionPrepared self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.anchorBlockNumber, serializer);
+    sse_encode_String(self.anchorBlockHashHex, serializer);
+    sse_encode_String(self.guardNodeIdHex, serializer);
+    sse_encode_String(self.nonceHex, serializer);
+  }
+
+  @protected
+  void sse_encode_chat_setup_outcome(
+    ChatSetupOutcome self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.name, serializer);
+    sse_encode_bool(self.registered, serializer);
+    sse_encode_bool(self.published, serializer);
+    sse_encode_String(self.registerTx, serializer);
+    sse_encode_String(self.publishTx, serializer);
+  }
+
+  @protected
+  void sse_encode_dns_record(DnsRecord self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.recordType, serializer);
+    sse_encode_list_prim_u_8_strict(self.content, serializer);
   }
 
   @protected
@@ -439,9 +5487,49 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_dr_fetched_opk(DrFetchedOpk self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.found, serializer);
+    sse_encode_u_32(self.id, serializer);
+    sse_encode_String(self.pubkeyHex, serializer);
+  }
+
+  @protected
+  void sse_encode_dr_initiation(DrInitiation self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.sessionStateHex, serializer);
+    sse_encode_String(self.x3DhInitHex, serializer);
+  }
+
+  @protected
+  void sse_encode_dr_opk_secret(DrOpkSecret self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.id, serializer);
+    sse_encode_String(self.secretHex, serializer);
+  }
+
+  @protected
+  void sse_encode_dr_prekey_setup(
+    DrPrekeySetup self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.spkPubkeyHex, serializer);
+    sse_encode_String(self.spkSignatureHex, serializer);
+    sse_encode_String(self.opkBundleHex, serializer);
+    sse_encode_list_dr_opk_secret(self.opkSecrets, serializer);
+  }
+
+  @protected
   void sse_encode_f_64(double self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putFloat64(self);
+  }
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putInt32(self);
   }
 
   @protected
@@ -451,6 +5539,64 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     for (final item in self) {
       sse_encode_String(item, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_list_at_rest_message(
+    List<AtRestMessage> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_at_rest_message(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_dns_record(
+    List<DnsRecord> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_dns_record(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_dr_opk_secret(
+    List<DrOpkSecret> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_dr_opk_secret(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_prim_u_32_loose(
+    List<int> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint32List(
+      self is Uint32List ? self : Uint32List.fromList(self),
+    );
+  }
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint32List(self);
   }
 
   @protected
@@ -476,6 +5622,78 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_liveness_inputs_fields(
+    LivenessInputsFields self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.dg2HashHex, serializer);
+    sse_encode_String(self.boundAccount, serializer);
+    sse_encode_bool(self.livenessPassed, serializer);
+    sse_encode_u_32(self.anchorBlock, serializer);
+    sse_encode_String(self.anchorHashHex, serializer);
+  }
+
+  @protected
+  void sse_encode_mime_wrap_proof_benchmark(
+    MimeWrapProofBenchmark self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.success, serializer);
+    sse_encode_opt_String(self.errorMessage, serializer);
+    sse_encode_u_32(self.zkeyLoadMs, serializer);
+    sse_encode_bool(self.zkeyCacheHit, serializer);
+    sse_encode_u_32(self.witnessGenMs, serializer);
+    sse_encode_u_32(self.proofGenMs, serializer);
+    sse_encode_u_32(self.totalMs, serializer);
+    sse_encode_list_prim_u_8_strict(self.proofBytes, serializer);
+    sse_encode_u_32(self.publicInputsCount, serializer);
+  }
+
+  @protected
+  void sse_encode_mime_wrap_proof_result(
+    MimeWrapProofResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.success, serializer);
+    sse_encode_opt_String(self.errorMessage, serializer);
+    sse_encode_String(self.proofBytesHex, serializer);
+    sse_encode_u_32(self.totalMs, serializer);
+  }
+
+  @protected
+  void sse_encode_mime_wrap_setup_result(
+    MimeWrapSetupResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.success, serializer);
+    sse_encode_opt_String(self.errorMessage, serializer);
+    sse_encode_String(self.vkBytesHex, serializer);
+    sse_encode_bool(self.freshSetup, serializer);
+    sse_encode_u_32(self.setupMs, serializer);
+  }
+
+  @protected
+  void sse_encode_name_availability(
+    NameAvailability self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.available, serializer);
+    sse_encode_bool(self.forSale, serializer);
+  }
+
+  @protected
+  void sse_encode_name_listing(NameListing self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.price, serializer);
+    sse_encode_String(self.seller, serializer);
+  }
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -483,6 +5701,64 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     if (self != null) {
       sse_encode_String(self, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_name_listing(
+    NameListing? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_name_listing(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_pop_cert_info(
+    PopCertInfo? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_pop_cert_info(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_resolved_name(
+    ResolvedName? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_resolved_name(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_u_32(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_os_attestation(OsAttestation self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.expected, serializer);
+    sse_encode_String(self.runtimeOs, serializer);
+    sse_encode_u_32(self.signalsChecked, serializer);
+    sse_encode_String(self.evidence, serializer);
   }
 
   @protected
@@ -498,6 +5774,47 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_passport_inputs_fields(
+    PassportInputsFields self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.nullifierHex, serializer);
+    sse_encode_String(self.boundAccount, serializer);
+    sse_encode_u_32(self.ttlBlock, serializer);
+    sse_encode_bool(self.adult, serializer);
+    sse_encode_u_16(self.seatId, serializer);
+    sse_encode_u_32(self.anchorBlock, serializer);
+    sse_encode_String(self.anchorHashHex, serializer);
+    sse_encode_String(self.cscaRootHex, serializer);
+    sse_encode_String(self.seatsRootHex, serializer);
+    sse_encode_String(self.dg2HashHex, serializer);
+  }
+
+  @protected
+  void sse_encode_pop_cert_info(PopCertInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.nullifierHex, serializer);
+    sse_encode_u_32(self.ttlBlock, serializer);
+    sse_encode_bool(self.adult, serializer);
+    sse_encode_u_16(self.seatId, serializer);
+    sse_encode_u_32(self.mintedAt, serializer);
+  }
+
+  @protected
+  void sse_encode_read_message(ReadMessage self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.claimedSenderName, serializer);
+    sse_encode_String(self.plaintext, serializer);
+    sse_encode_String(self.plaintextHex, serializer);
+    sse_encode_bool(self.ratcheted, serializer);
+    sse_encode_String(self.newSessionStateHex, serializer);
+    sse_encode_String(self.selfHashHex, serializer);
+    sse_encode_String(self.prevSelfHashHex, serializer);
+    sse_encode_u_64(self.composedAt, serializer);
+  }
+
+  @protected
   void sse_encode_record_dot_account_string(
     (DotAccount, String) self,
     SseSerializer serializer,
@@ -505,6 +5822,91 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_dot_account(self.$1, serializer);
     sse_encode_String(self.$2, serializer);
+  }
+
+  @protected
+  void sse_encode_resolved_chat_identity(
+    ResolvedChatIdentity self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.found, serializer);
+    sse_encode_String(self.ed25519PubkeyHex, serializer);
+    sse_encode_String(self.innerContentKeyHex, serializer);
+    sse_encode_bool(self.hasMessageKey, serializer);
+  }
+
+  @protected
+  void sse_encode_resolved_name(ResolvedName self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.owner, serializer);
+    sse_encode_u_32(self.lastBlock, serializer);
+    sse_encode_String(self.blockHash, serializer);
+  }
+
+  @protected
+  void sse_encode_strong_box_ceremony_bundle(
+    StrongBoxCeremonyBundle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.certEcPublicSec1Hex, serializer);
+    sse_encode_String(self.attestEcPublicSec1Hex, serializer);
+    sse_encode_String(self.certEcChainLeafHex, serializer);
+    sse_encode_String(self.attestEcChainLeafHex, serializer);
+    sse_encode_String(self.hmacBindingOutputHex, serializer);
+    sse_encode_String(self.hmacBindingSignatureHex, serializer);
+    sse_encode_String(self.integrityBlobHex, serializer);
+    sse_encode_String(self.integritySignatureHex, serializer);
+    sse_encode_String(self.challengeHex, serializer);
+  }
+
+  @protected
+  void sse_encode_tx_action(TxAction self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_tx_action_kind(self.kind, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_String(self.to, serializer);
+    sse_encode_String(self.amountPlanck, serializer);
+    sse_encode_String(self.recipient, serializer);
+  }
+
+  @protected
+  void sse_encode_tx_action_kind(TxActionKind self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_tx_update(TxUpdate self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_tx_update_kind(self.kind, serializer);
+    sse_encode_String(self.hash, serializer);
+    sse_encode_String(self.error, serializer);
+  }
+
+  @protected
+  void sse_encode_tx_update_kind(TxUpdateKind self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_u_16(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint16(self);
+  }
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint32(self);
+  }
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putBigUint64(self);
   }
 
   @protected
@@ -516,17 +5918,5 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_encode_unit(void self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-  }
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putInt32(self);
-  }
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putUint8(self ? 1 : 0);
   }
 }
