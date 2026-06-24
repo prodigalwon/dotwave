@@ -1,5 +1,9 @@
 # Dotwave
 
+<img width="471" height="1025" alt="image" src="https://github.com/user-attachments/assets/c8060738-9049-4e0d-b234-5ac13abeb04b" />
+
+
+
 Dotwave is a mobile app that gives everyday users access to the Polkadot ecosystem without needing to understand blockchain. Think of it as a WeChat-style super app — one interface, every Polkadot product and service inside it.
 
 ## What It Does
