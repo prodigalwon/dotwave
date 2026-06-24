@@ -246,6 +246,55 @@ Future<ChatSetupOutcome> chatSetupMessaging({
   innerContentKeyHex: innerContentKeyHex,
 );
 
+/// Streamed "Register / Rotate Chat Keys". Publishes CHAT + MESSAGE under the
+/// (already-owned) `name`, then mints the admission cert (tolerated, mirroring
+/// the non-streamed `registerOrRotateKeys` flow — addressability stands even if
+/// the cert mint is deferred). The silicon content-key mint happens Dart-side
+/// before this call; its public half arrives as `inner_content_key_hex`.
+Stream<TxUpdate> chatRegisterKeysStreamed({
+  required String name,
+  required String phrase,
+  required String rpcUrl,
+  required String identitySeedHex,
+  required String innerContentKeyHex,
+  required String certSeedHex,
+  required int certTtlBlocks,
+}) => RustLib.instance.api.crateCoreChatRegisterKeysStreamed(
+  name: name,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+  identitySeedHex: identitySeedHex,
+  innerContentKeyHex: innerContentKeyHex,
+  certSeedHex: certSeedHex,
+  certTtlBlocks: certTtlBlocks,
+);
+
+/// Streamed standalone "Mint Admission Cert". `Confirmed.hash` carries the cert
+/// thumbprint (hex) so the UI can cache it without re-fetching.
+Stream<TxUpdate> chatMintCertStreamed({
+  required String rpcUrl,
+  required String phrase,
+  required String certSeedHex,
+  required int ttlBlocks,
+}) => RustLib.instance.api.crateCoreChatMintCertStreamed(
+  rpcUrl: rpcUrl,
+  phrase: phrase,
+  certSeedHex: certSeedHex,
+  ttlBlocks: ttlBlocks,
+);
+
+/// Storage-only read of this account's admission-cert thumbprint (hex), or
+/// `None` if no root cert is on chain. Lets the UI re-cache the thumbprint after
+/// a streamed mint/register without re-needing the signing phrase. Wraps
+/// [`fetch_root_thumbprint`].
+Future<String?> chatFetchCertThumbprint({
+  required String rpcUrl,
+  required String address,
+}) => RustLib.instance.api.crateCoreChatFetchCertThumbprint(
+  rpcUrl: rpcUrl,
+  address: address,
+);
+
 /// Fetch the full PNS portfolio for an account: primary name, subnames,
 /// pending offers. Returns hashes (H256 hex) — label strings are not stored
 /// on-chain due to one-way namehashing.

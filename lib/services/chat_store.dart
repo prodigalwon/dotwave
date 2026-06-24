@@ -11,7 +11,11 @@ import '../bridge/bridge_generated.dart/core.dart'
         chatSetupMessaging,
         ChatSetupOutcome,
         devCertSeedHex,
-        chatMintTestCert;
+        chatMintTestCert,
+        chatRegisterKeysStreamed,
+        chatMintCertStreamed,
+        chatFetchCertThumbprint,
+        TxUpdate;
 import '../config/rpc_endpoints.dart';
 import 'content_key_service.dart';
 
@@ -539,6 +543,76 @@ class ChatStore extends ChangeNotifier {
       notifyListeners();
     }
     return outcome;
+  }
+
+  // ── streamed variants (animated tracked blade) ──────────────────────
+  //
+  // Same effect as [registerOrRotateKeys] / [ensureCert], but emitting
+  // [TxUpdate] progress so the transaction blade can shrink into the corner
+  // badge and track in the background. The Dart-only parts (silicon mint, seed
+  // derivation, thumbprint caching) stay here; the proven publish+cert ceremony
+  // runs in rust_core and is reused verbatim.
+
+  /// Streamed "Register / Rotate Chat Keys". Mints the silicon content key and
+  /// derives+caches the cert seed up front (so [certAuth] stays valid), then
+  /// streams the rust_core publish+cert ceremony. On `Confirmed`, call
+  /// [onKeysConfirmed] to persist the owned name + re-cache the thumbprint.
+  Stream<TxUpdate> registerKeysStream(
+      String address, String name, String phrase) async* {
+    final seed = await seedHex(address);
+    final ck = await _mintContentKey(address); // silicon mint (or software dev)
+    final certSeed = await certSeedHex(address, phrase); // derives + caches seed
+    // Re-register the cert on the current chain: drop any stale cached
+    // thumbprint (a prior-chain value would otherwise look Active).
+    await _storage.delete(key: _certThumbprintKey(address));
+    final node = await nodeRpc();
+    yield* chatRegisterKeysStreamed(
+      name: name,
+      phrase: phrase,
+      rpcUrl: node,
+      identitySeedHex: seed,
+      innerContentKeyHex: ck,
+      certSeedHex: certSeed,
+      certTtlBlocks: _certTtlBlocks,
+    );
+  }
+
+  /// Post-confirm side effect for [registerKeysStream]: persist the owned name
+  /// and re-cache the freshly-minted cert thumbprint (a storage read — no phrase
+  /// needed). Safe to run detached after the blade has closed.
+  Future<void> onKeysConfirmed(String address, String name) async {
+    await _setMyName(address, name);
+    await _cacheCertThumbprint(address);
+    notifyListeners();
+  }
+
+  /// Streamed standalone "Mint Admission Cert".
+  Stream<TxUpdate> mintCertStream(String address, String phrase) async* {
+    final certSeed = await certSeedHex(address, phrase); // derives + caches seed
+    await _storage.delete(key: _certThumbprintKey(address));
+    final node = await nodeRpc();
+    yield* chatMintCertStreamed(
+      rpcUrl: node,
+      phrase: phrase,
+      certSeedHex: certSeed,
+      ttlBlocks: _certTtlBlocks,
+    );
+  }
+
+  /// Post-confirm side effect for [mintCertStream]: re-cache the thumbprint.
+  Future<void> onCertConfirmed(String address) => _cacheCertThumbprint(address);
+
+  /// Read the on-chain cert thumbprint and cache it (no phrase needed). Called
+  /// after a streamed mint/register confirms so [certAuth] can authenticate
+  /// onion drops.
+  Future<void> _cacheCertThumbprint(String address) async {
+    try {
+      final node = await nodeRpc();
+      final tp = await chatFetchCertThumbprint(rpcUrl: node, address: address);
+      if (tp != null && tp.isNotEmpty) {
+        await _storage.write(key: _certThumbprintKey(address), value: tp);
+      }
+    } catch (_) {/* re-cached lazily by ensureCert otherwise */}
   }
 
   /// The `.rst` name this account owns, as tracked by the name-registration

@@ -65,11 +65,13 @@ class _MessageOptionsScreenState extends State<MessageOptionsScreen> {
           const TxRow('Records', 'CHAT + MESSAGE re-published'),
         ],
         costLabel: 'Network Fee',
+        trackerLabel: 'Rotate chat keys',
         // Mints a new content keypair in the secure element and republishes
         // CHAT/MESSAGE under the owned name, superseding the prior keys.
-        onConfirm: (phrase) =>
-            _store.registerOrRotateKeys(widget.address, widget.name, phrase),
+        streamedSubmit: (phrase) =>
+            _store.registerKeysStream(widget.address, widget.name, phrase),
         onSuccess: () async {
+          await _store.onKeysConfirmed(widget.address, widget.name);
           await _load();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
