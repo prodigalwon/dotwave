@@ -365,6 +365,42 @@ pub fn chat_read_deaddrop(
     let sealed = decode_sealed(&sealed_content_hex)?;
     let inner_bytes = content_unseal_software(curve, &scalar, &sealed)
         .map_err(|e| format!("content unseal: {e:?}"))?;
+    deaddrop_read_from_inner(&inner_bytes)
+}
+
+/// Read a DEAD DROP via the HARDWARE seam (StrongBox/TPM): the content
+/// scalar lives in the secure element, so the caller hands in the in-chip
+/// ECDH `shared_secret_hex` (biometric-gated) — the same shape
+/// [`chat_read_content_hw`] takes. Surfaces the return address. P-256 only
+/// (the hardware content path is StrongBox-class silicon).
+pub fn chat_read_deaddrop_hw(
+    sealed_content_hex: String,
+    recipient_content_key_hex: String,
+    shared_secret_hex: String,
+) -> Result<DeadDropRead, String> {
+    let sealed = decode_sealed(&sealed_content_hex)?;
+    if sealed.curve != ContentCurve::P256 {
+        return Err("hardware dead-drop read is P-256 only".into());
+    }
+    let ck_bytes = hex::decode(recipient_content_key_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("recipient content key hex: {e}"))?;
+    let recipient = ContentPublicKey::decode(&mut &ck_bytes[..])
+        .map_err(|e| format!("ContentPublicKey decode: {e}"))?;
+    if recipient.curve != ContentCurve::P256 {
+        return Err("hardware dead-drop read is P-256 only".into());
+    }
+    let shared = hex::decode(shared_secret_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("shared secret hex: {e}"))?;
+    let provider = PrecomputedEcdh { curve: ContentCurve::P256, shared };
+    // The seal binds the recipient key's published `sec1` into the salt.
+    let inner_bytes = unseal_with(&provider, &recipient.sec1, &sealed)
+        .map_err(|e| format!("content unseal (hw): {e:?}"))?;
+    deaddrop_read_from_inner(&inner_bytes)
+}
+
+/// Decode unsealed inner bytes (from either read seam) into a
+/// [`DeadDropRead`]. Dead-drop content is always `ContentPayload::Plain`.
+fn deaddrop_read_from_inner(inner_bytes: &[u8]) -> Result<DeadDropRead, String> {
     let content = ContentPayload::decode(&mut &inner_bytes[..])
         .map_err(|e| format!("ContentPayload decode: {e}"))?;
     match content {

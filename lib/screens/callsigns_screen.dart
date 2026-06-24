@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/chat_store.dart';
 import '../services/dead_drop_service.dart';
 import '../theme.dart';
 
@@ -59,6 +60,123 @@ class _CallsignsScreenState extends State<CallsignsScreen> {
     await _load();
   }
 
+  /// Poll a callsign for incoming dead drops + show what decrypts. On a
+  /// StrongBox device the read prompts for a fingerprint (in-chip ECDH).
+  Future<void> _check(String callsign) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppTheme.pink, strokeWidth: 2),
+      ),
+    );
+    List<DeadDropReceived> got = [];
+    String? err;
+    try {
+      got = await _svc.checkCallsign(widget.address, callsign);
+    } catch (e) {
+      err = '$e';
+    }
+    if (!mounted) return;
+    Navigator.pop(context); // dismiss spinner
+    if (err != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(err)));
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface2,
+        title: Text("Drops at '$callsign'"),
+        content: got.isEmpty
+            ? const Text('No drops here yet.')
+            : SizedBox(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final d in got)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(d.text),
+                        subtitle: Text(
+                          '${d.senderName.isEmpty ? "(unnamed)" : "${d.senderName}.rst"}'
+                          ' · reply→ ${d.returnPickupHex.isEmpty ? "—" : "${d.returnPickupHex.substring(0, 10)}…"}',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  /// Compose + send a dead drop to a recipient's callsign (sealed to their
+  /// out-of-band keys). The sender is this canonically-named account.
+  Future<void> _compose() async {
+    final csCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final msgCtrl = TextEditingController();
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface2,
+        title: const Text('Send a dead drop'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                  controller: csCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'Callsign',
+                      helperText: 'the label they poll')),
+              TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'Recipient name',
+                      hintText: 'e.g. ferdie',
+                      suffixText: '.rst')),
+              TextField(
+                  controller: msgCtrl,
+                  decoration: const InputDecoration(labelText: 'Message')),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Send')),
+        ],
+      ),
+    );
+    if (go != true) return;
+    final cs = csCtrl.text.trim();
+    final name = nameCtrl.text.trim().replaceFirst(RegExp(r'\.rst$'), '');
+    try {
+      await ChatStore.instance.sendDeaddrop(widget.address, cs, name, msgCtrl.text);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Dead drop sent to '$cs' (→ $name.rst)")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Send failed: $e')));
+      }
+    }
+  }
+
   void _addDialog() {
     final ctrl = TextEditingController();
     showDialog<void>(
@@ -97,6 +215,14 @@ class _CallsignsScreenState extends State<CallsignsScreen> {
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(title: const Text('Callsigns')),
+      floatingActionButton: _loading
+          ? null
+          : FloatingActionButton.extended(
+              backgroundColor: AppTheme.pink,
+              icon: const Icon(Icons.send, size: 18),
+              label: const Text('Send drop'),
+              onPressed: _compose,
+            ),
       body: _loading
           ? const Center(
               child:
@@ -123,7 +249,11 @@ class _CallsignsScreenState extends State<CallsignsScreen> {
                     ),
                   ),
                 for (final cs in _callsigns)
-                  _CallsignTile(label: cs, onRemove: () => _remove(cs)),
+                  _CallsignTile(
+                    label: cs,
+                    onRemove: () => _remove(cs),
+                    onCheck: () => _check(cs),
+                  ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -164,7 +294,9 @@ class _CallsignsScreenState extends State<CallsignsScreen> {
 class _CallsignTile extends StatelessWidget {
   final String label;
   final VoidCallback onRemove;
-  const _CallsignTile({required this.label, required this.onRemove});
+  final VoidCallback onCheck;
+  const _CallsignTile(
+      {required this.label, required this.onRemove, required this.onCheck});
 
   @override
   Widget build(BuildContext context) {
@@ -191,6 +323,11 @@ class _CallsignTile extends StatelessWidget {
             child: Text(display,
                 style: tt.bodyMedium
                     ?.copyWith(fontFamily: isRandom ? 'monospace' : null)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.move_to_inbox, size: 18, color: AppTheme.pink),
+            tooltip: 'Check for drops',
+            onPressed: onCheck,
           ),
           IconButton(
             icon: const Icon(Icons.close, size: 18, color: Colors.white38),

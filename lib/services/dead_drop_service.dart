@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../bridge/bridge_generated.dart/chat.dart';
+import 'chat_store.dart';
 
 /// Standing-callsign pool + dead-drop rotation persistence (Phase 4).
 ///
@@ -64,6 +65,39 @@ class DeadDropService extends ChangeNotifier {
   /// the sender's opener target and the recipient's poll bucket.
   Future<String> bucketFor(String label) => chatDeaddropPickup(label: label);
 
+  /// Poll a callsign for incoming dead drops: fetch the `for_deaddrop(label)`
+  /// bucket and decrypt each (hardware/StrongBox or software via
+  /// [ChatStore.readDeaddrop]). Undecryptable shares (not for us, or a
+  /// declined biometric) are skipped.
+  Future<List<DeadDropReceived>> checkCallsign(
+      String address, String callsign) async {
+    final node = await ChatStore.instance.nodeRpc();
+    final seed = await ChatStore.instance.seedHex(address);
+    final bucket = await chatDeaddropPickup(label: callsign);
+    final msgs = await chatFetchAtPickup(
+      nodeRpc: node,
+      recipientSeedHex: seed,
+      pickupHex: bucket,
+      relayPeer: null,
+    );
+    final out = <DeadDropReceived>[];
+    for (final m in msgs) {
+      try {
+        final r = await ChatStore.instance.readDeaddrop(address, m.sealedContentHex);
+        out.add(DeadDropReceived(
+          callsign: callsign,
+          text: r.plaintext,
+          senderName: r.claimedSenderName,
+          returnPickupHex: r.returnPickupHex,
+          selfHashHex: r.selfHashHex,
+        ));
+      } catch (_) {
+        // not for us / biometric declined / undecryptable — skip
+      }
+    }
+    return out;
+  }
+
   // ── Per-thread ping-pong rotation state ─────────────────────────────
 
   /// Persist a thread's rotation DTO (the core owns the transitions; this
@@ -96,4 +130,27 @@ class DeadDropService extends ChangeNotifier {
           .toList(),
     );
   }
+}
+
+/// A dead drop received at one of this account's callsigns.
+class DeadDropReceived {
+  final String callsign;
+  final String text;
+
+  /// The sender's claimed `.rst` name (empty if unnamed — but a dead-drop
+  /// sender is always canonically named, so this is normally present).
+  final String senderName;
+
+  /// The sender's return address (raw pickup hex) — where a ping-pong reply
+  /// goes. Empty if the message carried none.
+  final String returnPickupHex;
+  final String selfHashHex;
+
+  const DeadDropReceived({
+    required this.callsign,
+    required this.text,
+    required this.senderName,
+    required this.returnPickupHex,
+    required this.selfHashHex,
+  });
 }

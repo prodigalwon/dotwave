@@ -631,8 +631,45 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        "deaddrop-say" => {
+            // deaddrop-say <callsign> <recipient_name> "<text>" [guard] [relay2] [chain]
+            // Send a DEAD DROP to <recipient_name>'s RNS-published keys, routed
+            // by <callsign> — mirrors the app's name+callsign UX (no raw keys).
+            let callsign = args.get(2).expect("need <callsign>").to_string();
+            let recipient_name = args.get(3).expect("need <recipient_name>").trim_end_matches(".rst").to_string();
+            let text = args.get(4).expect("need \"<text>\"").to_string();
+            let guard = args.get(5).map(String::as_str).unwrap_or("ws://127.0.0.1:9954").to_string();
+            let relay2 = args.get(6).map(String::as_str).unwrap_or("ws://127.0.0.1:9955").to_string();
+            let chain = args.get(7).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+
+            let resolved = chat_resolve_identity(recipient_name.clone(), chain.clone()).expect("resolve recipient");
+            if !resolved.found || !resolved.has_message_key {
+                eprintln!("'{recipient_name}.rst' not found or has no published MESSAGE content key");
+                std::process::exit(1);
+            }
+            let cert_seed = dev_cert_seed_hex("//Ferdie".to_string());
+            let thumbprint = chat_mint_test_cert(chain.clone(), "//Ferdie".to_string(), cert_seed.clone(), 1_000_000).expect("mint ferdie cert");
+            let guard_pk = chat_node_info(guard.clone()).expect("guard node info");
+            let relay2_pk = chat_node_info(relay2.clone()).expect("relay2 node info");
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+            let outcome = chat_send_deaddrop(
+                guard.clone(), guard_pk, relay2_pk,
+                FERDIE_CHAT_SEED.to_string(),
+                resolved.ed25519_pubkey_hex.clone(),
+                resolved.inner_content_key_hex.clone(),
+                callsign.clone(),
+                text.clone(),
+                "ferdie".to_string(),
+                5,
+                Some(thumbprint), Some(cert_seed), None, now,
+            ).expect("send dead drop");
+            println!(
+                "dead drop '{text}' -> callsign '{callsign}' (recipient {recipient_name}.rst, pk {}) msg_id {} self={}",
+                short(&resolved.ed25519_pubkey_hex), short(&outcome.message_id_hex), short(&outcome.new_self_hash_hex),
+            );
+        }
         _ => {
-            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-poll <label> [guard]|deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]>");
+            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-say <callsign> <recipient_name> \"<text>\" ...|deaddrop-poll <label> [guard]|deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]>");
             std::process::exit(2);
         }
     }

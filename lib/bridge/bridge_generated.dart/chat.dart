@@ -7,7 +7,7 @@ import 'chat_dr.dart';
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `decode_sealed`, `fetch_and_decrypt`, `finish_read`, `from_core`, `identity_from_seed`, `p256_signing_key`, `self_hash`, `send_content_onion`, `send_content`, `to_core`, `unordered`
+// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `deaddrop_read_from_inner`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `decode_sealed`, `fetch_and_decrypt`, `finish_read`, `from_core`, `identity_from_seed`, `p256_signing_key`, `self_hash`, `send_content_onion`, `send_content`, `to_core`, `unordered`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatFetchedShareRaw`, `ChatSendResultRpc`, `ChatShareDescriptorRpc`, `ContentPayload`, `InnerPayload`, `PrecomputedEcdh`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `curve`, `ecdh`
 
@@ -61,6 +61,21 @@ Future<DeadDropRead> chatReadDeaddrop({
   sealedContentHex: sealedContentHex,
   curve: curve,
   contentSeedHex: contentSeedHex,
+);
+
+/// Read a DEAD DROP via the HARDWARE seam (StrongBox/TPM): the content
+/// scalar lives in the secure element, so the caller hands in the in-chip
+/// ECDH `shared_secret_hex` (biometric-gated) — the same shape
+/// [`chat_read_content_hw`] takes. Surfaces the return address. P-256 only
+/// (the hardware content path is StrongBox-class silicon).
+Future<DeadDropRead> chatReadDeaddropHw({
+  required String sealedContentHex,
+  required String recipientContentKeyHex,
+  required String sharedSecretHex,
+}) => RustLib.instance.api.crateChatChatReadDeaddropHw(
+  sealedContentHex: sealedContentHex,
+  recipientContentKeyHex: recipientContentKeyHex,
+  sharedSecretHex: sharedSecretHex,
 );
 
 /// Wrap a hardware content public key (the SEC1 bytes StrongBox/TPM exports
