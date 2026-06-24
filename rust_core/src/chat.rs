@@ -906,8 +906,15 @@ fn send_content_onion(
     // each preceding hop gets a Forward to the next. The guard peels its
     // layer and either delivers (1-hop) or forwards to relay-2 (2-hop).
     let guard = NodeIdentity::from_ed25519_pubkey(decode_hex32(guard_pubkey_hex)?);
+    // Sender derives the pickup key — relays are dumb infra that only ever
+    // see opaque pickup keys (a dead drop would derive the same field via
+    // PickupKey::for_deaddrop, indistinguishable on the wire). A normal DM
+    // is for_pairwise over the recipient's X25519; recipient_ed was already
+    // validated as on-curve by build_sealed_envelope, so this cannot fail.
+    let recipient_x = ed25519_to_x25519_pubkey(&recipient_ed)
+        .ok_or_else(|| "recipient pubkey not on Edwards curve".to_string())?;
     let deliver = OnionDeliverPayload {
-        recipient_chat_pubkey: recipient_ed,
+        pickup_key: PickupKey::for_pairwise(&recipient_x).0,
         envelope_bytes: envelope.encode(),
     };
     let path: Vec<NodeIdentity> = match relay2_pubkey_hex {
