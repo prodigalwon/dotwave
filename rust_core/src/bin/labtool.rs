@@ -121,9 +121,15 @@ fn main() {
                     vec![],
                 ) {
                     Ok(r) => {
+                        let from_name = if r.claimed_sender_name.is_empty() {
+                            "(anonymous)".to_string()
+                        } else {
+                            format!("{}.rst", r.claimed_sender_name)
+                        };
                         println!(
-                            "  [fetch {i}] text='{}'  from_pubkey={}  composed_at={}  self={}  prev={}",
+                            "  [fetch {i}] text='{}'  from={}  from_pubkey={}  composed_at={}  self={}  prev={}",
                             r.plaintext,
+                            from_name,
                             m.sender_pubkey_hex,
                             r.composed_at,
                             short(&r.self_hash_hex),
@@ -284,6 +290,92 @@ fn main() {
             }
             println!("done — refresh the conversation in the app to receive these {count} message(s) from ferdie.rst");
         }
+        "ferdie-say" => {
+            // ferdie-say "<text>" [guard] [relay2] [chain]
+            // Reply to the last NAMED sender with ONE custom-text message, sealed
+            // to their resolved MESSAGE content key — the CHAT/MESSAGE record path
+            // (vs ferdie-send-to's out-of-band key). Requires the phone to have
+            // registered keys + sent a message carrying its .rst name.
+            let text = args.get(2).expect("need \"<text>\"").to_string();
+            let guard = args.get(3).map(String::as_str).unwrap_or("ws://127.0.0.1:9954").to_string();
+            let relay2 = args.get(4).map(String::as_str).unwrap_or("ws://127.0.0.1:9955").to_string();
+            let chain = args.get(5).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+
+            // 1. Auto-detect the recipient: the last NAMED sender in Ferdie's inbox.
+            let inbox = chat_fetch(guard.clone(), FERDIE_CHAT_SEED.to_string(), None).expect("fetch inbox");
+            let mut recipient_name = String::new();
+            let mut recipient_pubkey = String::new();
+            for m in inbox.iter().rev() {
+                if let Ok(r) = chat_read_content(
+                    m.sealed_content_hex.clone(),
+                    CURVE_P256,
+                    FERDIE_CONTENT_SEED.to_string(),
+                    None,
+                    FERDIE_CHAT_SEED.to_string(),
+                    vec![],
+                ) {
+                    if !r.claimed_sender_name.is_empty() {
+                        recipient_name = r.claimed_sender_name;
+                        recipient_pubkey = m.sender_pubkey_hex.clone();
+                        break;
+                    }
+                }
+            }
+            if recipient_name.is_empty() {
+                eprintln!("no NAMED sender in Ferdie's inbox — the phone must register its \
+                           keys (Register Keys) and send a message so it carries its .rst name \
+                           (or use ferdie-send-to with an out-of-band key)");
+                std::process::exit(1);
+            }
+            println!("replying to '{recipient_name}.rst' (pubkey {})", short(&recipient_pubkey));
+
+            // 2. Resolve the recipient's published CHAT + MESSAGE.
+            let resolved = chat_resolve_identity(recipient_name.clone(), chain.clone())
+                .expect("resolve recipient");
+            if !resolved.found || !resolved.has_message_key {
+                eprintln!("recipient '{recipient_name}' has no published MESSAGE content key");
+                std::process::exit(1);
+            }
+            // Impersonation guard: resolved CHAT key must equal the sender we reply to.
+            if resolved.ed25519_pubkey_hex != recipient_pubkey {
+                eprintln!("resolved CHAT key != sender pubkey — refusing to send");
+                std::process::exit(1);
+            }
+
+            // 3. Ferdie's admission cert (idempotent), then 2-hop onion identities.
+            let cert_seed = dev_cert_seed_hex("//Ferdie".to_string());
+            let thumbprint =
+                chat_mint_test_cert(chain.clone(), "//Ferdie".to_string(), cert_seed.clone(), 1_000_000)
+                    .expect("mint ferdie cert");
+            let guard_pk = chat_node_info(guard.clone()).expect("guard node info");
+            let relay2_pk = chat_node_info(relay2.clone()).expect("relay-2 node info");
+
+            // 4. Send the one custom-text message (fresh chain).
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+            let outcome = chat_send_onion_2hop(
+                guard.clone(),
+                guard_pk,
+                relay2_pk,
+                FERDIE_CHAT_SEED.to_string(),
+                resolved.ed25519_pubkey_hex.clone(),
+                resolved.inner_content_key_hex.clone(),
+                text.clone(),
+                "ferdie".to_string(),
+                5,
+                Some(thumbprint),
+                Some(cert_seed),
+                None,
+                now,
+            )
+            .expect("send onion");
+            println!(
+                "sent '{text}' -> '{recipient_name}.rst'  msg_id {} self={}",
+                short(&outcome.message_id_hex),
+                short(&outcome.new_self_hash_hex),
+            );
+            println!("refresh the conversation in the app to receive it.");
+        }
         "ferdie-send-to" => {
             // ferdie-send-to <recipient_pubkey_hex> <content_key_hex> [count] [start]
             //                [guard_rpc] [relay2_rpc] [chain_rpc]
@@ -340,7 +432,7 @@ fn main() {
             println!("done — refresh the conversation with ferdie.rst in the app to receive {count} message(s)");
         }
         _ => {
-            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-send-to <pubkey> <content_key> [count] [start] ...>");
+            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...>");
             std::process::exit(2);
         }
     }

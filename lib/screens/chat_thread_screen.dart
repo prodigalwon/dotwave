@@ -31,6 +31,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _sending = false;
   String? _error;
   Timer? _poll;
+  // Message ids we've already run a decrypt pass for, so a poll doesn't
+  // re-trigger the biometric gate every 4s for a message that stays sealed
+  // (e.g. a gap predecessor we can't open). A manual tap forces a retry.
+  final Set<String> _readAttempted = {};
 
   @override
   void initState() {
@@ -47,12 +51,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// biometric→silicon gate for the conversation.
   Future<void> _open() async {
     await _load(scrollToEnd: false);
+    await _decrypt();
+    if (mounted) _load(scrollToEnd: true);
+  }
+
+  /// Batch-decrypt the thread's still-sealed inbound messages (on hardware,
+  /// the single biometric→silicon gate). Skips the pass when nothing NEW is
+  /// sealed — so the 4s poll doesn't re-prompt for a message that stays sealed.
+  /// `force` (a manual tap on a sealed bubble) retries regardless.
+  Future<void> _decrypt({bool force = false}) async {
+    final sealed = _messages.where((m) => m.isSealed).toList();
+    if (sealed.isEmpty) return;
+    final hasNew = sealed.any((m) => !_readAttempted.contains(m.id));
+    if (!hasNew && !force) return;
+    for (final m in sealed) {
+      _readAttempted.add(m.id);
+    }
     try {
       await _store.readThread(widget.address, widget.contact.pubkey);
     } catch (_) {
       // a partial/failed decrypt still renders what opened; don't nag.
     }
-    if (mounted) _load(scrollToEnd: true);
   }
 
   @override
@@ -81,6 +100,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     } catch (_) {
       // silent — transient relay/network blips shouldn't nag mid-thread
     }
+    if (!mounted) return;
+    // Pull any new sealed blob into the list, then decrypt new arrivals inline
+    // so a message that lands while the thread is open resolves itself (one
+    // biometric gate) instead of sitting sealed until you back out and re-open.
+    await _load(scrollToEnd: false);
+    await _decrypt();
   }
 
   void _jumpToEnd() {
@@ -170,27 +195,39 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       final showTime = prev == null ||
                           m.outbound != prev.outbound ||
                           (m.tsMillis - prev.tsMillis) > 5 * 60 * 1000;
-                      final bubble = _Bubble(message: m, showTime: showTime);
+                      final bubble = _Bubble(
+                        message: m,
+                        showTime: showTime,
+                        onTapSealed: () => _decrypt(force: true),
+                      );
                       // A break in the sender's self-hash chain: a message
                       // didn't arrive (gap) or the sender restarted their
                       // chain (resumption). Surfaced honestly, never hidden.
+                      // stretch so the wrapped bubble keeps its own left/right
+                      // alignment instead of being centred by the Column.
                       if (m.gapBefore) {
-                        return Column(children: [
-                          const _ChainDivider(
-                            icon: Icons.link_off,
-                            label: 'A message here didn’t arrive',
-                          ),
-                          bubble,
-                        ]);
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const _ChainDivider(
+                              icon: Icons.link_off,
+                              label: 'A message here didn’t arrive',
+                            ),
+                            bubble,
+                          ],
+                        );
                       }
                       if (m.resumption) {
-                        return Column(children: [
-                          const _ChainDivider(
-                            icon: Icons.history,
-                            label: 'Conversation resumed',
-                          ),
-                          bubble,
-                        ]);
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const _ChainDivider(
+                              icon: Icons.history,
+                              label: 'Conversation resumed',
+                            ),
+                            bubble,
+                          ],
+                        );
                       }
                       return bubble;
                     },
@@ -296,36 +333,52 @@ class _ChainDivider extends StatelessWidget {
 class _Bubble extends StatelessWidget {
   final ChatMessage message;
   final bool showTime;
+  final VoidCallback? onTapSealed;
 
-  const _Bubble({required this.message, required this.showTime});
+  const _Bubble({required this.message, required this.showTime, this.onTapSealed});
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final out = message.outbound;
+    final sealed = message.isSealed;
     final radius = Radius.circular(18);
-    final bubble = Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.74,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        gradient: out ? AppTheme.cardGradient : null,
-        color: out ? null : AppTheme.surface2,
-        border: out ? null : Border.all(color: AppTheme.borderSubtle),
-        borderRadius: BorderRadius.only(
-          topLeft: radius,
-          topRight: radius,
-          bottomLeft: out ? radius : const Radius.circular(4),
-          bottomRight: out ? const Radius.circular(4) : radius,
+    // Sealed inbound message: a clear "encrypted — tap to read" placeholder,
+    // never an empty bubble. Tapping forces a decrypt pass (biometric gate).
+    final Widget content = sealed
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock_outline, size: 15, color: AppTheme.textTertiary),
+              const SizedBox(width: 8),
+              Text('Encrypted — tap to read',
+                  style: tt.bodyMedium?.copyWith(
+                      color: AppTheme.textTertiary, fontStyle: FontStyle.italic)),
+            ],
+          )
+        : Text(
+            message.text,
+            style: tt.bodyMedium?.copyWith(color: Colors.white, height: 1.3),
+          );
+    final bubble = GestureDetector(
+      onTap: sealed ? onTapSealed : null,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.74,
         ),
-      ),
-      child: Text(
-        message.text,
-        style: tt.bodyMedium?.copyWith(
-          color: Colors.white,
-          height: 1.3,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: out ? AppTheme.cardGradient : null,
+          color: out ? null : AppTheme.surface2,
+          border: out ? null : Border.all(color: AppTheme.borderSubtle),
+          borderRadius: BorderRadius.only(
+            topLeft: radius,
+            topRight: radius,
+            bottomLeft: out ? radius : const Radius.circular(4),
+            bottomRight: out ? const Radius.circular(4) : radius,
+          ),
         ),
+        child: content,
       ),
     );
 
@@ -335,7 +388,7 @@ class _Bubble extends StatelessWidget {
         crossAxisAlignment: out ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           bubble,
-          if (showTime)
+          if (showTime && !sealed)
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
               child: Row(
