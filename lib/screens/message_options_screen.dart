@@ -5,6 +5,7 @@ import '../bridge/bridge_generated.dart/chat.dart';
 import '../services/chat_store.dart';
 import '../theme.dart';
 import '../widgets/transaction_blade.dart';
+import 'callsigns_screen.dart';
 
 /// Shown when messaging is fully set up (name owned + CHAT/MESSAGE live).
 /// Surfaces this account's chat identity and lets the user **rotate keys** —
@@ -128,6 +129,26 @@ class _MessageOptionsScreenState extends State<MessageOptionsScreen> {
                   icon: const Icon(Icons.autorenew, size: 18),
                   label: const Text('Rotate Keys'),
                   onPressed: _rotateKeys,
+                ),
+                const SizedBox(height: 28),
+                Text('DEAD DROPS', style: tt.labelMedium),
+                const SizedBox(height: 8),
+                Text(
+                  'Receive messages addressed to a callsign instead of your '
+                  'identity. A callsign is shared offline; the conversation then '
+                  'walks rotating, unlinkable return addresses, so nothing on the '
+                  'wire ties the messages to you.',
+                  style: tt.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.vpn_key_outlined, size: 18),
+                  label: const Text('Callsigns'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => CallsignsScreen(address: widget.address),
+                    ),
+                  ),
                 ),
               ],
             ),
