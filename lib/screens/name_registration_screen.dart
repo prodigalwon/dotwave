@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -362,7 +363,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
                           borderSide: BorderSide(
                             color: _nameInputError != null
                                 ? Colors.redAccent
-                                : const Color(0xFFE6007A),
+                                : AppTheme.accent,
                             width: 1.5,
                           ),
                         ),
@@ -379,7 +380,7 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE6007A),
+                        color: AppTheme.accent,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: _searchingName
@@ -553,10 +554,10 @@ class _NameRegistrationScreenState extends State<NameRegistrationScreen> {
                     child: ElevatedButton(
                       onPressed: _loadingListing ? null : _onForSaleTap,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE6007A),
+                        backgroundColor: AppTheme.accent,
                         foregroundColor: Colors.white,
                         disabledBackgroundColor:
-                            const Color(0xFFE6007A).withOpacity(0.4),
+                            AppTheme.accent.withOpacity(0.4),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -647,7 +648,7 @@ class _ForSaleDialog extends StatelessWidget {
             const Divider(color: Colors.white12),
             const SizedBox(height: 16),
             _row('Asking Price', _formatRst(listing.price),
-                valueColor: const Color(0xFFE6007A)),
+                valueColor: AppTheme.accent),
             const SizedBox(height: 10),
             _row('Seller', truncatedSeller),
             const SizedBox(height: 24),
@@ -671,7 +672,7 @@ class _ForSaleDialog extends StatelessWidget {
                   child: ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(true),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE6007A),
+                      backgroundColor: AppTheme.accent,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
@@ -750,11 +751,11 @@ class _SearchForFunBlade extends StatelessWidget {
                   Container(
                     width: 64, height: 64,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE6007A).withOpacity(0.12),
+                      color: AppTheme.accent.withOpacity(0.12),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.badge_outlined,
-                        color: Color(0xFFE6007A), size: 30),
+                    child: Icon(Icons.badge_outlined,
+                        color: AppTheme.accent, size: 30),
                   ),
                   const SizedBox(height: 20),
                   Text(
@@ -793,7 +794,7 @@ class _SearchForFunBlade extends StatelessWidget {
                         child: ElevatedButton(
                           onPressed: () => Navigator.of(context).pop(true),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFE6007A),
+                            backgroundColor: AppTheme.accent,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12)),

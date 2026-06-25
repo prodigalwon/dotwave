@@ -1,9 +1,10 @@
 import 'dart:typed_data';
+import '../theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
-import '../bridge/bridge_generated.dart/core.dart' show TxAction, estimateFee;
+import '../bridge/bridge_generated.dart/core.dart' show TxAction, TxUpdate, estimateFee;
 import '../services/transaction_tracker.dart';
 import 'package:flutter/foundation.dart';
 
@@ -51,8 +52,17 @@ class TransactionBlade extends StatefulWidget {
   final String? trackerLabel;
 
   /// Legacy blocking path: called after auth with the decrypted phrase; should
-  /// throw a [String] on failure. Used only when [txAction] is null.
+  /// throw a [String] on failure. Used only when [txAction] and [streamedSubmit]
+  /// are both null.
   final Future<void> Function(String phrase)? onConfirm;
+
+  /// Tracked, streamed submission for composite ceremonies that aren't a single
+  /// [TxAction] (e.g. chat-key registration: silicon mint + publish + cert).
+  /// Given the decrypted phrase, returns a [TxUpdate] stream that emits
+  /// `Submitted` up front (the blade shrinks into the corner badge) then runs
+  /// in the background. Preferred over [onConfirm] when set; mutually exclusive
+  /// with [txAction].
+  final Stream<TxUpdate> Function(String phrase)? streamedSubmit;
 
   /// Optional extra availability check before signing.
   /// Return null if OK, or an error string to block submission.
@@ -76,13 +86,14 @@ class TransactionBlade extends StatefulWidget {
     this.txAction,
     this.trackerLabel,
     this.onConfirm,
+    this.streamedSubmit,
     this.loadCost,
     this.costLabel = 'Fee',
     this.preflightCheck,
     this.onSuccess,
     this.onSubmitted,
-  }) : assert(txAction != null || onConfirm != null,
-            'Provide either txAction (tracked) or onConfirm (legacy)');
+  }) : assert(txAction != null || onConfirm != null || streamedSubmit != null,
+            'Provide txAction (tracked), streamedSubmit (tracked stream), or onConfirm (legacy)');
 
   /// Push the blade as a translucent slide-up overlay.
   static Future<void> show(BuildContext context, TransactionBlade blade) {
@@ -304,33 +315,29 @@ class _TransactionBladeState extends State<TransactionBlade>
       return;
     }
 
+    // Tracked path (single TxAction): resolve on pool entry, shrink to badge.
     final action = widget.txAction;
     if (action != null) {
-      // Tracked path: resolve on pool entry, then shrink into the corner badge.
-      try {
-        await TransactionTracker.instance.submit(
-          label: widget.trackerLabel ?? widget.transactionType,
-          action: action,
-          phrase: phrase,
-          rpcUrl: widget.rpcUrl,
-          onConfirmed: widget.onSuccess,
-        );
-        if (!mounted) return;
-        setState(() => _state = _BladeState.submitted);
-        await Future.delayed(const Duration(milliseconds: 600));
-        if (!mounted) return;
-        widget.onSubmitted?.call();
-        if (!mounted) return; // onSubmitted may have navigated away
-        await _shrink.forward();
-        if (mounted) Navigator.of(context).pop();
-      } catch (e) {
-        // Failed before pool entry (bad nonce/sig, offline) — show inline.
-        if (!mounted) return;
-        setState(() {
-          _state = _BladeState.error;
-          _errorMessage = e is String ? e : e.toString();
-        });
-      }
+      await _runTracked(TransactionTracker.instance.submit(
+        label: widget.trackerLabel ?? widget.transactionType,
+        action: action,
+        phrase: phrase,
+        rpcUrl: widget.rpcUrl,
+        onConfirmed: widget.onSuccess,
+      ));
+      return;
+    }
+
+    // Tracked streamed path (composite ceremony): same hand-off, but the stream
+    // is supplied by the caller (it emits Submitted up front then runs in the
+    // background).
+    final streamed = widget.streamedSubmit;
+    if (streamed != null) {
+      await _runTracked(TransactionTracker.instance.submitStream(
+        label: widget.trackerLabel ?? widget.transactionType,
+        stream: streamed(phrase),
+        onConfirmed: widget.onSuccess,
+      ));
       return;
     }
 
@@ -347,6 +354,31 @@ class _TransactionBladeState extends State<TransactionBlade>
       setState(() {
         _state = _BladeState.error;
         _errorMessage = 'Error: client appears to be offline';
+      });
+    }
+  }
+
+  /// Shared tail for the tracked paths (TxAction or streamed): await pool entry,
+  /// flash "Submitted", fire [TransactionBlade.onSubmitted], shrink the blade
+  /// into the corner badge, and close. A failure before pool entry surfaces
+  /// inline; everything after pool entry is tracked by the badge.
+  Future<void> _runTracked(Future<void> submitFut) async {
+    try {
+      await submitFut;
+      if (!mounted) return;
+      setState(() => _state = _BladeState.submitted);
+      await Future.delayed(const Duration(milliseconds: 600));
+      if (!mounted) return;
+      widget.onSubmitted?.call();
+      if (!mounted) return; // onSubmitted may have navigated away
+      await _shrink.forward();
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      // Failed before pool entry (bad nonce/sig, offline, silicon mint) — inline.
+      if (!mounted) return;
+      setState(() {
+        _state = _BladeState.error;
+        _errorMessage = e is String ? e : e.toString();
       });
     }
   }
@@ -467,8 +499,8 @@ class _TransactionBladeState extends State<TransactionBlade>
                                 color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
                         Text(
                           _totalRaw != null ? _formatFee(_totalRaw!) : '—',
-                          style: const TextStyle(
-                              color: Color(0xFFE6007A),
+                          style: TextStyle(
+                              color: AppTheme.accent,
                               fontSize: 15,
                               fontWeight: FontWeight.bold),
                         ),
@@ -538,9 +570,9 @@ class _TransactionBladeState extends State<TransactionBlade>
                     child: ElevatedButton(
                       onPressed: _actionEnabled ? _action : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE6007A),
+                        backgroundColor: AppTheme.accent,
                         foregroundColor: Colors.white,
-                        disabledBackgroundColor: const Color(0xFFE6007A).withOpacity(0.4),
+                        disabledBackgroundColor: AppTheme.accent.withOpacity(0.4),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),

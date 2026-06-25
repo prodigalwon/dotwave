@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -47,7 +48,7 @@ class ReceiveScreen extends StatelessWidget {
                   color: const Color(0xFF1E1E1E),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: const Color(0xFFE6007A).withOpacity(0.3),
+                    color: AppTheme.accent.withOpacity(0.3),
                   ),
                 ),
                 child: Text(
@@ -72,7 +73,7 @@ class ReceiveScreen extends StatelessWidget {
                 icon: const Icon(Icons.copy),
                 label: const Text('Copy Address'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFE6007A),
+                  backgroundColor: AppTheme.accent,
                   minimumSize: const Size(double.infinity, 52),
                 ),
               ),

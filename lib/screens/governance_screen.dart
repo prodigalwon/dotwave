@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -241,7 +242,7 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
                             horizontal: 14, vertical: 6),
                         decoration: BoxDecoration(
                           color: sel
-                              ? const Color(0xFFE6007A)
+                              ? AppTheme.accent
                               : const Color(0xFF1E1E1E),
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -297,7 +298,7 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const CircularProgressIndicator(color: Color(0xFFE6007A)),
+                  CircularProgressIndicator(color: AppTheme.accent),
                   if (widget.loadAll) ...[
                     const SizedBox(height: 16),
                     const Text('Loading all proposals…',
@@ -312,7 +313,7 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
                       child: Text('No referenda',
                           style: TextStyle(color: Colors.white38)))
                   : RefreshIndicator(
-                      color: const Color(0xFFE6007A),
+                      color: AppTheme.accent,
                       backgroundColor: const Color(0xFF1E1E1E),
                       onRefresh: _load,
                       child: ListView.builder(
@@ -323,12 +324,12 @@ class _GovernanceScreenState extends State<GovernanceScreen> {
                             visible.length + (_loadingMore ? 1 : 0),
                         itemBuilder: (context, i) {
                           if (i == visible.length) {
-                            return const Padding(
+                            return Padding(
                               padding:
                                   EdgeInsets.symmetric(vertical: 24),
                               child: Center(
                                 child: CircularProgressIndicator(
-                                    color: Color(0xFFE6007A)),
+                                    color: AppTheme.accent),
                               ),
                             );
                           }
@@ -495,8 +496,8 @@ String truncateAddr(String addr) {
     case 'deciding':
     case 'confirmstarted':
     case 'submitted':
-      return (const Color(0xFFE6007A),
-          const Color(0xFFE6007A).withOpacity(0.15));
+      return (AppTheme.accent,
+          AppTheme.accent.withOpacity(0.15));
     default:
       return (Colors.white54, Colors.white.withOpacity(0.06));
   }
@@ -528,7 +529,7 @@ InlineSpan highlightText(String text, String query,
     spans.add(TextSpan(
       text: text.substring(idx, idx + q.length),
       style: base.copyWith(
-        backgroundColor: const Color(0xFFE6007A).withOpacity(0.4),
+        backgroundColor: AppTheme.accent.withOpacity(0.4),
         color: Colors.white,
         fontWeight: FontWeight.bold,
       ),
@@ -693,16 +694,16 @@ class _PostCardState extends State<_PostCard> {
                   children: [
                     Text(
                       '$_resolvedName.dot',
-                      style: const TextStyle(
-                          color: Color(0xFFE6007A),
+                      style: TextStyle(
+                          color: AppTheme.accent,
                           fontSize: 12,
                           fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(width: 5),
                     GestureDetector(
                       onTap: _copyName,
-                      child: const Icon(Icons.copy_outlined,
-                          size: 12, color: Color(0xFFE6007A)),
+                      child: Icon(Icons.copy_outlined,
+                          size: 12, color: AppTheme.accent),
                     ),
                   ],
                 ),
@@ -804,7 +805,7 @@ class _ErrorView extends StatelessWidget {
             ElevatedButton(
               onPressed: onRetry,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE6007A),
+                backgroundColor: AppTheme.accent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),

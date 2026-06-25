@@ -10,6 +10,7 @@
 // point. Safe to leave in the repo; won't reach release builds.
 
 import 'dart:io' show Platform;
+import '../theme.dart';
 import 'dart:math' as math;
 import 'dart:math' show Random;
 import 'dart:typed_data';
@@ -920,7 +921,7 @@ class _ZkPkiSpoofDefenseTestScreenState
       floatingActionButton: _lastCeremony == null
           ? null
           : FloatingActionButton.extended(
-              backgroundColor: const Color(0xFFE6007A),
+              backgroundColor: AppTheme.accent,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.qr_code_2),
               label: const Text('OTP panel'),
@@ -1136,7 +1137,7 @@ class _ProbeButtons extends StatelessWidget {
             icon: const Icon(Icons.lock_clock),
             label: const Text('Run full ceremony'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE6007A),
+              backgroundColor: AppTheme.accent,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
@@ -1602,7 +1603,7 @@ class _PostCeremonyPanelState extends State<_PostCeremonyPanel> {
           children: [
             Row(
               children: [
-                const Icon(Icons.qr_code_2, color: Color(0xFFE6007A)),
+                Icon(Icons.qr_code_2, color: AppTheme.accent),
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
@@ -1730,7 +1731,7 @@ class _PostCeremonyPanelState extends State<_PostCeremonyPanel> {
               ElevatedButton(
                 onPressed: _verifyOtp,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE6007A),
+                  backgroundColor: AppTheme.accent,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),

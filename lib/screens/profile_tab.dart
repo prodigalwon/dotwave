@@ -1,8 +1,14 @@
+import 'dart:typed_data';
+import '../theme.dart';
+
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../services/avatar_service.dart';
+import 'avatar_screen.dart';
 import 'manage_name_screen.dart';
+import 'settings_screen.dart';
 import 'name_registration_screen.dart';
 import 'zkpki_spoof_defense_test_screen.dart';
 
@@ -20,6 +26,8 @@ class _ProfileTabState extends State<ProfileTab> {
   /// cache the home header uses.
   String? _ownedName;
 
+  Uint8List? _avatar; // this account's chat icon, if set
+
   String get _address => widget.address;
 
   String get _truncatedAddress =>
@@ -31,6 +39,7 @@ class _ProfileTabState extends State<ProfileTab> {
   void initState() {
     super.initState();
     _loadOwnedName();
+    _loadAvatar();
   }
 
   Future<void> _loadOwnedName() async {
@@ -38,6 +47,18 @@ class _ProfileTabState extends State<ProfileTab> {
     final stored = await storage.read(key: _storageKey);
     if (!mounted) return;
     setState(() => _ownedName = (stored != null && stored.isNotEmpty) ? stored : null);
+  }
+
+  Future<void> _loadAvatar() async {
+    final a = await AvatarService.instance.ownAvatar(_address);
+    if (mounted) setState(() => _avatar = a);
+  }
+
+  Future<void> _openAvatar() async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => AvatarScreen(address: _address),
+    ));
+    _loadAvatar(); // reflect a change made on the icon screen
   }
 
   /// Owned → manage it; otherwise → register one. Re-read the cache on return so
@@ -67,21 +88,28 @@ class _ProfileTabState extends State<ProfileTab> {
           Center(
             child: Column(
               children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFFE6007A).withOpacity(0.15),
-                    border: Border.all(
-                      color: const Color(0xFFE6007A).withOpacity(0.4),
-                      width: 2,
+                GestureDetector(
+                  onTap: _openAvatar,
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppTheme.accent.withOpacity(0.15),
+                      border: Border.all(
+                        color: AppTheme.accent.withOpacity(0.4),
+                        width: 2,
+                      ),
                     ),
-                  ),
-                  child: const Icon(
-                    Icons.person,
-                    color: Color(0xFFE6007A),
-                    size: 40,
+                    child: _avatar != null
+                        ? Image.memory(_avatar!,
+                            fit: BoxFit.cover, gaplessPlayback: true)
+                        : Icon(
+                            Icons.person,
+                            color: AppTheme.accent,
+                            size: 40,
+                          ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -153,13 +181,21 @@ class _ProfileTabState extends State<ProfileTab> {
           const SizedBox(height: 16),
           _SectionHeader(label: 'App'),
           _SettingsTile(
+            icon: Icons.settings_outlined,
+            label: 'Settings',
+            subtitle: 'Theme & app colour',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+          _SettingsTile(
             icon: Icons.notifications_outlined,
             label: 'Notifications',
             onTap: () {},
           ),
           _SettingsTile(
             icon: Icons.info_outline,
-            label: 'About Dotwave',
+            label: 'About Rostro',
             onTap: () {},
           ),
 
@@ -261,7 +297,7 @@ class _SettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = destructive ? Colors.red : Colors.white;
-    final iconColor = destructive ? Colors.red : const Color(0xFFE6007A);
+    final iconColor = destructive ? Colors.red : AppTheme.accent;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 2),

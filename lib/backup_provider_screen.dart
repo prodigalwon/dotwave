@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'theme.dart';
 import 'package:flutter/material.dart';
 import 'cloud_backup.dart';
 import 'providers/google_drive_provider.dart';
@@ -214,7 +215,7 @@ class _ProviderTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: ListTile(
-        leading: Icon(icon, color: const Color(0xFFE6007A)),
+        leading: Icon(icon, color: AppTheme.accent),
         title: Text(name),
         subtitle: Text(subtitle, style: const TextStyle(color: Colors.white60)),
         trailing: const Icon(Icons.chevron_right),

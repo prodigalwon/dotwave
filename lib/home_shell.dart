@@ -3,6 +3,7 @@ import 'screens/home_tab.dart';
 import 'screens/messages_tab.dart';
 import 'screens/explore_tab.dart';
 import 'screens/profile_tab.dart';
+import 'services/theme_controller.dart';
 import 'theme.dart';
 
 class HomeShell extends StatefulWidget {
@@ -16,25 +17,23 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _currentIndex = 0;
 
-  late final List<Widget> _tabs;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabs = [
-      HomeTab(address: widget.address),
-      MessagesTab(address: widget.address),
-      const ExploreTab(),
-      ProfileTab(address: widget.address),
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _tabs,
+      // Rebuild the tabs when the brand accent changes so static accent reads
+      // (e.g. the balance card) re-skin live. Tab State is preserved — Flutter
+      // matches the rebuilt widgets by type+position, so nothing reloads.
+      body: AnimatedBuilder(
+        animation: ThemeController.instance,
+        builder: (context, _) => IndexedStack(
+          index: _currentIndex,
+          children: [
+            HomeTab(address: widget.address),
+            MessagesTab(address: widget.address),
+            const ExploreTab(),
+            ProfileTab(address: widget.address),
+          ],
+        ),
       ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(

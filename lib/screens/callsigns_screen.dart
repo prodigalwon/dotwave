@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../services/chat_store.dart';
 import '../services/dead_drop_service.dart';
 import '../theme.dart';
 
@@ -66,8 +65,8 @@ class _CallsignsScreenState extends State<CallsignsScreen> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: AppTheme.pink, strokeWidth: 2),
+      builder: (_) => Center(
+        child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2),
       ),
     );
     List<DeadDropReceived> got = [];
@@ -117,66 +116,6 @@ class _CallsignsScreenState extends State<CallsignsScreen> {
     );
   }
 
-  /// Compose + send a dead drop to a recipient's callsign (sealed to their
-  /// out-of-band keys). The sender is this canonically-named account.
-  Future<void> _compose() async {
-    final csCtrl = TextEditingController();
-    final nameCtrl = TextEditingController();
-    final msgCtrl = TextEditingController();
-    final go = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface2,
-        title: const Text('Send a dead drop'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                  controller: csCtrl,
-                  decoration: const InputDecoration(
-                      labelText: 'Callsign',
-                      helperText: 'the label they poll')),
-              TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                      labelText: 'Recipient name',
-                      hintText: 'e.g. ferdie',
-                      suffixText: '.rst')),
-              TextField(
-                  controller: msgCtrl,
-                  decoration: const InputDecoration(labelText: 'Message')),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Send')),
-        ],
-      ),
-    );
-    if (go != true) return;
-    final cs = csCtrl.text.trim();
-    final name = nameCtrl.text.trim().replaceFirst(RegExp(r'\.rst$'), '');
-    try {
-      await ChatStore.instance.sendDeaddrop(widget.address, cs, name, msgCtrl.text);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Dead drop sent to '$cs' (→ $name.rst)")),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Send failed: $e')));
-      }
-    }
-  }
-
   void _addDialog() {
     final ctrl = TextEditingController();
     showDialog<void>(
@@ -215,18 +154,10 @@ class _CallsignsScreenState extends State<CallsignsScreen> {
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(title: const Text('Callsigns')),
-      floatingActionButton: _loading
-          ? null
-          : FloatingActionButton.extended(
-              backgroundColor: AppTheme.pink,
-              icon: const Icon(Icons.send, size: 18),
-              label: const Text('Send drop'),
-              onPressed: _compose,
-            ),
       body: _loading
-          ? const Center(
+          ? Center(
               child:
-                  CircularProgressIndicator(color: AppTheme.pink, strokeWidth: 2))
+                  CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2))
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
@@ -268,7 +199,7 @@ class _CallsignsScreenState extends State<CallsignsScreen> {
                     Expanded(
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(
-                            backgroundColor: AppTheme.pink),
+                            backgroundColor: AppTheme.accent),
                         icon: const Icon(Icons.add, size: 18),
                         label: const Text('Add'),
                         onPressed: atCap ? null : _addDialog,
@@ -325,7 +256,7 @@ class _CallsignTile extends StatelessWidget {
                     ?.copyWith(fontFamily: isRandom ? 'monospace' : null)),
           ),
           IconButton(
-            icon: const Icon(Icons.move_to_inbox, size: 18, color: AppTheme.pink),
+            icon: Icon(Icons.move_to_inbox, size: 18, color: AppTheme.accent),
             tooltip: 'Check for drops',
             onPressed: onCheck,
           ),

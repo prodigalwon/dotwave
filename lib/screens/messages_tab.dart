@@ -1,9 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import '../bridge/bridge_generated.dart/chat.dart';
+import '../services/avatar_service.dart';
 import '../services/chat_store.dart';
 import '../theme.dart';
 import '../widgets/chat_avatar.dart';
@@ -23,11 +23,20 @@ class MessagesTab extends StatefulWidget {
 class _MessagesTabState extends State<MessagesTab> {
   final _store = ChatStore.instance;
 
-  ChatIdentity? _identity;
-  String? _contentKey; // this account's published content key (hex), for sharing
   List<ChatContact> _contacts = [];
+  final Map<String, Uint8List?> _contactAvatars = {}; // pubkey → icon (if any)
   bool _loading = true;
   Timer? _poll;
+
+  // Section collapse state — the caret next to each section header toggles it.
+  bool _conversationsExpanded = true;
+  bool _deadDropsExpanded = true;
+
+  // STUB: dead-drop inbox gate. The dead-drop receive UX doesn't exist yet, so
+  // this stays false and the Dead Drops section is hidden. When a dead drop is
+  // received this flips true and [_deadDrops] holds the threads to render.
+  final bool _hasDeadDrops = false;
+  final List<_DeadDropThread> _deadDrops = const [];
 
   // Messaging-setup ceremony state — drives the top banner/button.
   ChatKeyState _keyState = ChatKeyState.noName;
@@ -53,13 +62,6 @@ class _MessagesTabState extends State<MessagesTab> {
   }
 
   Future<void> _bootstrap() async {
-    final id = await _store.identity(widget.address);
-    final ck = await _store.contentKey(widget.address);
-    if (!mounted) return;
-    setState(() {
-      _identity = id;
-      _contentKey = ck;
-    });
     await _load();
     await _loadKeyState();
     if (mounted) setState(() => _loading = false);
@@ -67,16 +69,13 @@ class _MessagesTabState extends State<MessagesTab> {
   }
 
   /// Poll where this account stands in the messaging-setup ceremony (no name /
-  /// needs keys / ready) so the banner reflects reality. Also refreshes the
-  /// displayed content key once keys are live.
+  /// needs keys / ready) so the banner reflects reality.
   Future<void> _loadKeyState() async {
     final ks = await _store.keyState(widget.address);
-    final ck = await _store.contentKey(widget.address);
     if (!mounted) return;
     setState(() {
       _keyState = ks.state;
       _ownedName = ks.name;
-      _contentKey = ck;
     });
   }
 
@@ -91,6 +90,11 @@ class _MessagesTabState extends State<MessagesTab> {
       final lb = _store.lastMessage(widget.address, b.pubkey)?.tsMillis ?? 0;
       return lb.compareTo(la);
     });
+    // Load any contact icons (received on a first message) for the list rows.
+    for (final c in contacts) {
+      _contactAvatars[c.pubkey] =
+          await AvatarService.instance.contactAvatar(c.pubkey);
+    }
     if (mounted) setState(() => _contacts = List.of(contacts));
   }
 
@@ -103,13 +107,6 @@ class _MessagesTabState extends State<MessagesTab> {
     // Keep watching the setup ceremony until it's ready (then stop re-polling
     // it — the records won't un-publish themselves).
     if (_keyState != ChatKeyState.ready) await _loadKeyState();
-  }
-
-  void _copy(String value, String label) {
-    Clipboard.setData(ClipboardData(text: value));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label copied')),
-    );
   }
 
   void _openThread(ChatContact c) {
@@ -154,8 +151,8 @@ class _MessagesTabState extends State<MessagesTab> {
 
   /// The paid "Register Keys" action: mint a content keypair in secure silicon
   /// (public → MESSAGE) and publish the software chat address (→ CHAT) under
-  /// the owned name. The mint happens inside [ChatStore.registerOrRotateKeys]
-  /// when the user authorizes payment.
+  /// the owned name. Streams progress via [ChatStore.registerKeysStream] so the
+  /// blade shrinks into the corner badge and tracks in the background.
   Future<void> _openRegisterKeys() async {
     final rpc = await _store.nodeRpc();
     if (!mounted) return;
@@ -170,9 +167,11 @@ class _MessagesTabState extends State<MessagesTab> {
           const TxRow('CHAT', 'software chat address (Ed25519)'),
         ],
         costLabel: 'Network Fee',
-        onConfirm: (phrase) =>
-            _store.registerOrRotateKeys(widget.address, _ownedName, phrase),
+        trackerLabel: 'Register chat keys',
+        streamedSubmit: (phrase) =>
+            _store.registerKeysStream(widget.address, _ownedName, phrase),
         onSuccess: () async {
+          await _store.onKeysConfirmed(widget.address, _ownedName);
           await _loadKeyState();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -186,7 +185,6 @@ class _MessagesTabState extends State<MessagesTab> {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(
@@ -197,23 +195,20 @@ class _MessagesTabState extends State<MessagesTab> {
             icon: const Icon(Icons.dns_outlined),
             onPressed: _showNodeSheet,
           ),
-          IconButton(
-            tooltip: 'New message',
-            icon: const Icon(Icons.edit_outlined, color: AppTheme.pink),
-            onPressed: _showNewMessageSheet,
-          ),
         ],
       ),
       body: SafeArea(
         top: false,
-        child: RefreshIndicator(
-          color: AppTheme.pink,
-          backgroundColor: AppTheme.surface2,
-          onRefresh: _refresh,
-          child: _loading
-              ? const Center(
-                  child: CircularProgressIndicator(color: AppTheme.pink, strokeWidth: 2))
-              : ListView(
+        child: Stack(
+          children: [
+            RefreshIndicator(
+              color: AppTheme.accent,
+              backgroundColor: AppTheme.surface2,
+              onRefresh: _refresh,
+              child: _loading
+                  ? Center(
+                      child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2))
+                  : ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   children: [
@@ -221,38 +216,63 @@ class _MessagesTabState extends State<MessagesTab> {
                       state: _keyState,
                       onAction: _onBannerAction,
                     ),
-                    if (_keyState != ChatKeyState.noName)
-                      const SizedBox(height: 16),
-                    _IdentityCard(
-                      identity: _identity,
-                      contentKey: _contentKey,
-                      onCopy: () {
-                        if (_identity != null) {
-                          _copy(_identity!.ed25519PubkeyHex, 'Your chat address');
-                        }
-                      },
-                      onCopyContentKey: () {
-                        if (_contentKey != null) {
-                          _copy(_contentKey!, 'Your content key');
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                    if (_contacts.isEmpty)
+                    const SizedBox(height: 20),
+                    if (_contacts.isEmpty && !_hasDeadDrops)
                       _EmptyState(onStart: _showNewMessageSheet)
                     else ...[
-                      Padding(
-                        padding: const EdgeInsets.only(left: 4, bottom: 8),
-                        child: Text('CONVERSATIONS', style: tt.labelMedium),
-                      ),
-                      ..._contacts.map((c) => _ConversationRow(
-                            contact: c,
-                            last: _store.lastMessage(widget.address, c.pubkey),
-                            onTap: () => _openThread(c),
-                          )),
+                      if (_contacts.isNotEmpty) ...[
+                        _SectionHeader(
+                          label: 'Conversations',
+                          count: _contacts.length,
+                          expanded: _conversationsExpanded,
+                          onTap: () => setState(() =>
+                              _conversationsExpanded = !_conversationsExpanded),
+                        ),
+                        if (_conversationsExpanded)
+                          ..._contacts.map((c) => _ConversationRow(
+                                contact: c,
+                                last: _store.lastMessage(widget.address, c.pubkey),
+                                avatar: _contactAvatars[c.pubkey],
+                                onTap: () => _openThread(c),
+                              )),
+                      ],
+                      // Dead Drops — hidden until a drop has been received.
+                      if (_hasDeadDrops) ...[
+                        const SizedBox(height: 12),
+                        _SectionHeader(
+                          label: 'Dead Drops',
+                          count: _deadDrops.length,
+                          expanded: _deadDropsExpanded,
+                          onTap: () => setState(() =>
+                              _deadDropsExpanded = !_deadDropsExpanded),
+                        ),
+                        if (_deadDropsExpanded)
+                          ..._deadDrops.map((d) => _DeadDropRow(thread: d)),
+                      ],
                     ],
                   ],
                 ),
+            ),
+            // New-message pencil — pinned to the bottom of the body (just above
+            // HomeShell's nav bar) with a small standard margin, and pulled 20%
+            // in from the right edge toward centre via fractional Alignment. No
+            // pixel positioning → uniform across screen sizes.
+            Align(
+              alignment: const Alignment(0.8, 1.0),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: FloatingActionButton.large(
+                  heroTag: 'newMessageFab',
+                  tooltip: 'New message',
+                  backgroundColor: AppTheme.accent,
+                  foregroundColor: Colors.white,
+                  shape: const CircleBorder(),
+                  onPressed: _showNewMessageSheet,
+                  child: const Icon(Icons.edit_outlined, size: 34),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -495,8 +515,11 @@ class _MessagesTabState extends State<MessagesTab> {
                           '${widget.address.substring(0, 6)}…${widget.address.substring(widget.address.length - 4)}'),
                       const TxRow('Cert', 'dev admission (P-256)'),
                     ],
-                    onConfirm: (phrase) => _store.ensureCert(widget.address, phrase),
-                    onSuccess: () {
+                    trackerLabel: 'Mint admission cert',
+                    streamedSubmit: (phrase) =>
+                        _store.mintCertStream(widget.address, phrase),
+                    onSuccess: () async {
+                      await _store.onCertConfirmed(widget.address);
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Admission cert minted')),
@@ -540,7 +563,7 @@ class _KeyStateBanner extends StatelessWidget {
         Icons.vpn_key_outlined,
         'Register Keys',
         'Publish your CHAT + MESSAGE keys so others can reach you',
-        AppTheme.pink,
+        AppTheme.accent,
         true,
       ),
       ChatKeyState.ready => (
@@ -586,75 +609,102 @@ class _KeyStateBanner extends StatelessWidget {
   }
 }
 
-// ── identity card ────────────────────────────────────────────────────
+// ── collapsible section header ───────────────────────────────────────
 
-class _IdentityCard extends StatelessWidget {
-  final ChatIdentity? identity;
-  final String? contentKey;
-  final VoidCallback onCopy;
-  final VoidCallback onCopyContentKey;
-  const _IdentityCard({
-    required this.identity,
-    required this.contentKey,
-    required this.onCopy,
-    required this.onCopyContentKey,
+/// Tappable section label with a caret toggle and a count badge. Drives the
+/// collapse state of the Conversations / Dead Drops lists below it.
+class _SectionHeader extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool expanded;
+  final VoidCallback onTap;
+  const _SectionHeader({
+    required this.label,
+    required this.count,
+    required this.expanded,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final pk = identity?.ed25519PubkeyHex ?? '';
-    final short = pk.length <= 14 ? pk : '${pk.substring(0, 8)}…${pk.substring(pk.length - 6)}';
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: AppTheme.subtleGradient,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.borderMid),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Row(
+            children: [
+              Text(label.toUpperCase(), style: tt.labelMedium),
+              const SizedBox(width: 4),
+              Icon(
+                expanded ? Icons.expand_more : Icons.chevron_right,
+                size: 18,
+                color: Colors.white54,
+              ),
+              const SizedBox(width: 6),
+              if (count > 0)
+                Text('$count', style: tt.labelSmall?.copyWith(color: Colors.white38)),
+            ],
+          ),
+        ),
       ),
-      child: Row(
-        children: [
-          ChatAvatar(seed: pk.isEmpty ? '?' : pk, size: 46),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    );
+  }
+}
+
+// ── dead-drop stub ───────────────────────────────────────────────────
+
+/// STUB model for a received dead-drop thread. The receive UX doesn't exist
+/// yet; this is the shape the Dead Drops section will render once it lands.
+class _DeadDropThread {
+  final String label;
+  final String preview;
+  const _DeadDropThread({required this.label, required this.preview});
+}
+
+class _DeadDropRow extends StatelessWidget {
+  final _DeadDropThread thread;
+  const _DeadDropRow({required this.thread});
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {}, // STUB: no dead-drop thread screen yet
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Text('YOUR CHAT ADDRESS', style: tt.labelMedium),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.lock, size: 11, color: AppTheme.success),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  identity == null ? '…' : short,
-                  style: tt.titleMedium?.copyWith(
-                    fontFeatures: const [FontFeature.tabularFigures()],
+                ChatAvatar(seed: thread.label, size: 48),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(thread.label,
+                          style: tt.titleMedium,
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 2),
+                      Text(thread.preview,
+                          style: tt.bodySmall,
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text('Share your address + content key so others can message you',
-                    style: tt.bodySmall),
+                const Icon(Icons.markunread_mailbox_outlined,
+                    size: 16, color: Colors.white38),
               ],
             ),
           ),
-          Column(
-            children: [
-              IconButton(
-                onPressed: identity == null ? null : onCopy,
-                tooltip: 'Copy chat address',
-                icon: const Icon(Icons.copy_rounded, size: 18, color: AppTheme.pink),
-              ),
-              IconButton(
-                onPressed: contentKey == null ? null : onCopyContentKey,
-                tooltip: 'Copy content key',
-                icon: const Icon(Icons.vpn_key_outlined, size: 18, color: AppTheme.pink),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -665,8 +715,10 @@ class _IdentityCard extends StatelessWidget {
 class _ConversationRow extends StatelessWidget {
   final ChatContact contact;
   final ChatMessage? last;
+  final Uint8List? avatar; // contact's icon (from their first message), if any
   final VoidCallback onTap;
-  const _ConversationRow({required this.contact, required this.last, required this.onTap});
+  const _ConversationRow(
+      {required this.contact, required this.last, this.avatar, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -685,7 +737,7 @@ class _ConversationRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
             child: Row(
               children: [
-                ChatAvatar(seed: contact.display, size: 48),
+                ChatAvatar(seed: contact.display, size: 48, image: avatar),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -730,11 +782,11 @@ class _EmptyState extends StatelessWidget {
           Container(
             width: 84,
             height: 84,
-            decoration: const BoxDecoration(
-              color: AppTheme.pinkGlow,
+            decoration: BoxDecoration(
+              color: AppTheme.accentGlow,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.shield_outlined, color: AppTheme.pink, size: 36),
+            child: Icon(Icons.shield_outlined, color: AppTheme.accent, size: 36),
           ),
           const SizedBox(height: 20),
           Text('Private messaging', style: tt.headlineSmall),

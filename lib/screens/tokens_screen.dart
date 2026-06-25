@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -27,25 +28,25 @@ class TokensScreen extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFFE6007A).withOpacity(0.08),
+                color: AppTheme.accent.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                    color: const Color(0xFFE6007A).withOpacity(0.25)),
+                    color: AppTheme.accent.withOpacity(0.25)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.science_outlined,
-                      color: Color(0xFFE6007A), size: 20),
+                  Icon(Icons.science_outlined,
+                      color: AppTheme.accent, size: 20),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Text(
                           'Beta — Test Network',
                           style: TextStyle(
-                              color: Color(0xFFE6007A),
+                              color: AppTheme.accent,
                               fontSize: 13,
                               fontWeight: FontWeight.bold),
                         ),
@@ -124,7 +125,7 @@ class TokensScreen extends StatelessWidget {
                     style:
                         TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE6007A),
+                  backgroundColor: AppTheme.accent,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -189,16 +190,16 @@ class _Step extends StatelessWidget {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE6007A).withOpacity(0.15),
+                  color: AppTheme.accent.withOpacity(0.15),
                   shape: BoxShape.circle,
                   border: Border.all(
-                      color: const Color(0xFFE6007A).withOpacity(0.4)),
+                      color: AppTheme.accent.withOpacity(0.4)),
                 ),
                 child: Center(
                   child: Text(
                     '$number',
-                    style: const TextStyle(
-                        color: Color(0xFFE6007A),
+                    style: TextStyle(
+                        color: AppTheme.accent,
                         fontSize: 12,
                         fontWeight: FontWeight.bold),
                   ),

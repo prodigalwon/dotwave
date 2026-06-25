@@ -62,6 +62,24 @@ class TransactionTracker extends ChangeNotifier {
     required String rpcUrl,
     VoidCallback? onConfirmed,
   }) {
+    return submitStream(
+      label: label,
+      stream: submitAction(action: action, phrase: phrase, rpcUrl: rpcUrl),
+      onConfirmed: onConfirmed,
+    );
+  }
+
+  /// Track any [TxUpdate] stream — a tracked [TxAction] (via [submit]) or a
+  /// streamed composite ceremony (e.g. chat-key registration, which emits
+  /// `Submitted` up front then runs its proven blocking flow in the background).
+  /// Same contract as [submit]: resolves on pool entry (`Submitted`), rejects if
+  /// the op fails before pool entry. After pool entry the tx lives here and the
+  /// badge reflects it.
+  Future<void> submitStream({
+    required String label,
+    required Stream<TxUpdate> stream,
+    VoidCallback? onConfirmed,
+  }) {
     final completer = Completer<void>();
     TrackedTx? tx;
 
@@ -100,7 +118,7 @@ class TransactionTracker extends ChangeNotifier {
       }
     }
 
-    submitAction(action: action, phrase: phrase, rpcUrl: rpcUrl).listen(
+    stream.listen(
       onUpdate,
       onError: (Object e) {
         if (tx == null) {

@@ -1074,6 +1074,97 @@ pub fn chat_setup_messaging(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Streamed chat-setup wrappers — drive the animated tracked blade.
+//
+// These emit a `Submitted` event up front (so the UI shrinks the blade into the
+// corner status badge and hands off), run the PROVEN blocking ceremonies
+// (`chat_setup_messaging` / `chat_mint_test_cert`) verbatim in the background,
+// then emit `Confirmed`/`Failed`. The heavy lifting — nonce handling, in-block
+// confirmation, retries — is reused unchanged; this only wraps it with stream
+// progress so a long composite ceremony tracks like a single tracked tx.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Streamed "Register / Rotate Chat Keys". Publishes CHAT + MESSAGE under the
+/// (already-owned) `name`, then mints the admission cert (tolerated, mirroring
+/// the non-streamed `registerOrRotateKeys` flow — addressability stands even if
+/// the cert mint is deferred). The silicon content-key mint happens Dart-side
+/// before this call; its public half arrives as `inner_content_key_hex`.
+pub fn chat_register_keys_streamed(
+    name: String,
+    phrase: String,
+    rpc_url: String,
+    identity_seed_hex: String,
+    inner_content_key_hex: String,
+    cert_seed_hex: String,
+    cert_ttl_blocks: u32,
+    sink: StreamSink<TxUpdate>,
+) -> Result<(), String> {
+    let _ = sink.add(TxUpdate::submitted());
+    let outcome = match chat_setup_messaging(
+        name,
+        phrase.clone(),
+        rpc_url.clone(),
+        identity_seed_hex,
+        inner_content_key_hex,
+    ) {
+        Ok(o) => o,
+        Err(e) => {
+            let _ = sink.add(TxUpdate::failed(e));
+            return Ok(());
+        }
+    };
+    if !outcome.published {
+        let _ = sink.add(TxUpdate::failed(
+            "chat identity did not publish — the chain may not be producing blocks".into(),
+        ));
+        return Ok(());
+    }
+    // Admission cert: tolerated. A failure here leaves the account addressable
+    // (CHAT/MESSAGE published) but unable to send until a later retry mints it.
+    let _ = chat_mint_test_cert(rpc_url, phrase, cert_seed_hex, cert_ttl_blocks);
+    let _ = sink.add(TxUpdate::confirmed(outcome.publish_tx));
+    Ok(())
+}
+
+/// Streamed standalone "Mint Admission Cert". `Confirmed.hash` carries the cert
+/// thumbprint (hex) so the UI can cache it without re-fetching.
+pub fn chat_mint_cert_streamed(
+    rpc_url: String,
+    phrase: String,
+    cert_seed_hex: String,
+    ttl_blocks: u32,
+    sink: StreamSink<TxUpdate>,
+) -> Result<(), String> {
+    let _ = sink.add(TxUpdate::submitted());
+    match chat_mint_test_cert(rpc_url, phrase, cert_seed_hex, ttl_blocks) {
+        Ok(thumbprint) => {
+            let _ = sink.add(TxUpdate::confirmed(thumbprint));
+        }
+        Err(e) => {
+            let _ = sink.add(TxUpdate::failed(e));
+        }
+    }
+    Ok(())
+}
+
+/// Storage-only read of this account's admission-cert thumbprint (hex), or
+/// `None` if no root cert is on chain. Lets the UI re-cache the thumbprint after
+/// a streamed mint/register without re-needing the signing phrase. Wraps
+/// [`fetch_root_thumbprint`].
+pub fn chat_fetch_cert_thumbprint(
+    rpc_url: String,
+    address: String,
+) -> Result<Option<String>, String> {
+    let account =
+        AccountId32::from_str(&address).map_err(|e| format!("Invalid address: {e}"))?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    rt.block_on(async { Ok(fetch_root_thumbprint(&rpc_url, &account).await?.map(hex::encode)) })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // New return types for PNS queries
 // ═══════════════════════════════════════════════════════════════════════════
 
