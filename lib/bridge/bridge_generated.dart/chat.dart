@@ -7,7 +7,7 @@ import 'chat_dr.dart';
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `deaddrop_read_from_inner`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `decode_sealed`, `fetch_and_decrypt`, `finish_read`, `from_core`, `identity_from_seed`, `p256_signing_key`, `self_hash`, `send_content_onion`, `send_content`, `to_core`, `unordered`
+// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `deaddrop_read_from_inner`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `decode_sealed`, `fetch_and_decrypt`, `finish_read`, `frame_body_with_avatar`, `from_core`, `identity_from_seed`, `p256_signing_key`, `self_hash`, `send_content_onion`, `send_content`, `to_core`, `unframe_body`, `unordered`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatFetchedShareRaw`, `ChatSendResultRpc`, `ChatShareDescriptorRpc`, `ContentPayload`, `InnerPayload`, `PrecomputedEcdh`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `curve`, `ecdh`
 
@@ -243,6 +243,7 @@ Future<ChatSendOutcome> chatSendOnion2Hop({
   String? authCertSeedHex,
   String? prevSelfHashHex,
   required BigInt composedAtSecs,
+  String? avatarWebpHex,
 }) => RustLib.instance.api.crateChatChatSendOnion2Hop(
   nodeRpc: nodeRpc,
   guardPubkeyHex: guardPubkeyHex,
@@ -257,6 +258,7 @@ Future<ChatSendOutcome> chatSendOnion2Hop({
   authCertSeedHex: authCertSeedHex,
   prevSelfHashHex: prevSelfHashHex,
   composedAtSecs: composedAtSecs,
+  avatarWebpHex: avatarWebpHex,
 );
 
 /// Send a DEAD DROP: routed by an opaque `label` (a callsign) instead of
@@ -680,6 +682,11 @@ class ReadMessage {
   /// a chain link.
   final BigInt composedAt;
 
+  /// The sender's tiny avatar (WebP, hex), carried only on a first message
+  /// (chain-root). Empty when the message carried none. Surfaced so the app
+  /// can cache the contact's icon for the conversation list.
+  final String avatarWebpHex;
+
   const ReadMessage({
     required this.claimedSenderName,
     required this.plaintext,
@@ -689,6 +696,7 @@ class ReadMessage {
     required this.selfHashHex,
     required this.prevSelfHashHex,
     required this.composedAt,
+    required this.avatarWebpHex,
   });
 
   @override
@@ -700,7 +708,8 @@ class ReadMessage {
       newSessionStateHex.hashCode ^
       selfHashHex.hashCode ^
       prevSelfHashHex.hashCode ^
-      composedAt.hashCode;
+      composedAt.hashCode ^
+      avatarWebpHex.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -714,5 +723,6 @@ class ReadMessage {
           newSessionStateHex == other.newSessionStateHex &&
           selfHashHex == other.selfHashHex &&
           prevSelfHashHex == other.prevSelfHashHex &&
-          composedAt == other.composedAt;
+          composedAt == other.composedAt &&
+          avatarWebpHex == other.avatarWebpHex;
 }

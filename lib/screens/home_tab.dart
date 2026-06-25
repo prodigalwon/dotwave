@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../config/rpc_endpoints.dart';
+import '../services/avatar_service.dart';
+import 'avatar_screen.dart';
 import 'receive_screen.dart';
 import 'send_screen.dart';
 
@@ -27,6 +30,8 @@ class _HomeTabState extends State<HomeTab> {
   String? _ownedName; // resolved PNS name without ".rst"
   Timer? _namePoller;
 
+  Uint8List? _avatar; // this account's chat icon, if set
+
   String get _refreshLabel {
     if (_lastRefreshed == null) return 'Tap to refresh';
     final elapsed = DateTime.now().difference(_lastRefreshed!);
@@ -43,6 +48,7 @@ class _HomeTabState extends State<HomeTab> {
     super.initState();
     _fetchBalance();
     _resolveOwnedName();
+    _loadAvatar();
     _namePoller = Timer.periodic(const Duration(minutes: 10), (_) {
       _resolveOwnedName();
     });
@@ -52,6 +58,18 @@ class _HomeTabState extends State<HomeTab> {
   }
 
   String get _storageKey => 'owned_name_${widget.address}';
+
+  Future<void> _loadAvatar() async {
+    final a = await AvatarService.instance.ownAvatar(widget.address);
+    if (mounted) setState(() => _avatar = a);
+  }
+
+  Future<void> _openAvatar() async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => AvatarScreen(address: widget.address),
+    ));
+    _loadAvatar(); // reflect a change made on the icon screen
+  }
 
   Future<void> _resolveOwnedName() async {
     try {
@@ -185,20 +203,27 @@ class _HomeTabState extends State<HomeTab> {
                             ],
                           ),
                         ),
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: const Color(0xFFE6007A).withOpacity(0.15),
-                            border: Border.all(
-                              color: const Color(0xFFE6007A).withOpacity(0.3),
+                        GestureDetector(
+                          onTap: _openAvatar,
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            clipBehavior: Clip.antiAlias,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFFE6007A).withOpacity(0.15),
+                              border: Border.all(
+                                color: const Color(0xFFE6007A).withOpacity(0.3),
+                              ),
                             ),
-                          ),
-                          child: const Icon(
-                            Icons.person,
-                            color: Color(0xFFE6007A),
-                            size: 22,
+                            child: _avatar != null
+                                ? Image.memory(_avatar!,
+                                    fit: BoxFit.cover, gaplessPlayback: true)
+                                : const Icon(
+                                    Icons.person,
+                                    color: Color(0xFFE6007A),
+                                    size: 22,
+                                  ),
                           ),
                         ),
                       ],

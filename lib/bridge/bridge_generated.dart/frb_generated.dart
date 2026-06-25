@@ -339,6 +339,7 @@ abstract class RustLibApi extends BaseApi {
     String? authCertSeedHex,
     String? prevSelfHashHex,
     required BigInt composedAtSecs,
+    String? avatarWebpHex,
   });
 
   Future<ChatSendOutcome> crateChatChatSendToPickup({
@@ -2314,6 +2315,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     String? authCertSeedHex,
     String? prevSelfHashHex,
     required BigInt composedAtSecs,
+    String? avatarWebpHex,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -2332,6 +2334,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_opt_String(authCertSeedHex, serializer);
           sse_encode_opt_String(prevSelfHashHex, serializer);
           sse_encode_u_64(composedAtSecs, serializer);
+          sse_encode_opt_String(avatarWebpHex, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -2358,6 +2361,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           authCertSeedHex,
           prevSelfHashHex,
           composedAtSecs,
+          avatarWebpHex,
         ],
         apiImpl: this,
       ),
@@ -2380,6 +2384,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       "authCertSeedHex",
       "prevSelfHashHex",
       "composedAtSecs",
+      "avatarWebpHex",
     ],
   );
 
@@ -5203,8 +5208,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ReadMessage dco_decode_read_message(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 8)
-      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
     return ReadMessage(
       claimedSenderName: dco_decode_String(arr[0]),
       plaintext: dco_decode_String(arr[1]),
@@ -5214,6 +5219,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       selfHashHex: dco_decode_String(arr[5]),
       prevSelfHashHex: dco_decode_String(arr[6]),
       composedAt: dco_decode_u_64(arr[7]),
+      avatarWebpHex: dco_decode_String(arr[8]),
     );
   }
 
@@ -6022,6 +6028,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_selfHashHex = sse_decode_String(deserializer);
     var var_prevSelfHashHex = sse_decode_String(deserializer);
     var var_composedAt = sse_decode_u_64(deserializer);
+    var var_avatarWebpHex = sse_decode_String(deserializer);
     return ReadMessage(
       claimedSenderName: var_claimedSenderName,
       plaintext: var_plaintext,
@@ -6031,6 +6038,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       selfHashHex: var_selfHashHex,
       prevSelfHashHex: var_prevSelfHashHex,
       composedAt: var_composedAt,
+      avatarWebpHex: var_avatarWebpHex,
     );
   }
 
@@ -6762,6 +6770,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.selfHashHex, serializer);
     sse_encode_String(self.prevSelfHashHex, serializer);
     sse_encode_u_64(self.composedAt, serializer);
+    sse_encode_String(self.avatarWebpHex, serializer);
   }
 
   @protected

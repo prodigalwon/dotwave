@@ -292,6 +292,7 @@ fn main() {
                     Some(cert_seed.clone()),
                     prev.clone(),
                     now + k as u64,
+                    None, // lab sends carry no avatar
                 )
                 .expect("send onion");
                 println!(
@@ -381,6 +382,7 @@ fn main() {
                 Some(cert_seed),
                 None,
                 now,
+                None, // lab sends carry no avatar
             )
             .expect("send onion");
             println!(
@@ -433,6 +435,7 @@ fn main() {
                     Some(cert_seed.clone()),
                     prev.clone(),
                     now + k as u64,
+                    None, // lab sends carry no avatar
                 )
                 .expect("send onion");
                 println!(

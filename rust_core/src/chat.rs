@@ -169,6 +169,41 @@ impl InnerPayload {
     }
 }
 
+// ── first-message avatar framing ──────────────────────────────────────
+//
+// A sender's tiny icon rides inside the InnerPayload `body` of the FIRST
+// message of a conversation only (the chain-root, `prev_self_hash == None`).
+// The crypto seal treats `body` as opaque bytes, so this needs no change to
+// the sealed/SCALE format and is fully backward-compatible: an un-framed body
+// is just text. Dead drops never frame (their send path is untouched).
+//
+// Layout: MAGIC(6) ‖ avatar_len: u32 LE(4) ‖ avatar_bytes ‖ text_bytes.
+// The leading 0x00 makes MAGIC a byte sequence a real (UTF-8 text) body never
+// begins with, so detection can't false-positive on an ordinary message.
+
+const AVATAR_FRAME_MAGIC: [u8; 6] = [0x00, b'D', b'W', b'A', b'V', 0x01];
+
+/// Prepend `avatar` (the ≤1 KB WebP) to `text` as a framed body.
+fn frame_body_with_avatar(text: &[u8], avatar: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(10 + avatar.len() + text.len());
+    out.extend_from_slice(&AVATAR_FRAME_MAGIC);
+    out.extend_from_slice(&(avatar.len() as u32).to_le_bytes());
+    out.extend_from_slice(avatar);
+    out.extend_from_slice(text);
+    out
+}
+
+/// Split a body into `(text, avatar)`. No frame → `(body, empty)`.
+fn unframe_body(body: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    if body.len() >= 10 && body[..6] == AVATAR_FRAME_MAGIC {
+        let len = u32::from_le_bytes([body[6], body[7], body[8], body[9]]) as usize;
+        if body.len() >= 10 + len {
+            return (body[10 + len..].to_vec(), body[10..10 + len].to_vec());
+        }
+    }
+    (body.to_vec(), Vec::new())
+}
+
 /// What actually gets content-sealed (Phase 5). User-to-user 1:1 is
 /// ALWAYS `Ratcheted` — Double-Ratchet-encrypted, forward-secret from
 /// message one (the first message carries the X3DH bootstrap).
@@ -224,6 +259,10 @@ pub struct ReadMessage {
     /// for cross-segment / cross-stream interleave only; never overrides
     /// a chain link.
     pub composed_at: u64,
+    /// The sender's tiny avatar (WebP, hex), carried only on a first message
+    /// (chain-root). Empty when the message carried none. Surfaced so the app
+    /// can cache the contact's icon for the conversation list.
+    pub avatar_webp_hex: String,
 }
 
 // ── RPC response mirrors (must match gemini-node/src/chat_rpc.rs) ────
@@ -453,17 +492,18 @@ fn finish_read(
             let prev_self_hash_hex =
                 payload.prev_self_hash.map(hex::encode).unwrap_or_default();
             let composed_at = payload.composed_at;
-            let body = payload.body;
+            let (text, avatar) = unframe_body(&payload.body);
             Ok(ReadMessage {
                 claimed_sender_name: String::from_utf8(payload.sender_name)
                     .unwrap_or_default(),
-                plaintext: String::from_utf8(body.clone()).unwrap_or_default(),
-                plaintext_hex: hex::encode(&body),
+                plaintext: String::from_utf8(text.clone()).unwrap_or_default(),
+                plaintext_hex: hex::encode(&text),
                 ratcheted: false,
                 new_session_state_hex: String::new(),
                 self_hash_hex,
                 prev_self_hash_hex,
                 composed_at,
+                avatar_webp_hex: hex::encode(&avatar),
             })
         }
         // Normal 1:1: Double-Ratchet decrypt. An existing session
@@ -504,17 +544,18 @@ fn finish_read(
             let prev_self_hash_hex =
                 payload.prev_self_hash.map(hex::encode).unwrap_or_default();
             let composed_at = payload.composed_at;
-            let body = payload.body;
+            let (text, avatar) = unframe_body(&payload.body);
             Ok(ReadMessage {
                 claimed_sender_name: String::from_utf8(payload.sender_name)
                     .unwrap_or_default(),
-                plaintext: String::from_utf8(body.clone()).unwrap_or_default(),
-                plaintext_hex: hex::encode(&body),
+                plaintext: String::from_utf8(text.clone()).unwrap_or_default(),
+                plaintext_hex: hex::encode(&text),
                 ratcheted: true,
                 new_session_state_hex: hex::encode(session.to_state_bytes()),
                 self_hash_hex,
                 prev_self_hash_hex,
                 composed_at,
+                avatar_webp_hex: hex::encode(&avatar),
             })
         }
     }
@@ -868,14 +909,28 @@ pub fn chat_send_onion_2hop(
     // time — stamped into the sealed payload for cross-segment /
     // cross-stream ordering.
     composed_at_secs: u64,
+    // `avatar_webp_hex`: the sender's tiny WebP icon, embedded ONLY on a
+    // first message (chain-root). Empty/None otherwise. Gated on
+    // `prev_self_hash.is_none()` below so a follow-up never carries it even
+    // if one is passed.
+    avatar_webp_hex: Option<String>,
 ) -> Result<ChatSendOutcome, String> {
     let prev_self_hash = match prev_self_hash_hex.filter(|h| !h.is_empty()) {
         Some(h) => Some(decode_hex32(&h)?),
         None => None,
     };
+    // Avatar rides only on the chain-root message.
+    let body = match avatar_webp_hex.filter(|h| !h.is_empty()) {
+        Some(h) if prev_self_hash.is_none() => {
+            let avatar = hex::decode(h.trim_start_matches("0x"))
+                .map_err(|e| format!("avatar hex: {e}"))?;
+            frame_body_with_avatar(message.as_bytes(), &avatar)
+        }
+        _ => message.into_bytes(),
+    };
     let inner = InnerPayload {
         sender_name: sender_name.into_bytes(),
-        body: message.into_bytes(),
+        body,
         prev_self_hash,
         composed_at: composed_at_secs,
         return_pickup: None,

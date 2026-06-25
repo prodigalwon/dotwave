@@ -17,6 +17,7 @@ import '../bridge/bridge_generated.dart/core.dart'
         chatFetchCertThumbprint,
         TxUpdate;
 import '../config/rpc_endpoints.dart';
+import 'avatar_service.dart';
 import 'content_key_service.dart';
 
 /// Where an account stands in the messaging-setup ceremony — drives the
@@ -907,6 +908,13 @@ class ChatStore extends ChangeNotifier {
     final prevTip = await _liveChainTip(address, contactPubkey);
     final composedAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
+    // First message in this conversation (no live chain tip) carries my icon so
+    // the recipient can show it on their conversation list. Follow-ups don't.
+    final isFirst = prevTip == null || prevTip.isEmpty;
+    final avatarHex = isFirst
+        ? await AvatarService.instance.firstMessageAvatarHex(address)
+        : null;
+
     final outcome = await chatSendOnion2Hop(
       nodeRpc: node,
       guardPubkeyHex: guard,
@@ -921,6 +929,7 @@ class ChatStore extends ChangeNotifier {
       authCertSeedHex: auth.certSeedHex,
       prevSelfHashHex: prevTip,
       composedAtSecs: BigInt.from(composedAt),
+      avatarWebpHex: avatarHex,
     );
 
     // Persist the new tip BEFORE appending locally: a crash after the send
@@ -1181,6 +1190,14 @@ class ChatStore extends ChangeNotifier {
       } catch (_) {
         // resolution failure → leave the name unverified (blank), never spoofable
       }
+    }
+
+    // First-message avatar (chain-root only): cache the sender's icon against
+    // this verified contact pubkey so the conversation list can show it. Never
+    // reached for dead drops — those decrypt via a separate path.
+    if (read.avatarWebpHex.isNotEmpty) {
+      await AvatarService.instance
+          .setContactAvatarHex(contactPubkey, read.avatarWebpHex);
     }
 
     final updated = ChatMessage(

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../services/avatar_service.dart';
 import '../services/chat_store.dart';
 import '../theme.dart';
 import '../widgets/chat_avatar.dart';
@@ -22,6 +24,7 @@ class _MessagesTabState extends State<MessagesTab> {
   final _store = ChatStore.instance;
 
   List<ChatContact> _contacts = [];
+  final Map<String, Uint8List?> _contactAvatars = {}; // pubkey → icon (if any)
   bool _loading = true;
   Timer? _poll;
 
@@ -87,6 +90,11 @@ class _MessagesTabState extends State<MessagesTab> {
       final lb = _store.lastMessage(widget.address, b.pubkey)?.tsMillis ?? 0;
       return lb.compareTo(la);
     });
+    // Load any contact icons (received on a first message) for the list rows.
+    for (final c in contacts) {
+      _contactAvatars[c.pubkey] =
+          await AvatarService.instance.contactAvatar(c.pubkey);
+    }
     if (mounted) setState(() => _contacts = List.of(contacts));
   }
 
@@ -224,6 +232,7 @@ class _MessagesTabState extends State<MessagesTab> {
                           ..._contacts.map((c) => _ConversationRow(
                                 contact: c,
                                 last: _store.lastMessage(widget.address, c.pubkey),
+                                avatar: _contactAvatars[c.pubkey],
                                 onTap: () => _openThread(c),
                               )),
                       ],
@@ -706,8 +715,10 @@ class _DeadDropRow extends StatelessWidget {
 class _ConversationRow extends StatelessWidget {
   final ChatContact contact;
   final ChatMessage? last;
+  final Uint8List? avatar; // contact's icon (from their first message), if any
   final VoidCallback onTap;
-  const _ConversationRow({required this.contact, required this.last, required this.onTap});
+  const _ConversationRow(
+      {required this.contact, required this.last, this.avatar, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -726,7 +737,7 @@ class _ConversationRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
             child: Row(
               children: [
-                ChatAvatar(seed: contact.display, size: 48),
+                ChatAvatar(seed: contact.display, size: 48, image: avatar),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(

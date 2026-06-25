@@ -1612,6 +1612,7 @@ fn wire__crate__chat__chat_send_onion_2hop_impl(
             let api_auth_cert_seed_hex = <Option<String>>::sse_decode(&mut deserializer);
             let api_prev_self_hash_hex = <Option<String>>::sse_decode(&mut deserializer);
             let api_composed_at_secs = <u64>::sse_decode(&mut deserializer);
+            let api_avatar_webp_hex = <Option<String>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -1629,6 +1630,7 @@ fn wire__crate__chat__chat_send_onion_2hop_impl(
                         api_auth_cert_seed_hex,
                         api_prev_self_hash_hex,
                         api_composed_at_secs,
+                        api_avatar_webp_hex,
                     )?;
                     Ok(output_ok)
                 })())
@@ -4499,6 +4501,7 @@ impl SseDecode for crate::chat::ReadMessage {
         let mut var_selfHashHex = <String>::sse_decode(deserializer);
         let mut var_prevSelfHashHex = <String>::sse_decode(deserializer);
         let mut var_composedAt = <u64>::sse_decode(deserializer);
+        let mut var_avatarWebpHex = <String>::sse_decode(deserializer);
         return crate::chat::ReadMessage {
             claimed_sender_name: var_claimedSenderName,
             plaintext: var_plaintext,
@@ -4508,6 +4511,7 @@ impl SseDecode for crate::chat::ReadMessage {
             self_hash_hex: var_selfHashHex,
             prev_self_hash_hex: var_prevSelfHashHex,
             composed_at: var_composedAt,
+            avatar_webp_hex: var_avatarWebpHex,
         };
     }
 }
@@ -5441,6 +5445,7 @@ impl flutter_rust_bridge::IntoDart for crate::chat::ReadMessage {
             self.self_hash_hex.into_into_dart().into_dart(),
             self.prev_self_hash_hex.into_into_dart().into_dart(),
             self.composed_at.into_into_dart().into_dart(),
+            self.avatar_webp_hex.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -6036,6 +6041,7 @@ impl SseEncode for crate::chat::ReadMessage {
         <String>::sse_encode(self.self_hash_hex, serializer);
         <String>::sse_encode(self.prev_self_hash_hex, serializer);
         <u64>::sse_encode(self.composed_at, serializer);
+        <String>::sse_encode(self.avatar_webp_hex, serializer);
     }
 }
 
