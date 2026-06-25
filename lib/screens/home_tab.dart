@@ -405,6 +405,9 @@ class _QuickActionButton extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
     return GestureDetector(
       onTap: onTap,
+      // Whole cell is tappable, not just the painted icon/label — otherwise a
+      // tap on the surrounding padding registers as "nothing happened".
+      behavior: HitTestBehavior.opaque,
       child: Column(
         children: [
           Container(
