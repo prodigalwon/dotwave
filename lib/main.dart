@@ -140,21 +140,16 @@ Future<bool> _authenticateUser() async {
 
   @override
   Widget build(BuildContext context) {
-    // Splash logo uses the same 1024×1024 PNG that generates the
-    // launcher icon (icons8 export). Previously this rendered the
-    // source SVG via `flutter_svg`, which mis-rendered the
-    // "dotwave" wordmark text — `flutter_svg` falls back to Roboto
-    // when SF Pro / Helvetica aren't on the device, and combined
-    // with the SVG's negative `letter-spacing` the text drifted
-    // off-center. The PNG was rasterized with correct fonts, so it
-    // matches the launcher icon pixel-for-pixel.
+    // Rostro lockup (mark + wordmark), white on the brand near-black. PNG
+    // derived from the designer's vector so the wordmark metrics are exact;
+    // width-only keeps its natural aspect (portrait).
     return Scaffold(
       backgroundColor: AppTheme.bg,
       body: Center(
         child: Image.asset(
-          'assets/dotwave-logo.png',
-          width: 180,
-          height: 180,
+          'assets/branding/rostro-lockup-white.png',
+          width: 150,
+          fit: BoxFit.contain,
         ),
       ),
     );
@@ -175,16 +170,12 @@ class OnboardingScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Spacer(flex: 2),
-              // Full dotwave lockup — same PNG the launcher uses. See
-              // the splash above for why we moved off `flutter_svg`
-              // for this asset. The icons8-generated PNG is square,
-              // anti-aliased, and renders the wordmark with correct
-              // font metrics on every device.
+              // Full Rostro lockup (mark + wordmark).
               Center(
                 child: Image.asset(
-                  'assets/dotwave-logo.png',
-                  width: 220,
-                  height: 220,
+                  'assets/branding/rostro-lockup-white.png',
+                  width: 190,
+                  fit: BoxFit.contain,
                 ),
               ),
               const SizedBox(height: 20),

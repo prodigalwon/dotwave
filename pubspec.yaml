@@ -51,6 +51,9 @@ dependencies:
   google_fonts: ^6.2.1
 
 dev_dependencies:
+  image: ^4.2.0
+  flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.1
   flutter_test:
     sdk: flutter
 
@@ -60,6 +63,27 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+# ── Rostro brand: launcher icon ─────────────────────────────────────────
+# Mark on the brand near-black; adaptive icon = white R foreground on #0D0D0D.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/branding/icon-mark-on-dark.png"
+  adaptive_icon_background: "#0D0D0D"
+  adaptive_icon_foreground: "assets/branding/icon-foreground.png"
+  remove_alpha_ios: true
+
+# ── Rostro brand: splash ────────────────────────────────────────────────
+# Legacy: white lockup centred on near-black. Android 12+: the R mark in the
+# system icon slot (the wordmark would be cropped there).
+flutter_native_splash:
+  color: "#0D0D0D"
+  image: assets/branding/rostro-lockup-white.png
+  android_12:
+    color: "#0D0D0D"
+    image: assets/branding/icon-foreground.png
+  fullscreen: true
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -75,6 +99,8 @@ flutter:
   assets:
     - assets/dotwave-tight.svg
     - assets/dotwave-logo.png
+    - assets/branding/rostro-mark-white.png
+    - assets/branding/rostro-lockup-white.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
