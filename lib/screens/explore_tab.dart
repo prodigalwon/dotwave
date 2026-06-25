@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 
 class ExploreTab extends StatelessWidget {
   const ExploreTab({super.key});
@@ -48,11 +49,11 @@ class _RostroApp {
 // and Auctions were intentionally dropped: those are Polkadot multi-chain
 // structures that Rostro culled at inception (monolithic sovereign L1, no
 // parachains / relay chain / XCM / EVM bridges), so they will never ship.
-const _apps = [
+final _apps = [
   _RostroApp(
     name: 'Governance',
     icon: Icons.how_to_vote_outlined,
-    color: Color(0xFFE6007A),
+    color: AppTheme.accent,
   ),
   _RostroApp(
     name: 'Staking',

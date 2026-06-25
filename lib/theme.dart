@@ -4,8 +4,36 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // ── Brand ──────────────────────────────────────────────────────────────────
-  static const Color pink = Color(0xFFE6007A);
-  static const Color pinkGlow = Color(0x26E6007A); // 15 % opacity
+  // The brand accent is RUNTIME-SWITCHABLE (Settings → Theme → Color).
+  // [ThemeController] sets this + persists it + rebuilds the app. Everything
+  // else derives from it, so a swatch tap re-skins the whole app.
+  static Color accent = const Color(0xFFF2A93B); // default: gold
+
+  /// accent @ 15% — used for glows / selected chips / nav indicator.
+  static Color get accentGlow => accent.withValues(alpha: 0.15);
+
+  /// Best foreground on the accent: dark text on light accents (gold,
+  /// chartreuse), white on dark ones (cherry, blue). Keeps buttons legible
+  /// whatever colour is picked.
+  static Color get onAccent =>
+      accent.computeLuminance() > 0.45 ? Colors.black : Colors.white;
+
+  /// The selectable palette (Settings swatches), in display order.
+  static const List<({String name, Color color})> palette = [
+    (name: 'Gold', color: Color(0xFFF2A93B)),
+    (name: 'Lipstick', color: Color(0xFFD2042D)),
+    (name: 'Cherry', color: Color(0xFF3F1521)),
+    (name: 'Pacific Blue', color: Color(0xFF009DC4)),
+    (name: 'Tiger Orange', color: Color(0xFFF96815)),
+    (name: 'Electric Violet', color: Color(0xFFBF37FF)),
+    (name: 'Chartreuse', color: Color(0xFF7FFF00)),
+  ];
+
+  /// Lighten/darken in HSL space — lets the card gradient adapt to any accent.
+  static Color _shiftL(Color c, double dl) {
+    final h = HSLColor.fromColor(c);
+    return h.withLightness((h.lightness + dl).clamp(0.0, 1.0)).toColor();
+  }
 
   // ── Backgrounds / Surfaces ─────────────────────────────────────────────────
   static const Color bg = Color(0xFF080808);
@@ -29,11 +57,14 @@ class AppTheme {
   static const Color warning = Color(0xFFF59E0B);
 
   // ── Gradient helpers ───────────────────────────────────────────────────────
-  static const LinearGradient cardGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFFE6007A), Color(0xFF6D28D9)],
-  );
+  // Brand card gradient — a soft lift → accent → deeper flesh, derived from the
+  // current accent so it adapts to any picked colour. (Glossy sheen is layered
+  // on top at the call site.)
+  static LinearGradient get cardGradient => LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [accent, _shiftL(accent, -0.20)], // accent → darker; gloss on top
+      );
 
   static const LinearGradient subtleGradient = LinearGradient(
     begin: Alignment.topLeft,
@@ -46,7 +77,7 @@ class AppTheme {
     final base = ThemeData.dark(useMaterial3: true);
 
     final colorScheme = ColorScheme.fromSeed(
-      seedColor: pink,
+      seedColor: accent,
       brightness: Brightness.dark,
     ).copyWith(
       surface: bg,
@@ -125,7 +156,7 @@ class AppTheme {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         height: 64,
-        indicatorColor: pinkGlow,
+        indicatorColor: accentGlow,
         indicatorShape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
@@ -135,12 +166,12 @@ class AppTheme {
           return GoogleFonts.dmSans(
             fontSize: 11,
             fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-            color: selected ? pink : textTertiary,
+            color: selected ? accent : textTertiary,
           );
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
-          return IconThemeData(color: selected ? pink : textTertiary, size: 22);
+          return IconThemeData(color: selected ? accent : textTertiary, size: 22);
         }),
       ),
 
@@ -158,8 +189,8 @@ class AppTheme {
       // ── Filled Button ────────────────────────────────────────────────────────
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: pink,
-          foregroundColor: Colors.white,
+          backgroundColor: accent,
+          foregroundColor: onAccent,
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14)),
@@ -185,7 +216,7 @@ class AppTheme {
       // ── Text Button ──────────────────────────────────────────────────────────
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: pink,
+          foregroundColor: accent,
           textStyle: GoogleFonts.dmSans(
             fontSize: 14, fontWeight: FontWeight.w600),
         ),
@@ -221,7 +252,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: pink, width: 1.5),
+          borderSide: BorderSide(color: accent, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -240,7 +271,7 @@ class AppTheme {
         errorStyle:
             GoogleFonts.dmSans(color: error, fontSize: 12),
         floatingLabelStyle:
-            GoogleFonts.dmSans(color: pink, fontSize: 12,
+            GoogleFonts.dmSans(color: accent, fontSize: 12,
                 fontWeight: FontWeight.w500),
       ),
 
@@ -301,7 +332,7 @@ class AppTheme {
       // ── Chip ─────────────────────────────────────────────────────────────────
       chipTheme: ChipThemeData(
         backgroundColor: surface3,
-        selectedColor: pinkGlow,
+        selectedColor: accentGlow,
         side: const BorderSide(color: borderMid),
         labelStyle:
             GoogleFonts.dmSans(color: textSecondary, fontSize: 13),
@@ -312,8 +343,8 @@ class AppTheme {
       ),
 
       // ── Progress Indicator ───────────────────────────────────────────────────
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: pink,
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: accent,
         linearTrackColor: borderSubtle,
         circularTrackColor: borderSubtle,
       ),

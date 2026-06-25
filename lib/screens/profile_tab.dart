@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import '../theme.dart';
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/avatar_service.dart';
 import 'avatar_screen.dart';
 import 'manage_name_screen.dart';
+import 'settings_screen.dart';
 import 'name_registration_screen.dart';
 import 'zkpki_spoof_defense_test_screen.dart';
 
@@ -94,18 +96,18 @@ class _ProfileTabState extends State<ProfileTab> {
                     clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: const Color(0xFFE6007A).withOpacity(0.15),
+                      color: AppTheme.accent.withOpacity(0.15),
                       border: Border.all(
-                        color: const Color(0xFFE6007A).withOpacity(0.4),
+                        color: AppTheme.accent.withOpacity(0.4),
                         width: 2,
                       ),
                     ),
                     child: _avatar != null
                         ? Image.memory(_avatar!,
                             fit: BoxFit.cover, gaplessPlayback: true)
-                        : const Icon(
+                        : Icon(
                             Icons.person,
-                            color: Color(0xFFE6007A),
+                            color: AppTheme.accent,
                             size: 40,
                           ),
                   ),
@@ -179,13 +181,21 @@ class _ProfileTabState extends State<ProfileTab> {
           const SizedBox(height: 16),
           _SectionHeader(label: 'App'),
           _SettingsTile(
+            icon: Icons.settings_outlined,
+            label: 'Settings',
+            subtitle: 'Theme & app colour',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+          _SettingsTile(
             icon: Icons.notifications_outlined,
             label: 'Notifications',
             onTap: () {},
           ),
           _SettingsTile(
             icon: Icons.info_outline,
-            label: 'About Dotwave',
+            label: 'About Rostro',
             onTap: () {},
           ),
 
@@ -287,7 +297,7 @@ class _SettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = destructive ? Colors.red : Colors.white;
-    final iconColor = destructive ? Colors.red : const Color(0xFFE6007A);
+    final iconColor = destructive ? Colors.red : AppTheme.accent;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 2),

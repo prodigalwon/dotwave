@@ -67,19 +67,19 @@ class _AvatarScreenState extends State<AvatarScreen> {
                     clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: AppTheme.pink.withValues(alpha: 0.15),
+                      color: AppTheme.accent.withValues(alpha: 0.15),
                       border: Border.all(
-                          color: AppTheme.pink.withValues(alpha: 0.4), width: 2),
+                          color: AppTheme.accent.withValues(alpha: 0.4), width: 2),
                     ),
                     child: _avatar != null
                         ? Image.memory(_avatar!,
                             fit: BoxFit.cover, gaplessPlayback: true)
-                        : const Icon(Icons.person, color: AppTheme.pink, size: 80),
+                        : Icon(Icons.person, color: AppTheme.accent, size: 80),
                   ),
                   Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                        color: AppTheme.pink, shape: BoxShape.circle),
+                    decoration: BoxDecoration(
+                        color: AppTheme.accent, shape: BoxShape.circle),
                     child: _busy
                         ? const SizedBox(
                             width: 18,

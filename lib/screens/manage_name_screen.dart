@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../config/rpc_endpoints.dart';
@@ -23,7 +24,7 @@ class ManageNameScreen extends StatefulWidget {
 
 class _ManageNameScreenState extends State<ManageNameScreen> {
   static const _rpcUrl = RpcEndpoints.pnsNode;
-  static const _accent = Color(0xFFE6007A);
+  static final _accent = AppTheme.accent;
 
   final _recipientController = TextEditingController();
   bool _resolvingRecipient = false;
@@ -293,7 +294,7 @@ class _ActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = destructive ? Colors.redAccent : const Color(0xFFE6007A);
+    final color = destructive ? Colors.redAccent : AppTheme.accent;
     return GestureDetector(
       onTap: onTap,
       child: Container(

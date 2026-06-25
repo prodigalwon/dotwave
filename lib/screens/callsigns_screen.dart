@@ -65,8 +65,8 @@ class _CallsignsScreenState extends State<CallsignsScreen> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: AppTheme.pink, strokeWidth: 2),
+      builder: (_) => Center(
+        child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2),
       ),
     );
     List<DeadDropReceived> got = [];
@@ -155,9 +155,9 @@ class _CallsignsScreenState extends State<CallsignsScreen> {
       backgroundColor: AppTheme.bg,
       appBar: AppBar(title: const Text('Callsigns')),
       body: _loading
-          ? const Center(
+          ? Center(
               child:
-                  CircularProgressIndicator(color: AppTheme.pink, strokeWidth: 2))
+                  CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2))
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
@@ -199,7 +199,7 @@ class _CallsignsScreenState extends State<CallsignsScreen> {
                     Expanded(
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(
-                            backgroundColor: AppTheme.pink),
+                            backgroundColor: AppTheme.accent),
                         icon: const Icon(Icons.add, size: 18),
                         label: const Text('Add'),
                         onPressed: atCap ? null : _addDialog,
@@ -256,7 +256,7 @@ class _CallsignTile extends StatelessWidget {
                     ?.copyWith(fontFamily: isRandom ? 'monospace' : null)),
           ),
           IconButton(
-            icon: const Icon(Icons.move_to_inbox, size: 18, color: AppTheme.pink),
+            icon: Icon(Icons.move_to_inbox, size: 18, color: AppTheme.accent),
             tooltip: 'Check for drops',
             onPressed: onCheck,
           ),

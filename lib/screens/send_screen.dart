@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import 'package:flutter/services.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../bridge/bridge_generated.dart/core.dart';
@@ -240,23 +241,23 @@ class _SendScreenState extends State<SendScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                              color: Color(0xFFE6007A), width: 1.5),
+                          borderSide: BorderSide(
+                              color: AppTheme.accent, width: 1.5),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
                         suffixIcon: _isRstName && _resolved == null
                             ? IconButton(
                                 icon: _resolvingName
-                                    ? const SizedBox(
+                                    ? SizedBox(
                                         width: 18,
                                         height: 18,
                                         child: CircularProgressIndicator(
-                                            color: Color(0xFFE6007A),
+                                            color: AppTheme.accent,
                                             strokeWidth: 2),
                                       )
-                                    : const Icon(Icons.search,
-                                        color: Color(0xFFE6007A)),
+                                    : Icon(Icons.search,
+                                        color: AppTheme.accent),
                                 onPressed: _resolvingName ? null : _lookupName,
                               )
                             : null,
@@ -286,7 +287,7 @@ class _SendScreenState extends State<SendScreen> {
                     border: Border.all(
                       color: _verified == true
                           ? const Color(0xFF16A34A).withOpacity(0.5)
-                          : const Color(0xFFE6007A).withOpacity(0.2),
+                          : AppTheme.accent.withOpacity(0.2),
                     ),
                   ),
                   child: Column(
@@ -309,21 +310,21 @@ class _SendScreenState extends State<SendScreen> {
                               (_resolved?.blockHash.isNotEmpty ?? false))
                             GestureDetector(
                               onTap: _verifyOwnership,
-                              child: const Text(
+                              child: Text(
                                 'Verify?',
                                 style: TextStyle(
-                                  color: Color(0xFFE6007A),
+                                  color: AppTheme.accent,
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                             )
                           else if (_verifying)
-                            const SizedBox(
+                            SizedBox(
                               width: 14,
                               height: 14,
                               child: CircularProgressIndicator(
-                                  color: Color(0xFFE6007A), strokeWidth: 2),
+                                  color: AppTheme.accent, strokeWidth: 2),
                             )
                           else if (_verified == true)
                             Row(
@@ -417,8 +418,8 @@ class _SendScreenState extends State<SendScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                        color: Color(0xFFE6007A), width: 1.5),
+                    borderSide: BorderSide(
+                        color: AppTheme.accent, width: 1.5),
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 14),
@@ -432,10 +433,10 @@ class _SendScreenState extends State<SendScreen> {
                 child: ElevatedButton(
                   onPressed: _canSend ? _openSendBlade : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE6007A),
+                    backgroundColor: AppTheme.accent,
                     foregroundColor: Colors.white,
                     disabledBackgroundColor:
-                        const Color(0xFFE6007A).withOpacity(0.3),
+                        AppTheme.accent.withOpacity(0.3),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14)),
                     padding: const EdgeInsets.symmetric(vertical: 16),

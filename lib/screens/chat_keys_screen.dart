@@ -89,8 +89,8 @@ class _ChatKeysScreenState extends State<ChatKeysScreen> {
       backgroundColor: AppTheme.bg,
       appBar: AppBar(title: const Text('Chat Keys')),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppTheme.pink, strokeWidth: 2))
+          ? Center(
+              child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2))
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
@@ -126,7 +126,7 @@ class _ChatKeysScreenState extends State<ChatKeysScreen> {
                 ),
                 const SizedBox(height: 12),
                 FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: AppTheme.pink),
+                  style: FilledButton.styleFrom(backgroundColor: AppTheme.accent),
                   icon: const Icon(Icons.autorenew, size: 18),
                   label: const Text('Rotate Keys'),
                   onPressed: _rotateKeys,

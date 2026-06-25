@@ -89,7 +89,7 @@ class DeadDropsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.pink),
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.accent),
             icon: const Icon(Icons.send, size: 18),
             label: const Text('Send drop'),
             onPressed: () => _compose(context),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../theme.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -211,17 +212,17 @@ class _HomeTabState extends State<HomeTab> {
                             clipBehavior: Clip.antiAlias,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: const Color(0xFFE6007A).withOpacity(0.15),
+                              color: AppTheme.accent.withOpacity(0.15),
                               border: Border.all(
-                                color: const Color(0xFFE6007A).withOpacity(0.3),
+                                color: AppTheme.accent.withOpacity(0.3),
                               ),
                             ),
                             child: _avatar != null
                                 ? Image.memory(_avatar!,
                                     fit: BoxFit.cover, gaplessPlayback: true)
-                                : const Icon(
+                                : Icon(
                                     Icons.person,
-                                    color: Color(0xFFE6007A),
+                                    color: AppTheme.accent,
                                     size: 22,
                                   ),
                           ),
@@ -244,12 +245,24 @@ class _HomeTabState extends State<HomeTab> {
                               margin: const EdgeInsets.symmetric(horizontal: 2),
                               padding: const EdgeInsets.all(24),
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [Color(0xFFE6007A), Color(0xFF6D28D9)],
-                                ),
+                                // accent body — adapts to the picked colour
+                                gradient: AppTheme.cardGradient,
                                 borderRadius: BorderRadius.circular(20),
+                              ),
+                              // Gloss: a light specular reflection across the top,
+                              // like light on a wet surface. Painted OVER the body.
+                              foregroundDecoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.white.withValues(alpha: 0.28),
+                                    Colors.white.withValues(alpha: 0.06),
+                                    Colors.transparent,
+                                  ],
+                                  stops: const [0.0, 0.14, 0.46],
+                                ),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,

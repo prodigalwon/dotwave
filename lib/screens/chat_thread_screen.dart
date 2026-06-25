@@ -470,7 +470,7 @@ class _Composer extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.pink.withValues(alpha: 0.35),
+                    color: AppTheme.accent.withValues(alpha: 0.35),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -510,10 +510,10 @@ class _ThreadEmptyState extends StatelessWidget {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: AppTheme.pinkGlow,
+                color: AppTheme.accentGlow,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.lock_outline, color: AppTheme.pink, size: 30),
+              child: Icon(Icons.lock_outline, color: AppTheme.accent, size: 30),
             ),
             const SizedBox(height: 18),
             Text('Say hi to $name', style: tt.titleMedium, textAlign: TextAlign.center),

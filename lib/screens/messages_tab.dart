@@ -202,12 +202,12 @@ class _MessagesTabState extends State<MessagesTab> {
         child: Stack(
           children: [
             RefreshIndicator(
-              color: AppTheme.pink,
+              color: AppTheme.accent,
               backgroundColor: AppTheme.surface2,
               onRefresh: _refresh,
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: AppTheme.pink, strokeWidth: 2))
+                  ? Center(
+                      child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2))
                   : ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -264,7 +264,7 @@ class _MessagesTabState extends State<MessagesTab> {
                 child: FloatingActionButton.large(
                   heroTag: 'newMessageFab',
                   tooltip: 'New message',
-                  backgroundColor: AppTheme.pink,
+                  backgroundColor: AppTheme.accent,
                   foregroundColor: Colors.white,
                   shape: const CircleBorder(),
                   onPressed: _showNewMessageSheet,
@@ -563,7 +563,7 @@ class _KeyStateBanner extends StatelessWidget {
         Icons.vpn_key_outlined,
         'Register Keys',
         'Publish your CHAT + MESSAGE keys so others can reach you',
-        AppTheme.pink,
+        AppTheme.accent,
         true,
       ),
       ChatKeyState.ready => (
@@ -782,11 +782,11 @@ class _EmptyState extends StatelessWidget {
           Container(
             width: 84,
             height: 84,
-            decoration: const BoxDecoration(
-              color: AppTheme.pinkGlow,
+            decoration: BoxDecoration(
+              color: AppTheme.accentGlow,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.shield_outlined, color: AppTheme.pink, size: 36),
+            child: Icon(Icons.shield_outlined, color: AppTheme.accent, size: 36),
           ),
           const SizedBox(height: 20),
           Text('Private messaging', style: tt.headlineSmall),

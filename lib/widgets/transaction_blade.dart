@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import '../theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
@@ -498,8 +499,8 @@ class _TransactionBladeState extends State<TransactionBlade>
                                 color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
                         Text(
                           _totalRaw != null ? _formatFee(_totalRaw!) : '—',
-                          style: const TextStyle(
-                              color: Color(0xFFE6007A),
+                          style: TextStyle(
+                              color: AppTheme.accent,
                               fontSize: 15,
                               fontWeight: FontWeight.bold),
                         ),
@@ -569,9 +570,9 @@ class _TransactionBladeState extends State<TransactionBlade>
                     child: ElevatedButton(
                       onPressed: _actionEnabled ? _action : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE6007A),
+                        backgroundColor: AppTheme.accent,
                         foregroundColor: Colors.white,
-                        disabledBackgroundColor: const Color(0xFFE6007A).withOpacity(0.4),
+                        disabledBackgroundColor: AppTheme.accent.withOpacity(0.4),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),

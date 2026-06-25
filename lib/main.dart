@@ -10,6 +10,7 @@ import 'package:local_auth/local_auth.dart';
 import 'backup_provider_screen.dart';
 import 'restore_provider_screen.dart';
 import 'home_shell.dart';
+import 'services/theme_controller.dart';
 import 'widgets/tx_badge_overlay.dart';
 import 'theme.dart';
 import 'screens/name_registration_screen.dart';
@@ -20,6 +21,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('>>> Starting RustLib.init()');
   await RustLib.init();
+  await ThemeController.instance.load(); // apply the persisted brand colour
   debugPrint('>>> RustLib done, starting app');
   runApp(const DotWaveApp());
 }
@@ -29,13 +31,16 @@ class DotWaveApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Dotwave',
-      navigatorKey: rootNavigatorKey,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
-      home: const SplashScreen(),
-      builder: (context, child) {
+    // Rebuild the whole app (new ThemeData) whenever the brand accent changes.
+    return AnimatedBuilder(
+      animation: ThemeController.instance,
+      builder: (context, _) => MaterialApp(
+        title: 'Rostro',
+        navigatorKey: rootNavigatorKey,
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.dark,
+        home: const SplashScreen(),
+        builder: (context, child) {
         // Pin the transaction tracker badge above every route.
         return Stack(
           children: [
@@ -47,7 +52,8 @@ class DotWaveApp extends StatelessWidget {
             ),
           ],
         );
-      },
+        },
+      ),
     );
   }
 }
@@ -339,7 +345,7 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                       decoration: BoxDecoration(
                         color: Colors.black38,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE6007A)),
+                        border: Border.all(color: AppTheme.accent),
                       ),
                       child: Text(
                         _phrase!,
@@ -774,14 +780,14 @@ class PickNamePromptScreen extends StatelessWidget {
                   height: 80,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppTheme.pink.withOpacity(0.12),
+                    color: AppTheme.accent.withOpacity(0.12),
                     border: Border.all(
-                      color: AppTheme.pink.withOpacity(0.3),
+                      color: AppTheme.accent.withOpacity(0.3),
                       width: 2,
                     ),
                   ),
-                  child: const Icon(Icons.badge_outlined,
-                      color: AppTheme.pink, size: 40),
+                  child: Icon(Icons.badge_outlined,
+                      color: AppTheme.accent, size: 40),
                 ),
               ),
               const SizedBox(height: 28),

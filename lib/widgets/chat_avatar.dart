@@ -32,7 +32,7 @@ class ChatAvatar extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: AppTheme.cardGradient,
         shape: BoxShape.circle,
       ),

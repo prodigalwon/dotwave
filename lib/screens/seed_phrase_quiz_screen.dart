@@ -245,7 +245,7 @@ class _ProgressStrip extends StatelessWidget {
             child: Container(
               height: 4,
               decoration: BoxDecoration(
-                color: i <= current ? AppTheme.pink : AppTheme.borderSubtle,
+                color: i <= current ? AppTheme.accent : AppTheme.borderSubtle,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -271,7 +271,7 @@ class _ChoiceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? AppTheme.pink.withOpacity(0.15) : AppTheme.surface2,
+      color: selected ? AppTheme.accent.withOpacity(0.15) : AppTheme.surface2,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -281,7 +281,7 @@ class _ChoiceTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: selected ? AppTheme.pink : AppTheme.borderSubtle,
+              color: selected ? AppTheme.accent : AppTheme.borderSubtle,
               width: 1.5,
             ),
           ),
@@ -289,7 +289,7 @@ class _ChoiceTile extends StatelessWidget {
             child: Text(
               word,
               style: TextStyle(
-                color: selected ? AppTheme.pink : AppTheme.textPrimary,
+                color: selected ? AppTheme.accent : AppTheme.textPrimary,
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.3,

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -209,7 +210,7 @@ class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
                 width: double.infinity,
                 child: FloatingActionButton.extended(
                   onPressed: _onVoteTap,
-                  backgroundColor: const Color(0xFFE6007A),
+                  backgroundColor: AppTheme.accent,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16)),
@@ -283,8 +284,8 @@ class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
                     color: const Color(0xFF1E1E1E),
                     borderRadius: BorderRadius.circular(8)),
                 child: Text(post.method,
-                    style: const TextStyle(
-                        color: Color(0xFFE6007A),
+                    style: TextStyle(
+                        color: AppTheme.accent,
                         fontSize: 12,
                         fontFamily: 'monospace')),
               ),
@@ -334,10 +335,10 @@ class _ReferendumDetailScreenState extends State<ReferendumDetailScreen> {
                         ),
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'History',
                       style: TextStyle(
-                          color: Color(0xFFE6007A),
+                          color: AppTheme.accent,
                           fontSize: 13,
                           fontWeight: FontWeight.w600),
                     ),
@@ -561,8 +562,8 @@ class _BodyTextState extends State<_BodyText> {
             onTap: () => setState(() => _expanded = !_expanded),
             child: Text(
               _expanded ? 'Show less' : 'Read more…',
-              style: const TextStyle(
-                color: Color(0xFFE6007A),
+              style: TextStyle(
+                color: AppTheme.accent,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -681,7 +682,7 @@ class _CommentTileState extends State<_CommentTile> {
         borderRadius: BorderRadius.circular(12),
         border: Border(
           left: depth > 0
-              ? const BorderSide(color: Color(0xFFE6007A), width: 2)
+              ? BorderSide(color: AppTheme.accent, width: 2)
               : BorderSide.none,
         ),
       ),
@@ -695,7 +696,7 @@ class _CommentTileState extends State<_CommentTile> {
                 width: 26,
                 height: 26,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE6007A).withOpacity(0.15),
+                  color: AppTheme.accent.withOpacity(0.15),
                   shape: BoxShape.circle,
                 ),
                 child: Center(
@@ -703,8 +704,8 @@ class _CommentTileState extends State<_CommentTile> {
                     comment.author.isNotEmpty
                         ? comment.author[0].toUpperCase()
                         : '?',
-                    style: const TextStyle(
-                        color: Color(0xFFE6007A),
+                    style: TextStyle(
+                        color: AppTheme.accent,
                         fontSize: 12,
                         fontWeight: FontWeight.bold),
                   ),
@@ -833,11 +834,11 @@ class _LoadingRow extends StatelessWidget {
   const _LoadingRow();
 
   @override
-  Widget build(BuildContext context) => const Padding(
+  Widget build(BuildContext context) => Padding(
         padding: EdgeInsets.symmetric(vertical: 16),
         child: Center(
           child: CircularProgressIndicator(
-              color: Color(0xFFE6007A), strokeWidth: 2),
+              color: AppTheme.accent, strokeWidth: 2),
         ),
       );
 }
@@ -861,9 +862,9 @@ class _ErrorRow extends StatelessWidget {
         ),
         GestureDetector(
           onTap: onRetry,
-          child: const Text('Retry',
+          child: Text('Retry',
               style: TextStyle(
-                  color: Color(0xFFE6007A),
+                  color: AppTheme.accent,
                   fontSize: 12,
                   fontWeight: FontWeight.w600)),
         ),
@@ -1307,9 +1308,9 @@ class _VoteConfigSheetState extends State<_VoteConfigSheet> {
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx),
-                              child: const Text('Got it',
+                              child: Text('Got it',
                                   style: TextStyle(
-                                      color: Color(0xFFE6007A),
+                                      color: AppTheme.accent,
                                       fontWeight: FontWeight.bold)),
                             ),
                           ],
@@ -1397,8 +1398,8 @@ class _VoteConfigSheetState extends State<_VoteConfigSheet> {
                           borderSide: _overBalance
                               ? const BorderSide(
                                   color: Color(0xFFEF4444), width: 1.5)
-                              : const BorderSide(
-                                  color: Color(0xFFE6007A), width: 1.5),
+                              : BorderSide(
+                                  color: AppTheme.accent, width: 1.5),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
@@ -1415,18 +1416,18 @@ class _VoteConfigSheetState extends State<_VoteConfigSheet> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE6007A).withOpacity(0.15),
+                        color: AppTheme.accent.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                             color:
-                                const Color(0xFFE6007A).withOpacity(0.3)),
+                                AppTheme.accent.withOpacity(0.3)),
                       ),
                       child: Text(
                         'MAX',
                         style: TextStyle(
                           color: _loadingBalance
                               ? Colors.white38
-                              : const Color(0xFFE6007A),
+                              : AppTheme.accent,
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
                         ),
@@ -1485,7 +1486,7 @@ class _VoteConfigSheetState extends State<_VoteConfigSheet> {
                         : const Color(0xFFEF4444),
                     foregroundColor: Colors.white,
                     disabledBackgroundColor:
-                        const Color(0xFFE6007A).withOpacity(0.25),
+                        AppTheme.accent.withOpacity(0.25),
                     disabledForegroundColor: Colors.white38,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),

@@ -202,7 +202,7 @@ class _TotpEnrollmentScreenState extends State<TotpEnrollmentScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(color: AppTheme.pink),
+          CircularProgressIndicator(color: AppTheme.accent),
           const SizedBox(height: 24),
           Text(message, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
         ],
@@ -247,8 +247,8 @@ class _TotpEnrollmentScreenState extends State<TotpEnrollmentScreen> {
                 const SnackBar(content: Text('Copied to clipboard')),
               );
             },
-            icon: const Icon(Icons.copy, color: AppTheme.pink, size: 18),
-            label: const Text('Copy URI', style: TextStyle(color: AppTheme.pink)),
+            icon: Icon(Icons.copy, color: AppTheme.accent, size: 18),
+            label: Text('Copy URI', style: TextStyle(color: AppTheme.accent)),
           ),
           const SizedBox(height: 24),
           Container(
@@ -281,7 +281,7 @@ class _TotpEnrollmentScreenState extends State<TotpEnrollmentScreen> {
                 setState(() => _state = EnrollmentState.verifyOtp);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.pink,
+                backgroundColor: AppTheme.accent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -321,7 +321,7 @@ class _TotpEnrollmentScreenState extends State<TotpEnrollmentScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.pink),
+                  borderSide: BorderSide(color: AppTheme.accent),
                 ),
               ),
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -334,7 +334,7 @@ class _TotpEnrollmentScreenState extends State<TotpEnrollmentScreen> {
             child: ElevatedButton(
               onPressed: _verifyOtp,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.pink,
+                backgroundColor: AppTheme.accent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -370,7 +370,7 @@ class _TotpEnrollmentScreenState extends State<TotpEnrollmentScreen> {
             child: ElevatedButton(
               onPressed: widget.onComplete,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.pink,
+                backgroundColor: AppTheme.accent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -403,7 +403,7 @@ class _TotpEnrollmentScreenState extends State<TotpEnrollmentScreen> {
               });
               _checkHardware();
             },
-            child: const Text('Try again', style: TextStyle(color: AppTheme.pink)),
+            child: Text('Try again', style: TextStyle(color: AppTheme.accent)),
           ),
         ],
       ),
