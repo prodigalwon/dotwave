@@ -26,7 +26,7 @@ class AppTheme {
     (name: 'Pacific Blue', color: Color(0xFF009DC4)),
     (name: 'Tiger Orange', color: Color(0xFFF96815)),
     (name: 'Electric Violet', color: Color(0xFFBF37FF)),
-    (name: 'Chartreuse', color: Color(0xFF7FFF00)),
+    (name: 'Mint', color: Color(0xFF4DE6B5)),
   ];
 
   /// Lighten/darken in HSL space — lets the card gradient adapt to any accent.
