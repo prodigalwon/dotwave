@@ -69,7 +69,20 @@ ark-groth16 = { version = "0.5", default-features = false }
 ark-snark = { version = "0.5", default-features = false }
 ark-std = { version = "0.5", default-features = false }
 ark-serialize = { version = "0.5", default-features = false }
+ark-ff = { version = "0.5", default-features = false }
 sha2 = "0.10"
+
+# Chat anonymous-membership prover (the `membership_prover` bin). Path-depped
+# from the rostro-main checkout so the circuit / Poseidon / tree definitions are
+# the single source of truth shared with the node's verifier — no Circom
+# re-implementation to drift. The groth16 feature pulls the BN254 proving
+# machinery; the chat-membership-auth crate supplies the exact challenge /
+# session-commit derivations the guard reconstructs.
+rostro-poseidon-bn254 = { path = "/home/coder/Rostro/substrate/utils/rostro-poseidon-bn254" }
+rostro-membership-tree = { path = "/home/coder/Rostro/substrate/utils/rostro-membership-tree" }
+rostro-membership-circuit = { path = "/home/coder/Rostro/substrate/utils/rostro-membership-circuit", features = ["groth16"] }
+rostro-chat-membership-auth = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-membership-auth" }
+serde_json = "1"
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]

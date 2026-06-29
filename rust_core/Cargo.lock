@@ -180,6 +180,7 @@ checksum = "d69eab57e8d2663efa5c63135b2af4f396d66424f88954c21104125ab6b3e6bc"
 dependencies = [
  "ark-ec 0.5.0",
  "ark-ff 0.5.0",
+ "ark-r1cs-std",
  "ark-std 0.5.0",
 ]
 
@@ -222,6 +223,7 @@ dependencies = [
  "ark-crypto-primitives-macros",
  "ark-ec 0.5.0",
  "ark-ff 0.5.0",
+ "ark-r1cs-std",
  "ark-relations",
  "ark-serialize 0.5.0",
  "ark-snark",
@@ -233,6 +235,7 @@ dependencies = [
  "merlin",
  "rayon",
  "sha2 0.10.9",
+ "tracing",
 ]
 
 [[package]]
@@ -427,6 +430,23 @@ dependencies = [
  "fnv",
  "hashbrown 0.15.5",
  "rayon",
+]
+
+[[package]]
+name = "ark-r1cs-std"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "941551ef1df4c7a401de7068758db6503598e6f01850bdb2cfdb614a1f9dbea1"
+dependencies = [
+ "ark-ec 0.5.0",
+ "ark-ff 0.5.0",
+ "ark-relations",
+ "ark-std 0.5.0",
+ "educe",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "tracing",
 ]
 
 [[package]]
@@ -5062,6 +5082,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rostro-chat-membership-auth"
+version = "0.1.0"
+dependencies = [
+ "ark-bn254",
+ "ark-ff 0.5.0",
+ "ark-groth16",
+ "rostro-membership-circuit",
+ "rostro-poseidon-bn254",
+]
+
+[[package]]
 name = "rostro-chat-onion"
 version = "0.1.0"
 dependencies = [
@@ -5115,6 +5146,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "rostro-membership-circuit"
+version = "0.1.0"
+dependencies = [
+ "ark-bn254",
+ "ark-ff 0.5.0",
+ "ark-groth16",
+ "ark-r1cs-std",
+ "ark-relations",
+ "ark-serialize 0.5.0",
+ "ark-snark",
+ "ark-std 0.5.0",
+ "rostro-membership-tree",
+ "rostro-poseidon-bn254",
+]
+
+[[package]]
+name = "rostro-membership-tree"
+version = "0.1.0"
+dependencies = [
+ "ark-bn254",
+ "ark-ff 0.5.0",
+ "rostro-poseidon-bn254",
+]
+
+[[package]]
 name = "rostro-node-identity"
 version = "0.1.0"
 dependencies = [
@@ -5125,6 +5181,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rostro-poseidon-bn254"
+version = "0.1.0"
+dependencies = [
+ "ark-bn254",
+ "ark-crypto-primitives",
+ "ark-ff 0.5.0",
+ "ark-r1cs-std",
+ "ark-relations",
+ "ark-serialize 0.5.0",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "rust_core"
 version = "0.1.0"
 dependencies = [
@@ -5132,6 +5201,7 @@ dependencies = [
  "argon2",
  "ark-bn254",
  "ark-circom",
+ "ark-ff 0.5.0",
  "ark-groth16",
  "ark-serialize 0.5.0",
  "ark-snark",
@@ -5153,14 +5223,19 @@ dependencies = [
  "ring",
  "rostro-chat-content-seal",
  "rostro-chat-dr",
+ "rostro-chat-membership-auth",
  "rostro-chat-onion",
  "rostro-chat-primitives",
  "rostro-chat-sealed-sender",
  "rostro-client",
+ "rostro-membership-circuit",
+ "rostro-membership-tree",
  "rostro-node-identity",
+ "rostro-poseidon-bn254",
  "scale-info",
  "scale-value",
  "serde",
+ "serde_json",
  "sha2 0.10.9",
  "sp-core 39.0.0",
  "subxt",
