@@ -2430,22 +2430,148 @@ pub fn extract_sec1_from_x509_leaf(leaf_der: Vec<u8>) -> Result<Vec<u8>, String>
 // (test_enroll_membership, the NODE record) that predate the app's typed metadata.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// TEST HARNESS: submit `ZkPki::test_enroll_membership(id_commitment)` — enrol a
+/// TEST HARNESS: submit `ZkPki::test_enroll_membership(id_commitment)` for the
+/// membership secret `s` (computes `id_commitment = Poseidon(s)`). Enrols a
 /// membership leaf directly (no cert). Returns the extrinsic hash.
 #[flutter_rust_bridge::frb(ignore)]
 pub fn lab_test_enroll(
-    id_commitment_hex: String,
+    s_hex: String,
     phrase: String,
     rpc_url: String,
 ) -> Result<String, String> {
+    use rostro_poseidon_bn254::{fr_from_canonical_bytes_le, fr_to_bytes_le, id_commitment, params};
     use subxt::dynamic::Value;
-    let idc = decode_hex_32(&id_commitment_hex, "id_commitment")?;
+    let s = fr_from_canonical_bytes_le(&decode_hex_32(&s_hex, "s")?)
+        .ok_or("s is not a canonical field element")?;
+    let idc = fr_to_bytes_le(&id_commitment(&params(), s));
     let tx = subxt::dynamic::tx(
         "ZkPki",
         "test_enroll_membership",
         vec![("id_commitment".to_string(), Value::from_bytes(idc))],
     );
     submit_typed(&phrase, &rpc_url, tx)
+}
+
+/// TEST HARNESS: build the membership witness locally (a single-leaf tree at
+/// index 0, matching the chain after `lab_test_enroll` with the same `s`), prove
+/// with the pinned `pk`, and POST `chat_authenticateMembership` to the guard.
+/// Reads the best block for the anchor + derives the current epoch. Returns the
+/// guard's session result on success (or the RPC error if auth is rejected).
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_authenticate_membership(
+    s_hex: String,
+    guard_node_id_hex: String,
+    guard_rpc: String,
+    chain_rpc: String,
+    pk_bytes: Vec<u8>,
+) -> Result<String, String> {
+    use ark_std::rand::{rngs::StdRng, SeedableRng};
+    use rostro_chat_membership_auth::{derive_challenge, derive_session_commit};
+    use rostro_membership_circuit::{groth16, MembershipCircuit};
+    use rostro_membership_tree::{MembershipTree, DEPTH};
+    use rostro_poseidon_bn254::{
+        fr_from_canonical_bytes_le, fr_to_bytes_le, hash_leaf, id_commitment, nullifier, params,
+    };
+    use ark_bn254::Fr;
+
+    // MUST match ZkPki::test_enroll_membership + the pallet's membership scope.
+    const EXPIRY: u64 = 1_000_000;
+    const FRESH_UNTIL: u64 = 1_000_000;
+    const SCOPE: u64 = 1;
+    const EPOCH_LENGTH_BLOCKS: u64 = 14_400;
+
+    let p = params();
+    let s = fr_from_canonical_bytes_le(&decode_hex_32(&s_hex, "s")?)
+        .ok_or("s is not a canonical field element")?;
+    let idc = id_commitment(&p, s);
+    let leaf = hash_leaf(&p, idc, Fr::from(EXPIRY), Fr::from(SCOPE));
+
+    // Single-leaf trees at index 0 — byte-identical to the chain after test-enroll.
+    let mut mtree = MembershipTree::new(128);
+    let index = mtree.insert(leaf).ok_or("membership tree full")?;
+    let mut ftree = MembershipTree::new(128);
+    ftree.insert(Fr::from(FRESH_UNTIL)).ok_or("freshness tree full")?;
+    let m_root = mtree.root();
+    let f_root = ftree.root();
+    let m_path = mtree.path(index).to_vec();
+    let f_path = ftree.path(index).to_vec();
+
+    let guard_node_id = decode_hex_32(&guard_node_id_hex, "guard_node_id")?;
+    let mut session_pubkey = [0u8; 32];
+    getrandom_fill(&mut session_pubkey).map_err(|e| format!("getrandom: {e}"))?;
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // Best block → anchor + current epoch (block / EPOCH_LENGTH_BLOCKS).
+    let best_number: u64 = rt.block_on(async {
+        let (_api, rpc) = connect_rostro_with_rpc(&chain_rpc).await?;
+        let header: serde_json::Value = rpc
+            .request("chain_getHeader", subxt::rpcs::rpc_params![])
+            .await
+            .map_err(|e| e.to_string())?;
+        let num = header
+            .get("number")
+            .and_then(|v| v.as_str())
+            .ok_or("header.number missing")?;
+        u64::from_str_radix(num.trim_start_matches("0x"), 16)
+            .map_err(|e| format!("parse block number: {e}"))
+    })?;
+    let anchor_block = best_number;
+    let current_epoch = best_number / EPOCH_LENGTH_BLOCKS;
+
+    // Build the circuit + prove.
+    let null = nullifier(&p, s, Fr::from(current_epoch));
+    let challenge = derive_challenge(&guard_node_id, anchor_block, &session_pubkey);
+    let session_commit = derive_session_commit(&session_pubkey);
+    let index_bits: Vec<bool> = (0..DEPTH).map(|i| (index >> i) & 1 == 1).collect();
+    let circuit = MembershipCircuit {
+        membership_root: Some(m_root),
+        freshness_root: Some(f_root),
+        nullifier: Some(null),
+        current_epoch: Some(Fr::from(current_epoch)),
+        anchor_block: Some(Fr::from(anchor_block)),
+        scope: Some(Fr::from(SCOPE)),
+        challenge: Some(challenge),
+        session_pubkey: Some(session_commit),
+        s: Some(s),
+        expiry_block: Some(Fr::from(EXPIRY)),
+        fresh_until_epoch: Some(Fr::from(FRESH_UNTIL)),
+        index_bits: Some(index_bits),
+        membership_path: Some(m_path),
+        freshness_path: Some(f_path),
+    };
+    let pk = groth16::deserialize_pk(&pk_bytes).ok_or("pk failed to decode")?;
+    let mut rng = StdRng::seed_from_u64(7);
+    let proof = groth16::prove(&pk, circuit, &mut rng).ok_or("proof synthesis failed")?;
+    let proof_bytes = groth16::serialize_proof(&proof);
+
+    // POST chat_authenticateMembership to the guard; a rejection surfaces here.
+    let result: serde_json::Value = rt.block_on(async {
+        let (_api, guard) = connect_rostro_with_rpc(&guard_rpc).await?;
+        guard
+            .request(
+                "chat_authenticateMembership",
+                subxt::rpcs::rpc_params![
+                    format!("0x{}", hex::encode(&proof_bytes)),
+                    format!("0x{}", hex::encode(fr_to_bytes_le(&m_root))),
+                    format!("0x{}", hex::encode(fr_to_bytes_le(&f_root))),
+                    format!("0x{}", hex::encode(fr_to_bytes_le(&null))),
+                    current_epoch,
+                    anchor_block,
+                    format!("0x{}", hex::encode(session_pubkey))
+                ],
+            )
+            .await
+            .map_err(|e| format!("chat_authenticateMembership: {e}"))
+    })?;
+
+    Ok(format!(
+        "epoch={current_epoch} anchor={anchor_block} nullifier=0x{} session={result}",
+        hex::encode(fr_to_bytes_le(&null))
+    ))
 }
 
 /// LAB: register a plain RNS name for the signer (best-effort; an already-owned

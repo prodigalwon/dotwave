@@ -22,7 +22,8 @@ use rust_core::chat::{
 };
 use rust_core::core::{
     chat_mint_test_cert, chat_resolve_identity, chat_setup_messaging, dev_cert_seed_hex,
-    fetch_balance, lab_register_name, lab_set_node_record, lab_test_enroll, send_dot,
+    fetch_balance, lab_authenticate_membership, lab_register_name, lab_set_node_record,
+    lab_test_enroll, send_dot,
 };
 use rust_core::dead_drop::DeadDropThread;
 
@@ -672,17 +673,37 @@ fn main() {
             );
         }
         "test-enroll" => {
-            // test-enroll <id_commitment_hex> [suri] [rpc]
-            // chat-spend-witness harness: enrol a membership leaf for id_commitment
-            // via ZkPki::test_enroll_membership (skips the mint gauntlet).
-            let idc = args.get(2).expect("usage: test-enroll <id_commitment_hex> [suri] [rpc]").clone();
+            // test-enroll <s_hex> [suri] [rpc]
+            // chat-spend-witness harness: enrol a membership leaf for the secret s
+            // (id_commitment = Poseidon(s)) via ZkPki::test_enroll_membership.
+            let s = args.get(2).expect("usage: test-enroll <s_hex> [suri] [rpc]").clone();
             let suri = args.get(3).map(String::as_str).unwrap_or("//Alice").to_string();
             let rpc = args.get(4).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
-            println!("enrolling membership leaf for id_commitment {} via {rpc} ...", short(&idc));
-            match lab_test_enroll(idc, suri, rpc) {
+            println!("enrolling membership leaf for secret {} via {rpc} ...", short(&s));
+            match lab_test_enroll(s, suri, rpc) {
                 Ok(h) => println!("test-enroll ok: {h}"),
                 Err(e) => {
                     eprintln!("test-enroll FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "auth" => {
+            // auth <s_hex> <guard_rpc> <pk_path> [chain_rpc]
+            // Build the witness locally (matching the test-enrolled leaf), prove,
+            // and POST chat_authenticateMembership to the guard — this is what
+            // fires the witnessed-spend committee flow.
+            let s = args.get(2).expect("usage: auth <s_hex> <guard_rpc> <pk_path> [chain_rpc]").clone();
+            let guard_rpc = args.get(3).expect("need <guard_rpc>").clone();
+            let pk_path = args.get(4).expect("need <pk_path>").clone();
+            let chain_rpc = args.get(5).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            let guard_node_id = chat_node_info(guard_rpc.clone()).expect("guard node info");
+            let pk_bytes = std::fs::read(&pk_path).expect("read pk file");
+            println!("proving + authenticating at guard {guard_rpc} (node {}) ...", short(&guard_node_id));
+            match lab_authenticate_membership(s, guard_node_id, guard_rpc, chain_rpc, pk_bytes) {
+                Ok(o) => println!("AUTH OK: {o}"),
+                Err(e) => {
+                    eprintln!("AUTH FAILED: {e}");
                     std::process::exit(1);
                 }
             }
@@ -708,7 +729,7 @@ fn main() {
             }
         }
         _ => {
-            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-say <callsign> <recipient_name> \"<text>\" ...|deaddrop-poll <label> [guard]|deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]|test-enroll <id_commitment_hex> [suri] [rpc]|enroll-node <name> <node_key_hex> [suri] [rpc]>");
+            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-say <callsign> <recipient_name> \"<text>\" ...|deaddrop-poll <label> [guard]|deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]|test-enroll <s_hex> [suri] [rpc]|enroll-node <name> <node_key_hex> [suri] [rpc]|auth <s_hex> <guard_rpc> <pk_path> [chain_rpc]>");
             std::process::exit(2);
         }
     }
