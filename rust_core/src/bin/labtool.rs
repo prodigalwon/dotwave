@@ -22,7 +22,7 @@ use rust_core::chat::{
 };
 use rust_core::core::{
     chat_mint_test_cert, chat_resolve_identity, chat_setup_messaging, dev_cert_seed_hex,
-    fetch_balance, send_dot,
+    fetch_balance, lab_register_name, lab_set_node_record, lab_test_enroll, send_dot,
 };
 use rust_core::dead_drop::DeadDropThread;
 
@@ -671,8 +671,44 @@ fn main() {
                 short(&resolved.ed25519_pubkey_hex), short(&outcome.message_id_hex), short(&outcome.new_self_hash_hex),
             );
         }
+        "test-enroll" => {
+            // test-enroll <id_commitment_hex> [suri] [rpc]
+            // chat-spend-witness harness: enrol a membership leaf for id_commitment
+            // via ZkPki::test_enroll_membership (skips the mint gauntlet).
+            let idc = args.get(2).expect("usage: test-enroll <id_commitment_hex> [suri] [rpc]").clone();
+            let suri = args.get(3).map(String::as_str).unwrap_or("//Alice").to_string();
+            let rpc = args.get(4).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            println!("enrolling membership leaf for id_commitment {} via {rpc} ...", short(&idc));
+            match lab_test_enroll(idc, suri, rpc) {
+                Ok(h) => println!("test-enroll ok: {h}"),
+                Err(e) => {
+                    eprintln!("test-enroll FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "enroll-node" => {
+            // enroll-node <name> <node_key_hex> [suri] [rpc]
+            // Register <name>.rst (best-effort) and set its NODE record to the
+            // guard's 32-byte libp2p key — enrols the guard into the committee set.
+            let name = args.get(2).expect("usage: enroll-node <name> <node_key_hex> [suri] [rpc]").clone();
+            let node_key = args.get(3).expect("need <node_key_hex>").clone();
+            let suri = args.get(4).map(String::as_str).unwrap_or("//Alice").to_string();
+            let rpc = args.get(5).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match lab_register_name(name.clone(), suri.clone(), rpc.clone()) {
+                Ok(h) => println!("registered {name}.rst: {h}"),
+                Err(e) => eprintln!("register {name}.rst note (continuing, may be already owned): {e}"),
+            }
+            match lab_set_node_record(name.clone(), node_key, suri, rpc) {
+                Ok(h) => println!("NODE record set for {name}.rst: {h}"),
+                Err(e) => {
+                    eprintln!("set NODE record FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
         _ => {
-            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-say <callsign> <recipient_name> \"<text>\" ...|deaddrop-poll <label> [guard]|deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]>");
+            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-say <callsign> <recipient_name> \"<text>\" ...|deaddrop-poll <label> [guard]|deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]|test-enroll <id_commitment_hex> [suri] [rpc]|enroll-node <name> <node_key_hex> [suri] [rpc]>");
             std::process::exit(2);
         }
     }

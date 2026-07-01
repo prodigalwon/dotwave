@@ -2423,6 +2423,74 @@ pub fn extract_sec1_from_x509_leaf(leaf_der: Vec<u8>) -> Result<Vec<u8>, String>
     Ok(leaf_der[sec1_start..sec1_end].to_vec())
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// chat-spend-witness lab harness (labtool-only; NOT bridged to the app).
+// Dynamic calls through `submit_typed` so they get the immortal-era / best-nonce
+// write-path that survives the non-finalizing lab rig, and so they reach calls
+// (test_enroll_membership, the NODE record) that predate the app's typed metadata.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// TEST HARNESS: submit `ZkPki::test_enroll_membership(id_commitment)` — enrol a
+/// membership leaf directly (no cert). Returns the extrinsic hash.
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_test_enroll(
+    id_commitment_hex: String,
+    phrase: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    use subxt::dynamic::Value;
+    let idc = decode_hex_32(&id_commitment_hex, "id_commitment")?;
+    let tx = subxt::dynamic::tx(
+        "ZkPki",
+        "test_enroll_membership",
+        vec![("id_commitment".to_string(), Value::from_bytes(idc))],
+    );
+    submit_typed(&phrase, &rpc_url, tx)
+}
+
+/// LAB: register a plain RNS name for the signer (best-effort; an already-owned
+/// name errors, which the caller may ignore).
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_register_name(
+    name: String,
+    phrase: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    use subxt::dynamic::Value;
+    let tx = subxt::dynamic::tx(
+        "RnsRegistrar",
+        "register",
+        vec![
+            ("name".to_string(), Value::from_bytes(name.into_bytes())),
+            ("reject_offer".to_string(), Value::unnamed_variant("None", Vec::<Value>::new())),
+        ],
+    );
+    submit_typed(&phrase, &rpc_url, tx)
+}
+
+/// LAB: set the `NODE` record (32-byte libp2p ed25519 key) for `name`, enrolling
+/// the node into the witnessed-spend guard set. Signer must own `name`.
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_set_node_record(
+    name: String,
+    node_key_hex: String,
+    phrase: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    use subxt::dynamic::Value;
+    let key = decode_hex_32(&node_key_hex, "node_key")?;
+    let tx = subxt::dynamic::tx(
+        "RnsResolvers",
+        "set_record",
+        vec![
+            ("name".to_string(), Value::from_bytes(name.into_bytes())),
+            ("record_type".to_string(), Value::unnamed_variant("NODE", Vec::<Value>::new())),
+            ("content".to_string(), Value::from_bytes(key.to_vec())),
+        ],
+    );
+    submit_typed(&phrase, &rpc_url, tx)
+}
+
 pub(crate) fn decode_hex_n<const N: usize>(hex: &str, label: &str) -> Result<[u8; N], String> {
     let bytes = decode_hex_bytes(hex, label)?;
     if bytes.len() != N {
