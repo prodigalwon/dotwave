@@ -89,6 +89,38 @@ fn submit_typed<Call: subxt::tx::Payload>(
     })
 }
 
+/// A minimal `Payload` carrying *native* (non-`scale_value`) call data.
+///
+/// subxt 0.50's dynamic encoder cannot encode a byte-vector argument: a
+/// `scale_value::Value` built from bytes is a `Composite` of `u128`s, and
+/// scale-encode 0.10's composite encoder has no `visit_sequence` arm, so
+/// encoding it into a `Vec<u8>` / `BoundedVec<u8>` field fails with
+/// "Cannot encode Struct into type with ID N". Every RNS call with a `name` or
+/// `content` byte-vec hits this (ConvictionVoting works only because it has no
+/// byte-vec arg). Native `Vec<u8>` / `[u8; N]` route straight through
+/// scale-encode's sequence/array/newtype visitors, and `scale_value::Value` is
+/// still fine for the non-sequence fields (enum variants such as
+/// `RecordType::NODE`). `validation_details` returns `None`, so subxt skips the
+/// compile-time-hash check and just encodes against live metadata.
+struct RawFieldsPayload<C> {
+    pallet: &'static str,
+    call: &'static str,
+    data: C,
+}
+
+impl<C: subxt::ext::scale_encode::EncodeAsFields> subxt::tx::Payload for RawFieldsPayload<C> {
+    type CallData = C;
+    fn pallet_name(&self) -> &str {
+        self.pallet
+    }
+    fn call_name(&self) -> &str {
+        self.call
+    }
+    fn call_data(&self) -> &C {
+        &self.data
+    }
+}
+
 /// Submit an already-signed transaction and wait until it is included in a best
 /// block, then confirm it actually dispatched (`System.ExtrinsicSuccess` vs
 /// `ExtrinsicFailed`). Unlike a bare `.submit()` — which returns the moment the
@@ -2440,15 +2472,15 @@ pub fn lab_test_enroll(
     rpc_url: String,
 ) -> Result<String, String> {
     use rostro_poseidon_bn254::{fr_from_canonical_bytes_le, fr_to_bytes_le, id_commitment, params};
-    use subxt::dynamic::Value;
     let s = fr_from_canonical_bytes_le(&decode_hex_32(&s_hex, "s")?)
         .ok_or("s is not a canonical field element")?;
-    let idc = fr_to_bytes_le(&id_commitment(&params(), s));
-    let tx = subxt::dynamic::tx(
-        "ZkPki",
-        "test_enroll_membership",
-        vec![("id_commitment".to_string(), Value::from_bytes(idc))],
-    );
+    let idc: [u8; 32] = fr_to_bytes_le(&id_commitment(&params(), s));
+    // id_commitment is a `[u8; 32]` arg — pass it natively (see RawFieldsPayload).
+    let tx = RawFieldsPayload {
+        pallet: "ZkPki",
+        call: "test_enroll_membership",
+        data: (idc,),
+    };
     submit_typed(&phrase, &rpc_url, tx)
 }
 
@@ -2582,15 +2614,12 @@ pub fn lab_register_name(
     phrase: String,
     rpc_url: String,
 ) -> Result<String, String> {
-    use subxt::dynamic::Value;
-    let tx = subxt::dynamic::tx(
-        "RnsRegistrar",
-        "register",
-        vec![
-            ("name".to_string(), Value::from_bytes(name.into_bytes())),
-            ("reject_offer".to_string(), Value::unnamed_variant("None", Vec::<Value>::new())),
-        ],
-    );
+    // name: Vec<u8>, reject_offer: Option<Vec<u8>> — both native (see RawFieldsPayload).
+    let tx = RawFieldsPayload {
+        pallet: "RnsRegistrar",
+        call: "register",
+        data: (name.into_bytes(), Option::<Vec<u8>>::None),
+    };
     submit_typed(&phrase, &rpc_url, tx)
 }
 
@@ -2603,17 +2632,16 @@ pub fn lab_set_node_record(
     phrase: String,
     rpc_url: String,
 ) -> Result<String, String> {
-    use subxt::dynamic::Value;
     let key = decode_hex_32(&node_key_hex, "node_key")?;
-    let tx = subxt::dynamic::tx(
-        "RnsResolvers",
-        "set_record",
-        vec![
-            ("name".to_string(), Value::from_bytes(name.into_bytes())),
-            ("record_type".to_string(), Value::unnamed_variant("NODE", Vec::<Value>::new())),
-            ("content".to_string(), Value::from_bytes(key.to_vec())),
-        ],
-    );
+    // name + content (BoundedVec<u8>) are native byte-vecs; record_type is an
+    // enum, so a scale_value Variant is correct (variants aren't the broken
+    // sequence path). See RawFieldsPayload.
+    let record_type = scale_value::Value::unnamed_variant("NODE", Vec::<scale_value::Value<()>>::new());
+    let tx = RawFieldsPayload {
+        pallet: "RnsResolvers",
+        call: "set_record",
+        data: (name.into_bytes(), record_type, key.to_vec()),
+    };
     submit_typed(&phrase, &rpc_url, tx)
 }
 
