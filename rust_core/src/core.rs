@@ -609,14 +609,17 @@ pub fn vote_on_referendum(
             ("balance", Value::from(balance)),
         ]);
 
-        let tx = subxt::dynamic::tx(
-            "ConvictionVoting",
-            "vote",
-            vec![
-                ("poll_index".to_string(), Value::from(referendum_index)),
-                ("vote".to_string(),       account_vote),
-            ],
-        );
+        // subxt 0.50's dynamic::tx takes CallData: EncodeAsFields directly (no
+        // Into<Composite> coercion like 0.44 had). A raw Vec<(String, Value)>
+        // would hit the blanket `EncodeAsFields for Vec<V>` and encode as a
+        // *sequence of (name, value) tuples*, not named fields. Convert to a
+        // named Composite explicitly so the fields line up.
+        let fields: scale_value::Composite<()> = vec![
+            ("poll_index".to_string(), Value::from(referendum_index)),
+            ("vote".to_string(),       account_vote),
+        ]
+        .into();
+        let tx = subxt::dynamic::tx("ConvictionVoting", "vote", fields);
 
         let hash = api
             .tx()
