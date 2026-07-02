@@ -285,6 +285,69 @@ class MainActivity : FlutterFragmentActivity() {
                         .build()
                     prompt.authenticate(promptInfo)
                 }
+                "membershipEnsureWKey" -> {
+                    // Idempotent: returns the existing W pubkey if the key
+                    // exists (never rotates — see StrongBoxManager docs).
+                    // Key GENERATION needs no biometric; only the ECDH does.
+                    val pubkey = StrongBoxManager.ensureMembershipWKey()
+                    if (pubkey != null) {
+                        result.success(pubkey)
+                    } else {
+                        result.error("MEMBERSHIP_W_ERROR", "Failed to ensure membership W key (StrongBox/API-31 required)", null)
+                    }
+                }
+                "membershipEcdh" -> {
+                    val pFixed = call.argument<ByteArray>("pFixedSec1")
+                    if (pFixed == null) {
+                        result.error("INVALID_ARGS", "pFixedSec1 required", null)
+                        return@setMethodCallHandler
+                    }
+                    // Biometric gate: one STRONG prompt authorizes the
+                    // in-chip ECDH(W, P_FIXED) for the auth window. Same
+                    // windowed model as contentEcdh.
+                    val executor = ContextCompat.getMainExecutor(this)
+                    val prompt = BiometricPrompt(this, executor,
+                        object : BiometricPrompt.AuthenticationCallback() {
+                            override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
+                                val shared = StrongBoxManager.computeMembershipEcdh(pFixed)
+                                if (shared != null) {
+                                    result.success(shared)
+                                } else {
+                                    result.error("ECDH_ERROR", "In-chip membership ECDH failed after auth", null)
+                                }
+                            }
+                            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                result.error("BIOMETRIC_ERROR", errString.toString(), null)
+                            }
+                            override fun onAuthenticationFailed() {
+                                // OS may allow retry
+                            }
+                        }
+                    )
+                    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                        .setTitle("Prove Membership")
+                        .setSubtitle("Biometric required to authenticate")
+                        .setNegativeButtonText("Cancel")
+                        .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                        .build()
+                    prompt.authenticate(promptInfo)
+                }
+                "zkpkiSignIdBinding" -> {
+                    val bindingMsg = call.argument<ByteArray>("bindingMsg")
+                    if (bindingMsg == null || bindingMsg.size != 32) {
+                        result.error("INVALID_ARGS", "bindingMsg (32 bytes) required", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        result.success(ZkPkiCeremony.signIdBinding(bindingMsg))
+                    } catch (e: Exception) {
+                        result.error(
+                            "ID_BINDING_ERROR",
+                            e.message ?: "attest_ec id-binding signature failed",
+                            mapOf("errorClass" to e.javaClass.name)
+                        )
+                    }
+                }
                 "getAttestationCertChain" -> {
                     val challengeBytes = call.argument<ByteArray>("challengeBytes")
                     if (challengeBytes == null) {

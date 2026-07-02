@@ -22,8 +22,10 @@ use rust_core::chat::{
 };
 use rust_core::core::{
     chat_mint_test_cert, chat_resolve_identity, chat_setup_messaging, dev_cert_seed_hex,
-    fetch_balance, send_dot,
+    fetch_balance, lab_authenticate_membership, lab_bootstrap_issuer, lab_offer_contract,
+    lab_register_name, lab_set_node_record, lab_test_enroll, send_dot,
 };
+use rust_core::membership::{lab_witness_check, verify_id_binding};
 use rust_core::dead_drop::DeadDropThread;
 
 const FERDIE_CHAT_SEED: &str = "f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1";
@@ -86,6 +88,23 @@ fn main() {
             println!("--- paste these into the app's New Conversation if not resolving by name ---");
             println!("chat address: {}", id.ed25519_pubkey_hex);
             println!("content key:  {ck}");
+        }
+        // Resolve a name's published chat identity (CHAT + MESSAGE records) —
+        // exactly what the app does before sending. Use to confirm a recipient is
+        // reachable through a given node (e.g. the guard the phone talks to).
+        "resolve" => {
+            let name = args.get(2).expect("usage: resolve <name> [rpc]").clone();
+            let rpc = args.get(3).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match chat_resolve_identity(name.clone(), rpc.clone()) {
+                Ok(r) => println!(
+                    "{name} @ {rpc}: found={} has_message_key={}\n  chat address: {}\n  content key:  {}",
+                    r.found, r.has_message_key, r.ed25519_pubkey_hex, r.inner_content_key_hex
+                ),
+                Err(e) => {
+                    eprintln!("resolve FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
         }
         "fund" => {
             let ss58 = args.get(2).expect("usage: fund <ss58> [amount] [rpc]").clone();
@@ -293,6 +312,8 @@ fn main() {
                     prev.clone(),
                     now + k as u64,
                     None, // lab sends carry no avatar
+                    None, // no session (cert-auth path)
+                    None,
                 )
                 .expect("send onion");
                 println!(
@@ -383,6 +404,8 @@ fn main() {
                 None,
                 now,
                 None, // lab sends carry no avatar
+                    None, // no session (cert-auth path)
+                    None,
             )
             .expect("send onion");
             println!(
@@ -436,6 +459,8 @@ fn main() {
                     prev.clone(),
                     now + k as u64,
                     None, // lab sends carry no avatar
+                    None, // no session (cert-auth path)
+                    None,
                 )
                 .expect("send onion");
                 println!(
@@ -671,8 +696,133 @@ fn main() {
                 short(&resolved.ed25519_pubkey_hex), short(&outcome.message_id_hex), short(&outcome.new_self_hash_hex),
             );
         }
+        "test-enroll" => {
+            // test-enroll <s_hex> [suri] [rpc]
+            // chat-spend-witness harness: enrol a membership leaf for the secret s
+            // (id_commitment = Poseidon(s)) via ZkPki::test_enroll_membership.
+            let s = args.get(2).expect("usage: test-enroll <s_hex> [suri] [rpc]").clone();
+            let suri = args.get(3).map(String::as_str).unwrap_or("//Alice").to_string();
+            let rpc = args.get(4).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            println!("enrolling membership leaf for secret {} via {rpc} ...", short(&s));
+            match lab_test_enroll(s, suri, rpc) {
+                Ok(h) => println!("test-enroll ok: {h}"),
+                Err(e) => {
+                    eprintln!("test-enroll FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "auth" => {
+            // auth <s_hex> <guard_rpc> <pk_path> [chain_rpc]
+            // Build the witness locally (matching the test-enrolled leaf), prove,
+            // and POST chat_authenticateMembership to the guard — this is what
+            // fires the witnessed-spend committee flow.
+            let s = args.get(2).expect("usage: auth <s_hex> <guard_rpc> <pk_path> [chain_rpc]").clone();
+            let guard_rpc = args.get(3).expect("need <guard_rpc>").clone();
+            let pk_path = args.get(4).expect("need <pk_path>").clone();
+            let chain_rpc = args.get(5).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            let guard_node_id = chat_node_info(guard_rpc.clone()).expect("guard node info");
+            let pk_bytes = std::fs::read(&pk_path).expect("read pk file");
+            println!("proving + authenticating at guard {guard_rpc} (node {}) ...", short(&guard_node_id));
+            match lab_authenticate_membership(s, guard_node_id, guard_rpc, chain_rpc, pk_bytes) {
+                Ok(o) => println!("AUTH OK: {o}"),
+                Err(e) => {
+                    eprintln!("AUTH FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "enroll-node" => {
+            // enroll-node <name> <node_key_hex> [suri] [rpc]
+            // Register <name>.rst (best-effort) and set its NODE record to the
+            // guard's 32-byte libp2p key — enrols the guard into the committee set.
+            let name = args.get(2).expect("usage: enroll-node <name> <node_key_hex> [suri] [rpc]").clone();
+            let node_key = args.get(3).expect("need <node_key_hex>").clone();
+            let suri = args.get(4).map(String::as_str).unwrap_or("//Alice").to_string();
+            let rpc = args.get(5).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match lab_register_name(name.clone(), suri.clone(), rpc.clone()) {
+                Ok(h) => println!("registered {name}.rst: {h}"),
+                Err(e) => eprintln!("register {name}.rst note (continuing, may be already owned): {e}"),
+            }
+            match lab_set_node_record(name.clone(), node_key, suri, rpc) {
+                Ok(h) => println!("NODE record set for {name}.rst: {h}"),
+                Err(e) => {
+                    eprintln!("set NODE record FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "bootstrap-issuer" => {
+            // bootstrap-issuer [root_suri] [issuer_suri] [template] [rpc]
+            // Idempotent issuer-side zkpki bootstrap for the phone mint:
+            // root cert -> issuer cert -> MimeWrap PoP template.
+            let root = args.get(2).map(String::as_str).unwrap_or("//Bob").to_string();
+            let issuer = args.get(3).map(String::as_str).unwrap_or("//Charlie").to_string();
+            let template = args.get(4).map(String::as_str).unwrap_or("mimewrap-chat").to_string();
+            let rpc = args.get(5).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match lab_bootstrap_issuer(root, issuer, template, rpc) {
+                Ok(o) => println!("{o}"),
+                Err(e) => {
+                    eprintln!("bootstrap-issuer FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "offer" => {
+            // offer <user_ss58> [ttl_blocks] [issuer_suri] [template] [rpc]
+            // offer_contract to the phone account; prints the contract_nonce
+            // (= the ceremony/enrollment challenge) + offer_created_at_block
+            // for the mint screen.
+            let user = args.get(2).expect("usage: offer <user_ss58> [ttl_blocks] [issuer_suri] [template] [rpc]").clone();
+            let ttl: u32 = args.get(3).map(String::as_str).unwrap_or("100000").parse().expect("ttl_blocks u32");
+            let issuer = args.get(4).map(String::as_str).unwrap_or("//Charlie").to_string();
+            let template = args.get(5).map(String::as_str).unwrap_or("mimewrap-chat").to_string();
+            let rpc = args.get(6).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match lab_offer_contract(issuer, user, template, ttl, rpc) {
+                Ok(o) => println!("{o}"),
+                Err(e) => {
+                    eprintln!("offer FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "verify-enrollment" => {
+            // verify-enrollment <attest_sec1_hex> <id_commitment_hex> <challenge_hex> <sig_hex>
+            // M1 gate: does the phone's attest_ec id-binding signature verify
+            // exactly the way the chain's verify_chat_enrollment will?
+            let attest = args.get(2).expect("usage: verify-enrollment <attest_sec1> <id_commitment> <challenge> <sig>").clone();
+            let idc = args.get(3).expect("need <id_commitment_hex>").clone();
+            let challenge = args.get(4).expect("need <challenge_hex>").clone();
+            let sig = args.get(5).expect("need <sig_hex>").clone();
+            match verify_id_binding(attest, idc, challenge, sig) {
+                Ok(true) => println!("ENROLLMENT BINDING OK"),
+                Ok(false) => {
+                    eprintln!("ENROLLMENT BINDING INVALID");
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!("verify-enrollment FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "witness-check" => {
+            // witness-check <thumbprint_hex> <id_commitment_hex> [rpc]
+            // M2 gate: fetch membership_witness(thumbprint) from the chain and
+            // confirm the recomputed roots equal the live chain roots.
+            let tp = args.get(2).expect("usage: witness-check <thumbprint_hex> <id_commitment_hex> [rpc]").clone();
+            let idc = args.get(3).expect("need <id_commitment_hex>").clone();
+            let rpc = args.get(4).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match lab_witness_check(rpc, tp, idc) {
+                Ok(o) => println!("{o}"),
+                Err(e) => {
+                    eprintln!("witness-check FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
         _ => {
-            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-say <callsign> <recipient_name> \"<text>\" ...|deaddrop-poll <label> [guard]|deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]>");
+            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-say <callsign> <recipient_name> \"<text>\" ...|deaddrop-poll <label> [guard]|deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]|test-enroll <s_hex> [suri] [rpc]|enroll-node <name> <node_key_hex> [suri] [rpc]|auth <s_hex> <guard_rpc> <pk_path> [chain_rpc]|bootstrap-issuer [root] [issuer] [template] [rpc]|offer <user_ss58> [ttl] [issuer] [template] [rpc]|verify-enrollment <attest_sec1> <idc> <challenge> <sig>|witness-check <thumbprint> <idc> [rpc]>");
             std::process::exit(2);
         }
     }

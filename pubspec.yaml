@@ -97,6 +97,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/membership_pk.bin
     - assets/dotwave-tight.svg
     - assets/dotwave-logo.png
     - assets/branding/rostro-mark-white.png

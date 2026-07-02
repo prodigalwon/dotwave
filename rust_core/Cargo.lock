@@ -5088,6 +5088,7 @@ dependencies = [
  "ark-bn254",
  "ark-ff 0.5.0",
  "ark-groth16",
+ "parity-scale-codec",
  "rostro-membership-circuit",
  "rostro-poseidon-bn254",
 ]

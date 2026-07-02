@@ -181,6 +181,8 @@ fn onion_2hop_delivers() {
             None, // first message in this conversation → no chain predecessor
             0,    // composed_at unused by this transport-only assertion
             None, // no avatar in this transport-only assertion
+            None, // no session (cert-auth path)
+            None,
         ) {
             Ok(o) => {
                 println!("2-hop onion send OK: msg_id={}", o.message_id_hex);
@@ -276,6 +278,8 @@ fn onion_2hop_relay_unavailable() {
         None, // first message in this conversation → no chain predecessor
         0,    // composed_at unused by this transport-only assertion
         None, // no avatar in this transport-only assertion
+            None, // no session (cert-auth path)
+            None,
     );
     match res {
         Ok(o) => panic!("expected relay-unavailable, but the send succeeded: {}", o.message_id_hex),

@@ -326,20 +326,27 @@ object ZkPkiCeremony {
     }
 
     /**
-     * Generate the dedicated secondary EC key used only to sign the binding
-     * proof commitment at ceremony time.
+     * Generate the dedicated secondary EC key used only to sign the
+     * mint-time binding commitments.
      *
      * **DO NOT reuse this key for any other signing operation.**
      * Not for cert signing, not for contract acceptance, not for arbitrary
-     * messages. Its sole legitimate use is
-     * `signWithAttestKey(blake2b_256(hmac_binding_output || challenge))`
-     * immediately after ceremony completion.
+     * messages. Its exhaustive legitimate uses, both at ceremony/mint time
+     * and both domain-separated so neither can be replayed as the other:
      *
-     * The pallet's mint_cert validator expects the binding proof to be
-     * the ONLY signature this key ever produces. If this key is ever
-     * observed signing something else, the attestation's claim that it
-     * only-ever served the binding proof ceremony is falsified, and
-     * downstream security arguments collapse.
+     *   1. `signWithAttestKey(blake2b_256(hmac_binding_output || challenge))`
+     *      — the HMAC co-residency binding proof, immediately after
+     *      ceremony completion.
+     *   2. [signIdBinding] over
+     *      `blake2b_256(ID_BINDING_CONTEXT || id_commitment || challenge)`
+     *      — the chat-membership enrollment binding (anon-membership D2),
+     *      between ceremony and `mint_cert` submission.
+     *
+     * The pallet's mint_cert validator expects those to be the ONLY
+     * signatures this key ever produces. If this key is ever observed
+     * signing something else, the attestation's claim that it only-ever
+     * served the mint ceremony is falsified, and downstream security
+     * arguments collapse.
      *
      * **Why PURPOSE_SIGN|VERIFY and not PURPOSE_ATTEST_KEY?** The original
      * TODO 3 spec called for PURPOSE_ATTEST_KEY-only. That's correct for
@@ -456,6 +463,20 @@ object ZkPkiCeremony {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(hmacKey)
         return mac.doFinal(context.toByteArray(Charsets.UTF_8))
+    }
+
+    /**
+     * Sign the chat-membership id-binding message with the attest EC key
+     * (anon-membership D2: "W derives, attest_ec binds"). `bindingMsg`
+     * MUST be exactly rust_core's `membership_id_binding_msg` output —
+     * `blake2_256(ID_BINDING_CONTEXT || id_commitment || offer_nonce)` —
+     * whose domain-separation context guarantees this signature can never
+     * be replayed as the ceremony's HMAC binding proof (or vice versa).
+     * Verified on-chain by `verify_chat_enrollment` at `mint_cert`.
+     */
+    fun signIdBinding(bindingMsg: ByteArray): ByteArray {
+        require(bindingMsg.size == 32) { "bindingMsg must be a 32-byte digest" }
+        return signWithAttestKey(bindingMsg)
     }
 
     /**

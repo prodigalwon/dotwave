@@ -58,10 +58,9 @@ impl subxt::tx::Signer<RostroConfig> for Sr25519Signer {
 /// Sign and submit a dynamic extrinsic. Used by all PNS extrinsic wrappers
 /// to avoid repeating the keypair→signer→submit boilerplate.
 
-/// Sign and submit a *typed* extrinsic built from the `polkadot::tx()` macro.
-/// Typed counterpart to `submit_dynamic_tx`: the RNS wrappers use this because
-/// the dynamic encoder is incompatible with Rostro's metadata lineage, whereas
-/// the typed macro codegen produces byte-exact SCALE. `from_string` accepts
+/// Sign and submit any `subxt::tx::Payload` (typed `polkadot::tx()` macro OR a
+/// `subxt::dynamic::tx` built from a `scale_value::Composite`) using an immortal
+/// era + best-block nonce, then wait for in-best-block. `from_string` accepts
 /// both BIP39 mnemonics and SURIs (`//Alice`).
 fn submit_typed<Call: subxt::tx::Payload>(
     phrase: &str,
@@ -577,14 +576,17 @@ pub fn vote_on_referendum(
             ("balance", Value::from(balance)),
         ]);
 
-        let tx = subxt::dynamic::tx(
-            "ConvictionVoting",
-            "vote",
-            vec![
-                ("poll_index".to_string(), Value::from(referendum_index)),
-                ("vote".to_string(),       account_vote),
-            ],
-        );
+        // subxt 0.50's dynamic::tx takes CallData: EncodeAsFields directly (no
+        // Into<Composite> coercion like 0.44 had). A raw Vec<(String, Value)>
+        // would hit the blanket `EncodeAsFields for Vec<V>` and encode as a
+        // *sequence of (name, value) tuples*, not named fields. Convert to a
+        // named Composite explicitly so the fields line up.
+        let fields: scale_value::Composite<()> = vec![
+            ("poll_index".to_string(), Value::from(referendum_index)),
+            ("vote".to_string(),       account_vote),
+        ]
+        .into();
+        let tx = subxt::dynamic::tx("ConvictionVoting", "vote", fields);
 
         let hash = api
             .tx()
@@ -932,21 +934,27 @@ pub fn chat_publish_identity(
         .map_err(|e| format!("bad identity seed hex: {e}"))?
         .try_into()
         .map_err(|_| "identity seed must be 32 bytes".to_string())?;
+    use subxt::dynamic::Value;
     let signing = ed25519_zebra::SigningKey::from(seed);
     let outer_ed25519: [u8; 32] = ed25519_zebra::VerificationKey::from(&signing).into();
 
+    // set_record is submitted dynamically (against live metadata), NOT via the
+    // typed macro: the runtime's `RecordType` enum gained a `NODE` variant, so the
+    // pinned-metadata typed `set_record` carries a stale per-call validation hash
+    // that the node rejects. `register` (unchanged signature) still encodes typed
+    // fine, but set_record must go dynamic. See the dynamic::tx + Composite idiom.
+    let set_record = |record_type: &'static str, content: Vec<u8>| {
+        let fields: scale_value::Composite<()> = vec![
+            ("name".to_string(), Value::from_bytes(name.clone().into_bytes())),
+            ("record_type".to_string(), Value::unnamed_variant(record_type, Vec::<Value>::new())),
+            ("content".to_string(), Value::from_bytes(content)),
+        ]
+        .into();
+        submit_typed(&phrase, &rpc_url, subxt::dynamic::tx("RnsResolvers", "set_record", fields))
+    };
+
     // 1. CHAT — the 32-byte Ed25519 mail address (required).
-    let chat_tx = submit_typed(
-        &phrase,
-        &rpc_url,
-        polkadot::tx().rns_resolvers().set_record(
-            name.clone().into_bytes(),
-            polkadot::runtime_types::rns_types::ddns::codec_type::RecordType::CHAT,
-            polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec(
-                outer_ed25519.to_vec(),
-            ),
-        ),
-    )?;
+    let chat_tx = set_record("CHAT", outer_ed25519.to_vec())?;
 
     // 2. MESSAGE — the curve-tagged content key (on by default; omit = dead-drop).
     let inner_content_key = hex::decode(inner_content_key_hex.trim_start_matches("0x"))
@@ -954,15 +962,7 @@ pub fn chat_publish_identity(
     if inner_content_key.is_empty() {
         return Ok(chat_tx); // dead-drop: CHAT only
     }
-    let message_tx = submit_typed(
-        &phrase,
-        &rpc_url,
-        polkadot::tx().rns_resolvers().set_record(
-            name.into_bytes(),
-            polkadot::runtime_types::rns_types::ddns::codec_type::RecordType::MESSAGE,
-            polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec(inner_content_key),
-        ),
-    )?;
+    let message_tx = set_record("MESSAGE", inner_content_key)?;
     Ok(format!("{chat_tx};{message_tx}"))
 }
 
@@ -2127,6 +2127,13 @@ pub fn submit_mint_cert_strongbox(
     ec_key_pub_claimed_hex: String,
     phrase: String,
     rpc_url: String,
+    // Chat membership enrollment (M2, DOTWAVE-MEMBERSHIP-AUTH-CLIENT-PLAN):
+    // both present -> mint enrolls a membership leaf; both absent -> mint
+    // without one. `id_commitment` from `membership_id_commitment`;
+    // signature from the Kotlin `zkpkiSignIdBinding` channel over
+    // `membership_id_binding_msg(id_commitment, contract_nonce)`.
+    chat_id_commitment_hex: Option<String>,
+    chat_id_binding_signature_hex: Option<String>,
 ) -> Result<String, String> {
     let contract_nonce = decode_hex_32(&contract_nonce_hex, "contract_nonce")?;
     let cert_ec_public_sec1 = decode_hex_n::<65>(
@@ -2151,6 +2158,29 @@ pub fn submit_mint_cert_strongbox(
     let commitment_c = decode_hex_32(&commitment_c_hex, "commitment_c")?;
     let ec_key_pub_claimed =
         decode_hex_32(&ec_key_pub_claimed_hex, "ec_key_pub_claimed")?;
+
+    // Validate-at-handoff: enrollment is all-or-nothing. One field without
+    // the other is a caller bug, not a mint without enrollment.
+    let chat_enrollment = match (chat_id_commitment_hex, chat_id_binding_signature_hex) {
+        (Some(idc_hex), Some(sig_hex)) => {
+            let id_commitment = decode_hex_32(&idc_hex, "chat_id_commitment")?;
+            let id_binding_signature = decode_hex_bytes(&sig_hex, "chat_id_binding_signature")?;
+            if id_binding_signature.is_empty() {
+                return Err("chat_id_binding_signature must not be empty".into());
+            }
+            Some(polkadot::runtime_types::zk_pki_tpm::chat_enrollment::ChatEnrollment {
+                id_commitment,
+                id_binding_signature,
+            })
+        }
+        (None, None) => None,
+        _ => {
+            return Err(
+                "chat enrollment needs BOTH id_commitment and id_binding_signature (or neither)"
+                    .into(),
+            )
+        }
+    };
 
     let attestation = TypedAttestationPayload {
         cert_ec_chain: vec![cert_ec_chain_leaf.clone()],
@@ -2189,6 +2219,7 @@ pub fn submit_mint_cert_strongbox(
             Some(hip_proof),
             Some(commitment_c),
             Some(ec_key_pub_claimed),
+            chat_enrollment,
         );
         let mut tx_client = api.tx().await.map_err(|e| e.to_string())?;
         let mut signable = tx_client
@@ -2421,6 +2452,381 @@ pub fn extract_sec1_from_x509_leaf(leaf_der: Vec<u8>) -> Result<Vec<u8>, String>
         ));
     }
     Ok(leaf_der[sec1_start..sec1_end].to_vec())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// chat-spend-witness lab harness (labtool-only; NOT bridged to the app).
+// Dynamic calls through `submit_typed` so they get the immortal-era / best-nonce
+// write-path that survives the non-finalizing lab rig, and so they reach calls
+// (test_enroll_membership, the NODE record) that predate the app's typed metadata.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// TEST HARNESS: submit `ZkPki::test_enroll_membership(id_commitment)` for the
+/// membership secret `s` (computes `id_commitment = Poseidon(s)`). Enrols a
+/// membership leaf directly (no cert). Returns the extrinsic hash.
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_test_enroll(
+    s_hex: String,
+    phrase: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    use rostro_poseidon_bn254::{fr_from_canonical_bytes_le, fr_to_bytes_le, id_commitment, params};
+    use subxt::dynamic::Value;
+    let s = fr_from_canonical_bytes_le(&decode_hex_32(&s_hex, "s")?)
+        .ok_or("s is not a canonical field element")?;
+    let idc: [u8; 32] = fr_to_bytes_le(&id_commitment(&params(), s));
+    // dynamic::tx wants a Composite (named fields) on subxt 0.50 — see the
+    // ConvictionVoting note. from_bytes(idc) is a byte-composite that encodes
+    // into the `[u8; 32]` arg.
+    let fields: scale_value::Composite<()> =
+        vec![("id_commitment".to_string(), Value::from_bytes(idc))].into();
+    let tx = subxt::dynamic::tx("ZkPki", "test_enroll_membership", fields);
+    submit_typed(&phrase, &rpc_url, tx)
+}
+
+/// TEST HARNESS: build the membership witness locally (a single-leaf tree at
+/// index 0, matching the chain after `lab_test_enroll` with the same `s`), prove
+/// with the pinned `pk`, and POST `chat_authenticateMembership` to the guard.
+/// Reads the best block for the anchor + derives the current epoch. Returns the
+/// guard's session result on success (or the RPC error if auth is rejected).
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_authenticate_membership(
+    s_hex: String,
+    guard_node_id_hex: String,
+    guard_rpc: String,
+    chain_rpc: String,
+    pk_bytes: Vec<u8>,
+) -> Result<String, String> {
+    use ark_std::rand::{rngs::StdRng, SeedableRng};
+    use rostro_chat_membership_auth::{derive_challenge, derive_session_commit};
+    use rostro_membership_circuit::{groth16, MembershipCircuit};
+    use rostro_membership_tree::{MembershipTree, DEPTH};
+    use rostro_poseidon_bn254::{
+        fr_from_canonical_bytes_le, fr_to_bytes_le, hash_leaf, id_commitment, nullifier, params,
+    };
+    use ark_bn254::Fr;
+
+    // MUST match ZkPki::test_enroll_membership + the pallet's membership scope.
+    const EXPIRY: u64 = 1_000_000;
+    const FRESH_UNTIL: u64 = 1_000_000;
+    const SCOPE: u64 = 1;
+    const EPOCH_LENGTH_BLOCKS: u64 = 14_400;
+
+    let p = params();
+    let s = fr_from_canonical_bytes_le(&decode_hex_32(&s_hex, "s")?)
+        .ok_or("s is not a canonical field element")?;
+    let idc = id_commitment(&p, s);
+    let leaf = hash_leaf(&p, idc, Fr::from(EXPIRY), Fr::from(SCOPE));
+
+    // Single-leaf trees at index 0 — byte-identical to the chain after test-enroll.
+    let mut mtree = MembershipTree::new(128);
+    let index = mtree.insert(leaf).ok_or("membership tree full")?;
+    let mut ftree = MembershipTree::new(128);
+    ftree.insert(Fr::from(FRESH_UNTIL)).ok_or("freshness tree full")?;
+    let m_root = mtree.root();
+    let f_root = ftree.root();
+    let m_path = mtree.path(index).to_vec();
+    let f_path = ftree.path(index).to_vec();
+
+    let guard_node_id = decode_hex_32(&guard_node_id_hex, "guard_node_id")?;
+    let mut session_pubkey = [0u8; 32];
+    getrandom_fill(&mut session_pubkey).map_err(|e| format!("getrandom: {e}"))?;
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // Best block → anchor + current epoch (block / EPOCH_LENGTH_BLOCKS).
+    let best_number: u64 = rt.block_on(async {
+        let (_api, rpc) = connect_rostro_with_rpc(&chain_rpc).await?;
+        let header: serde_json::Value = rpc
+            .request("chain_getHeader", subxt::rpcs::rpc_params![])
+            .await
+            .map_err(|e| e.to_string())?;
+        let num = header
+            .get("number")
+            .and_then(|v| v.as_str())
+            .ok_or("header.number missing")?;
+        u64::from_str_radix(num.trim_start_matches("0x"), 16)
+            .map_err(|e| format!("parse block number: {e}"))
+    })?;
+    let anchor_block = best_number;
+    let current_epoch = best_number / EPOCH_LENGTH_BLOCKS;
+
+    // Build the circuit + prove.
+    let null = nullifier(&p, s, Fr::from(current_epoch));
+    let challenge = derive_challenge(&guard_node_id, anchor_block, &session_pubkey);
+    let session_commit = derive_session_commit(&session_pubkey);
+    let index_bits: Vec<bool> = (0..DEPTH).map(|i| (index >> i) & 1 == 1).collect();
+    let circuit = MembershipCircuit {
+        membership_root: Some(m_root),
+        freshness_root: Some(f_root),
+        nullifier: Some(null),
+        current_epoch: Some(Fr::from(current_epoch)),
+        anchor_block: Some(Fr::from(anchor_block)),
+        scope: Some(Fr::from(SCOPE)),
+        challenge: Some(challenge),
+        session_pubkey: Some(session_commit),
+        s: Some(s),
+        expiry_block: Some(Fr::from(EXPIRY)),
+        fresh_until_epoch: Some(Fr::from(FRESH_UNTIL)),
+        index_bits: Some(index_bits),
+        membership_path: Some(m_path),
+        freshness_path: Some(f_path),
+    };
+    let pk = groth16::deserialize_pk(&pk_bytes).ok_or("pk failed to decode")?;
+    let mut rng = StdRng::seed_from_u64(7);
+    let proof = groth16::prove(&pk, circuit, &mut rng).ok_or("proof synthesis failed")?;
+    let proof_bytes = groth16::serialize_proof(&proof);
+
+    // POST chat_authenticateMembership to the guard; a rejection surfaces here.
+    let result: serde_json::Value = rt.block_on(async {
+        let (_api, guard) = connect_rostro_with_rpc(&guard_rpc).await?;
+        guard
+            .request(
+                "chat_authenticateMembership",
+                subxt::rpcs::rpc_params![
+                    format!("0x{}", hex::encode(&proof_bytes)),
+                    format!("0x{}", hex::encode(fr_to_bytes_le(&m_root))),
+                    format!("0x{}", hex::encode(fr_to_bytes_le(&f_root))),
+                    format!("0x{}", hex::encode(fr_to_bytes_le(&null))),
+                    current_epoch,
+                    anchor_block,
+                    format!("0x{}", hex::encode(session_pubkey))
+                ],
+            )
+            .await
+            .map_err(|e| format!("chat_authenticateMembership: {e}"))
+    })?;
+
+    Ok(format!(
+        "epoch={current_epoch} anchor={anchor_block} nullifier=0x{} session={result}",
+        hex::encode(fr_to_bytes_le(&null))
+    ))
+}
+
+/// LAB: register a plain RNS name for the signer (best-effort; an already-owned
+/// name errors, which the caller may ignore).
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_register_name(
+    name: String,
+    phrase: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    use subxt::dynamic::Value;
+    // name: Vec<u8>, reject_offer: Option<Vec<u8>>. Build a named Composite so
+    // subxt 0.50 encodes named fields (a raw Vec<(String,Value)> would encode as
+    // a sequence of tuples — see the ConvictionVoting note).
+    let fields: scale_value::Composite<()> = vec![
+        ("name".to_string(), Value::from_bytes(name.into_bytes())),
+        ("reject_offer".to_string(), Value::unnamed_variant("None", Vec::<Value>::new())),
+    ]
+    .into();
+    let tx = subxt::dynamic::tx("RnsRegistrar", "register", fields);
+    submit_typed(&phrase, &rpc_url, tx)
+}
+
+/// LAB: set the `NODE` record (32-byte libp2p ed25519 key) for `name`, enrolling
+/// the node into the witnessed-spend guard set. Signer must own `name`.
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_set_node_record(
+    name: String,
+    node_key_hex: String,
+    phrase: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    use subxt::dynamic::Value;
+    let key = decode_hex_32(&node_key_hex, "node_key")?;
+    // name (Vec<u8>) + content (BoundedVec<u8>) are byte-composites; record_type
+    // is the RecordType enum → a Variant. Named Composite so 0.50 lines the
+    // fields up (see the ConvictionVoting note).
+    let fields: scale_value::Composite<()> = vec![
+        ("name".to_string(), Value::from_bytes(name.into_bytes())),
+        ("record_type".to_string(), Value::unnamed_variant("NODE", Vec::<Value>::new())),
+        ("content".to_string(), Value::from_bytes(key.to_vec())),
+    ]
+    .into();
+    let tx = subxt::dynamic::tx("RnsResolvers", "set_record", fields);
+    submit_typed(&phrase, &rpc_url, tx)
+}
+
+/// LAB: idempotent issuer-side zkpki bootstrap for the phone-mint E2E
+/// (DOTWAVE-MEMBERSHIP-AUTH-CLIENT-PLAN M2). Three steps, each skipped if
+/// already on chain:
+///   1. `register_root` for the ROOT dev account (via [`chat_mint_test_cert`],
+///      software P-256 device key; gemini's test verifiers accept it).
+///   2. `issue_issuer_cert` root -> ISSUER dev account.
+///   3. `create_cert_template` (PoP Required + MimeWrap) under the issuer —
+///      the template shape `submit_mint_cert_strongbox`'s payload targets.
+/// After this, `lab_offer_contract` can offer the phone a contract.
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_bootstrap_issuer(
+    root_suri: String,
+    issuer_suri: String,
+    template_name: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    use polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec;
+    use polkadot::runtime_types::zk_pki_primitives::crypto::{
+        DevicePublicKey as TypedDevicePublicKey, KeyAlgorithm as TypedKeyAlgorithm,
+    };
+    use polkadot::runtime_types::zk_pki_primitives::template::{
+        PopMechanism as TypedPopMechanism, PopRequirement as TypedPopRequirement,
+    };
+    use parity_scale_codec::Encode;
+
+    const ISSUER_TTL_BLOCKS: u32 = 900_000;
+    let mut log = Vec::new();
+
+    // 1. Root (idempotent inside chat_mint_test_cert).
+    let root_thumb = chat_mint_test_cert(
+        rpc_url.clone(),
+        root_suri.clone(),
+        dev_cert_seed_hex(root_suri.clone()),
+        1_000_000,
+    )?;
+    log.push(format!("root cert: 0x{root_thumb}"));
+
+    let issuer_pair = sr25519::Pair::from_string(&issuer_suri, None)
+        .map_err(|e| format!("issuer keypair: {e:?}"))?;
+    let issuer_account = AccountId32::from(issuer_pair.public().0);
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all().build().map_err(|e| e.to_string())?;
+
+    // 2. Issuer cert (issued by the root), skipped if registered.
+    let issuer_registered = rt.block_on(async {
+        let (client, metadata) = crate::rostro_client::connect(&rpc_url).await?;
+        Ok::<_, String>(
+            client
+                .fetch_storage(&metadata, "ZkPki", "Issuers", &[&issuer_account.0.encode()])
+                .await
+                .map_err(|e| format!("ZkPki.Issuers fetch: {e}"))?
+                .is_some(),
+        )
+    })?;
+    if issuer_registered {
+        log.push("issuer: already registered".into());
+    } else {
+        let issuer_sec1 = hex::decode(crate::chat::chat_cert_pubkey(dev_cert_seed_hex(
+            issuer_suri.clone(),
+        ))?)
+        .map_err(|e| format!("issuer cert pubkey hex: {e}"))?;
+        let tx = polkadot::tx().zk_pki().issue_issuer_cert(
+            issuer_account.clone(),
+            issuer_account.clone(), // proxy — NoopProxyValidator admits any value
+            TypedDevicePublicKey {
+                algorithm: TypedKeyAlgorithm::EcdsaP256,
+                key_bytes: BoundedVec(issuer_sec1),
+            },
+            BoundedVec(b"dev-test-attestation".to_vec()), // ignored by the test verifier
+            ISSUER_TTL_BLOCKS,
+            BoundedVec(vec![]), // no capability EKUs
+        );
+        let hash = submit_typed(&root_suri, &rpc_url, tx)?;
+        log.push(format!("issuer cert issued: {hash}"));
+    }
+
+    // 3. Template under the issuer, skipped if it exists.
+    let name_bytes = template_name.clone().into_bytes();
+    let template_exists = rt.block_on(async {
+        let (client, metadata) = crate::rostro_client::connect(&rpc_url).await?;
+        Ok::<_, String>(
+            client
+                .fetch_storage(
+                    &metadata,
+                    "ZkPki",
+                    "CertTemplates",
+                    &[&issuer_account.0.encode(), &name_bytes.encode()],
+                )
+                .await
+                .map_err(|e| format!("ZkPki.CertTemplates fetch: {e}"))?
+                .is_some(),
+        )
+    })?;
+    if template_exists {
+        log.push(format!("template '{template_name}': already exists"));
+    } else {
+        let tx = polkadot::tx().zk_pki().create_cert_template(
+            BoundedVec(name_bytes),
+            TypedPopRequirement::Required,
+            Some(TypedPopMechanism::MimeWrap),
+            // Must fit inside the issuer cert's remaining life
+            // (TemplateTtlExceedsIssuerCert): issuer TTL is 900k, so keep
+            // the template ceiling comfortably under it.
+            200_000, // max_ttl_blocks
+            100,     // min_ttl_blocks
+            None,      // max_certs
+            None,      // metadata_schema
+            BoundedVec(vec![]),
+        );
+        let hash = submit_typed(&issuer_suri, &rpc_url, tx)?;
+        log.push(format!("template '{template_name}' created: {hash}"));
+    }
+
+    Ok(log.join("\n"))
+}
+
+/// LAB: `offer_contract` from the issuer to `user_ss58`, then read back the
+/// offer nonce + created_at block the phone's mint screen needs. The nonce
+/// doubles as the ceremony's attestation challenge AND the enrollment
+/// binding challenge.
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_offer_contract(
+    issuer_suri: String,
+    user_ss58: String,
+    template_name: String,
+    ttl_blocks: u32,
+    rpc_url: String,
+) -> Result<String, String> {
+    use polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec;
+    use parity_scale_codec::Encode;
+
+    let user = AccountId32::from_str(&user_ss58)
+        .map_err(|e| format!("user_ss58: {e}"))?;
+    let issuer_pair = sr25519::Pair::from_string(&issuer_suri, None)
+        .map_err(|e| format!("issuer keypair: {e:?}"))?;
+    let issuer_account = AccountId32::from(issuer_pair.public().0);
+
+    let tx = polkadot::tx().zk_pki().offer_contract(
+        user.clone(),
+        ttl_blocks,
+        BoundedVec(template_name.into_bytes()),
+        BoundedVec(vec![]), // metadata
+    );
+    submit_typed(&issuer_suri, &rpc_url, tx)?;
+
+    // Read the offer back: OfferIndex((issuer, user)) -> nonce, then
+    // ContractOffers(nonce) -> created_at.
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all().build().map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let (client, metadata) = crate::rostro_client::connect(&rpc_url).await?;
+        let mut index_key = issuer_account.0.encode();
+        index_key.extend(user.0.encode());
+        let nonce_val = client
+            .fetch_storage(&metadata, "ZkPki", "OfferIndex", &[&index_key])
+            .await
+            .map_err(|e| format!("ZkPki.OfferIndex fetch: {e}"))?
+            .ok_or("offer submitted but OfferIndex entry never appeared")?;
+        let nonce: [u8; 32] = crate::rostro_client::as_bytes(&nonce_val)
+            .ok_or("OfferIndex value is not bytes")?
+            .try_into()
+            .map_err(|_| "offer nonce is not 32 bytes".to_string())?;
+        let offer = client
+            .fetch_storage(&metadata, "ZkPki", "ContractOffers", &[&nonce.encode()])
+            .await
+            .map_err(|e| format!("ZkPki.ContractOffers fetch: {e}"))?
+            .ok_or("ContractOffers entry missing for indexed nonce")?;
+        let created_at = crate::rostro_client::field(&offer, "created_at")
+            .and_then(crate::rostro_client::as_u32)
+            .ok_or("ContractOffer missing created_at")?;
+        Ok(format!(
+            "contract_nonce=0x{}\noffer_created_at_block={created_at}",
+            hex::encode(&nonce),
+        ))
+    })
 }
 
 pub(crate) fn decode_hex_n<const N: usize>(hex: &str, label: &str) -> Result<[u8; N], String> {

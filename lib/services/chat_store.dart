@@ -19,6 +19,7 @@ import '../bridge/bridge_generated.dart/core.dart'
 import '../config/rpc_endpoints.dart';
 import 'avatar_service.dart';
 import 'content_key_service.dart';
+import 'membership_session_service.dart';
 
 /// Where an account stands in the messaging-setup ceremony — drives the
 /// messages-screen banner/button.
@@ -915,22 +916,53 @@ class ChatStore extends ChangeNotifier {
         ? await AvatarService.instance.firstMessageAvatarHex(address)
         : null;
 
-    final outcome = await chatSendOnion2Hop(
-      nodeRpc: node,
-      guardPubkeyHex: guard,
-      relay2PubkeyHex: relay2Pubkey,
-      senderSeedHex: seed,
-      recipientPubkeyHex: contactPubkey,
-      recipientContentKeyHex: await _recipientContentKey(address, contactPubkey),
-      message: text,
-      senderName: await myName(address), // claimed inner name; empty ok for Plain
-      totalShares: 5,
-      authCertThumbprintHex: auth.thumbprint,
-      authCertSeedHex: auth.certSeedHex,
-      prevSelfHashHex: prevTip,
-      composedAtSecs: BigInt.from(composedAt),
-      avatarWebpHex: avatarHex,
+    // Membership session first (anonymous: the guard sees a session key,
+    // not the cert); per-drop cert auth stays as the fallback when no
+    // session can be established (not enrolled, guard not activated,
+    // biometric declined).
+    var session = await MembershipSessionService.instance.ensureSession(
+      address,
+      chainRpc: node,
+      guardRpc: node,
     );
+
+    Future<ChatSendOutcome> dispatch(MembershipSession? s) async =>
+        chatSendOnion2Hop(
+          nodeRpc: node,
+          guardPubkeyHex: guard,
+          relay2PubkeyHex: relay2Pubkey,
+          senderSeedHex: seed,
+          recipientPubkeyHex: contactPubkey,
+          recipientContentKeyHex:
+              await _recipientContentKey(address, contactPubkey),
+          message: text,
+          senderName:
+              await myName(address), // claimed inner name; empty ok for Plain
+          totalShares: 5,
+          authCertThumbprintHex: s == null ? auth.thumbprint : null,
+          authCertSeedHex: s == null ? auth.certSeedHex : null,
+          prevSelfHashHex: prevTip,
+          composedAtSecs: BigInt.from(composedAt),
+          avatarWebpHex: avatarHex,
+          sessionKeyHex: s?.pubkeyHex,
+          sessionSeedHex: s?.seedHex,
+        );
+
+    ChatSendOutcome outcome;
+    try {
+      outcome = await dispatch(session);
+    } catch (e) {
+      // Session went stale under us (epoch rolled, guard restarted): drop
+      // it, re-handshake once, and only then fall back to cert auth.
+      if (session == null || !e.toString().contains('session')) rethrow;
+      MembershipSessionService.instance.invalidate(address);
+      session = await MembershipSessionService.instance.ensureSession(
+        address,
+        chainRpc: node,
+        guardRpc: node,
+      );
+      outcome = await dispatch(session);
+    }
 
     // Persist the new tip BEFORE appending locally: a crash after the send
     // but before this would otherwise re-chain the next message to the old

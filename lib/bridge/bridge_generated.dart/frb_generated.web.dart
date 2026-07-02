@@ -13,6 +13,7 @@ import 'core.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
+import 'membership.dart';
 import 'mime_wrap_client.dart';
 import 'mime_wrap_prover.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
@@ -158,6 +159,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LivenessInputsFields dco_decode_liveness_inputs_fields(dynamic raw);
+
+  @protected
+  MembershipSessionOutcome dco_decode_membership_session_outcome(dynamic raw);
+
+  @protected
+  MembershipWitness dco_decode_membership_witness(dynamic raw);
 
   @protected
   MimeWrapProofBenchmark dco_decode_mime_wrap_proof_benchmark(dynamic raw);
@@ -400,6 +407,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   LivenessInputsFields sse_decode_liveness_inputs_fields(
     SseDeserializer deserializer,
   );
+
+  @protected
+  MembershipSessionOutcome sse_decode_membership_session_outcome(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  MembershipWitness sse_decode_membership_witness(SseDeserializer deserializer);
 
   @protected
   MimeWrapProofBenchmark sse_decode_mime_wrap_proof_benchmark(
@@ -708,6 +723,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_liveness_inputs_fields(
     LivenessInputsFields self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_membership_session_outcome(
+    MembershipSessionOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_membership_witness(
+    MembershipWitness self,
     SseSerializer serializer,
   );
 

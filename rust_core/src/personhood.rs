@@ -203,6 +203,10 @@ fn submit_personhood_call(
 		let account =
 			<Sr25519Signer as subxt::tx::Signer<RostroConfig>>::account_id(&signer);
 		let nonce = fetch_best_nonce(&rpc, &account).await?;
+		// subxt 0.50's dynamic::tx wants CallData: EncodeAsFields (no Into<Composite>
+		// coercion like 0.44). A raw Vec<(String, Value)> encodes as a sequence of
+		// tuples, not named fields — convert to a named Composite explicitly.
+		let fields: scale_value::Composite<()> = fields.into();
 		let tx = subxt::dynamic::tx("Personhood", call_name, fields);
 		let tx_client = api.tx().await.map_err(|e| e.to_string())?;
 		let mut signable = tx_client

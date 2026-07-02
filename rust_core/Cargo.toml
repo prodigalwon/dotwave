@@ -43,7 +43,7 @@ ed25519-zebra = "4.0.3"
 # Phase 2 chat-auth: software P-256 ECDSA stand-in for the StrongBox/TPM
 # cert key on the dev box. Same crate + version the node's
 # `DevicePublicKey::verify_signature` uses, so sign/verify stay symmetric.
-p256 = { version = "0.13", features = ["ecdsa", "arithmetic"] }
+p256 = { version = "0.13", features = ["ecdsa", "arithmetic", "hash2curve"] }
 hex = "0.4.3"
 serde = { version = "1.0.214", features = ["derive"] }
 # rand_core 0.6 ALIAS — the chat crates bind `R: rand_core 0.6
