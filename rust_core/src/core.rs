@@ -934,21 +934,27 @@ pub fn chat_publish_identity(
         .map_err(|e| format!("bad identity seed hex: {e}"))?
         .try_into()
         .map_err(|_| "identity seed must be 32 bytes".to_string())?;
+    use subxt::dynamic::Value;
     let signing = ed25519_zebra::SigningKey::from(seed);
     let outer_ed25519: [u8; 32] = ed25519_zebra::VerificationKey::from(&signing).into();
 
+    // set_record is submitted dynamically (against live metadata), NOT via the
+    // typed macro: the runtime's `RecordType` enum gained a `NODE` variant, so the
+    // pinned-metadata typed `set_record` carries a stale per-call validation hash
+    // that the node rejects. `register` (unchanged signature) still encodes typed
+    // fine, but set_record must go dynamic. See the dynamic::tx + Composite idiom.
+    let set_record = |record_type: &'static str, content: Vec<u8>| {
+        let fields: scale_value::Composite<()> = vec![
+            ("name".to_string(), Value::from_bytes(name.clone().into_bytes())),
+            ("record_type".to_string(), Value::unnamed_variant(record_type, Vec::<Value>::new())),
+            ("content".to_string(), Value::from_bytes(content)),
+        ]
+        .into();
+        submit_typed(&phrase, &rpc_url, subxt::dynamic::tx("RnsResolvers", "set_record", fields))
+    };
+
     // 1. CHAT — the 32-byte Ed25519 mail address (required).
-    let chat_tx = submit_typed(
-        &phrase,
-        &rpc_url,
-        polkadot::tx().rns_resolvers().set_record(
-            name.clone().into_bytes(),
-            polkadot::runtime_types::rns_types::ddns::codec_type::RecordType::CHAT,
-            polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec(
-                outer_ed25519.to_vec(),
-            ),
-        ),
-    )?;
+    let chat_tx = set_record("CHAT", outer_ed25519.to_vec())?;
 
     // 2. MESSAGE — the curve-tagged content key (on by default; omit = dead-drop).
     let inner_content_key = hex::decode(inner_content_key_hex.trim_start_matches("0x"))
@@ -956,15 +962,7 @@ pub fn chat_publish_identity(
     if inner_content_key.is_empty() {
         return Ok(chat_tx); // dead-drop: CHAT only
     }
-    let message_tx = submit_typed(
-        &phrase,
-        &rpc_url,
-        polkadot::tx().rns_resolvers().set_record(
-            name.into_bytes(),
-            polkadot::runtime_types::rns_types::ddns::codec_type::RecordType::MESSAGE,
-            polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec(inner_content_key),
-        ),
-    )?;
+    let message_tx = set_record("MESSAGE", inner_content_key)?;
     Ok(format!("{chat_tx};{message_tx}"))
 }
 

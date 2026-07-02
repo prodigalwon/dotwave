@@ -88,6 +88,23 @@ fn main() {
             println!("chat address: {}", id.ed25519_pubkey_hex);
             println!("content key:  {ck}");
         }
+        // Resolve a name's published chat identity (CHAT + MESSAGE records) —
+        // exactly what the app does before sending. Use to confirm a recipient is
+        // reachable through a given node (e.g. the guard the phone talks to).
+        "resolve" => {
+            let name = args.get(2).expect("usage: resolve <name> [rpc]").clone();
+            let rpc = args.get(3).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match chat_resolve_identity(name.clone(), rpc.clone()) {
+                Ok(r) => println!(
+                    "{name} @ {rpc}: found={} has_message_key={}\n  chat address: {}\n  content key:  {}",
+                    r.found, r.has_message_key, r.ed25519_pubkey_hex, r.inner_content_key_hex
+                ),
+                Err(e) => {
+                    eprintln!("resolve FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
         "fund" => {
             let ss58 = args.get(2).expect("usage: fund <ss58> [amount] [rpc]").clone();
             let amount = args.get(3).cloned().unwrap_or_else(|| "1000000000000000".to_string()); // 1000 ROS @ 12dp
