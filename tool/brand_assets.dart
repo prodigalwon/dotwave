@@ -51,11 +51,47 @@ void main() {
   final mark = _crop(src, clusters.first); // top cluster = the R mark
   _write('rostro-mark-white.png', _toWhite(mark));
   _write('rostro-lockup-white.png', _toWhite(_crop(src, [0, src.height - 1])));
+  if (clusters.length < 2) {
+    stderr.writeln('expected mark + wordmark clusters, got ${clusters.length}');
+    exit(1);
+  }
+  final word = _toWhite(_crop(src, clusters[1])); // bottom cluster = ROSTRO
+  _write('rostro-wordmark-white.png', word);
 
-  // Square, padded foreground for the Android adaptive icon. The maskable
-  // safe-zone is the inner ~66%, so we inset the mark to ~62% of the square.
-  // Upscaled to 1024 so the icon tooling has a comfortable master.
-  _write('icon-foreground.png', _to1024(_squarePadded(_toWhite(mark), 0.62)));
+  // Splash-only assets. flutter_native_splash treats the source as the
+  // xxxhdpi (4x) bucket, so px/4 = dp on screen. The Android-12 system
+  // splash shows its icon canvas at 288dp with the mark at 0.50 of it
+  // (144dp); the legacy splash mark is sized to the same 144dp so both OS
+  // paths render the mark identically, and the Flutter splash's first
+  // frame can pixel-match either.
+  _write('splash-mark-legacy.png', _resizeH(_toWhite(mark), 576));
+  // Bottom-centre branding strip (windowSplashScreenBrandingImage on 12+,
+  // composed into the legacy layer-list below 12). The OS stretches the
+  // drawable to fill its 200x80dp slot with no aspect preservation
+  // (verified on One UI: a bare strip renders vertically stretched), so
+  // the asset must BE 200x80dp (800x320 at 4x) with the 150dp-wide
+  // wordmark centred on transparent padding.
+  final brandCanvas = img.Image(width: 800, height: 320, numChannels: 4);
+  final brandWord = _resizeW(word, 600);
+  img.compositeImage(brandCanvas, brandWord,
+      dstX: (800 - brandWord.width) ~/ 2,
+      dstY: (320 - brandWord.height) ~/ 2);
+  _write('splash-branding.png', brandCanvas);
+
+  // The mark is taller than wide (372:456), so at scale `frac` its frame
+  // corners sit frac*0.645 of the canvas side from centre. Every consumer
+  // below must keep those corners inside its platform's mask circle,
+  // otherwise the OS rounds off the angular corners of the R.
+  //
+  // Android adaptive icon: guaranteed-visible safe zone is a 66/108 circle
+  // (radius 0.306 of the side) under any launcher mask shape,
+  // so frac <= 0.47. Upscaled to 1024 for the icon tooling.
+  _write('icon-foreground.png', _to1024(_squarePadded(_toWhite(mark), 0.47)));
+  // Android 12+ system splash: the OS clips the icon to a circle 2/3 of the
+  // canvas width (radius 0.333), so frac <= 0.516. Kept as its own file:
+  // the splash and adaptive-icon masks differ, so their insets differ.
+  _write('icon-splash-android12.png',
+      _to1024(_squarePadded(_toWhite(mark), 0.50)));
   // A plain square mark on the brand near-black, for the legacy/iOS icon.
   _write('icon-mark-on-dark.png',
       _to1024(_squarePadded(_toWhite(mark), 0.66, bg: img.ColorRgb8(13, 13, 13))));
@@ -111,6 +147,16 @@ img.Image _squarePadded(img.Image fg, double frac, {img.Color? bg}) {
 
 img.Image _to1024(img.Image im) => img.copyResize(im,
     width: 1024, height: 1024, interpolation: img.Interpolation.cubic);
+
+img.Image _resizeH(img.Image im, int h) => img.copyResize(im,
+    height: h,
+    width: (im.width * h / im.height).round(),
+    interpolation: img.Interpolation.cubic);
+
+img.Image _resizeW(img.Image im, int w) => img.copyResize(im,
+    width: w,
+    height: (im.height * w / im.width).round(),
+    interpolation: img.Interpolation.cubic);
 
 void _write(String name, img.Image im) {
   final path = '$_outDir/$name';

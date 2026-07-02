@@ -49,11 +49,13 @@ dependencies:
   webdav_client: ^1.2.2
   qr_flutter: ^4.1.0
   google_fonts: ^6.2.1
+  # Runtime dependency (not just a generator): preserve()/remove() hold the
+  # OS splash until the Flutter splash's matching first frame is up.
+  flutter_native_splash: ^2.4.1
 
 dev_dependencies:
   image: ^4.2.0
   flutter_launcher_icons: ^0.14.1
-  flutter_native_splash: ^2.4.1
   flutter_test:
     sdk: flutter
 
@@ -77,12 +79,18 @@ flutter_launcher_icons:
 # ── Rostro brand: splash ────────────────────────────────────────────────
 # Legacy: white lockup centred on near-black. Android 12+: the R mark in the
 # system icon slot (the wordmark would be cropped there).
+# Both OS paths render the same composition: R mark centred at 144dp,
+# ROSTRO wordmark strip at the bottom. The Flutter splash's first frame
+# reproduces it, so the OS→Flutter handoff is invisible on every Android
+# version and the animation is identical everywhere.
 flutter_native_splash:
   color: "#0D0D0D"
-  image: assets/branding/rostro-lockup-white.png
+  image: assets/branding/splash-mark-legacy.png
+  branding: assets/branding/splash-branding.png
   android_12:
     color: "#0D0D0D"
-    image: assets/branding/icon-foreground.png
+    image: assets/branding/icon-splash-android12.png
+    branding: assets/branding/splash-branding.png
   fullscreen: true
 
 # For information on the generic Dart part of this file, see the
@@ -102,6 +110,7 @@ flutter:
     - assets/dotwave-logo.png
     - assets/branding/rostro-mark-white.png
     - assets/branding/rostro-lockup-white.png
+    - assets/branding/rostro-wordmark-white.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

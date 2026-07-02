@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'bridge/bridge_generated.dart/frb_generated.dart';
@@ -16,9 +19,15 @@ import 'theme.dart';
 import 'screens/name_registration_screen.dart';
 import 'screens/seed_phrase_quiz_screen.dart';
 
-
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final binding = WidgetsFlutterBinding.ensureInitialized();
+  // Hold the OS splash until SplashScreen's first frame (a pixel-match of
+  // the OS composition) is on screen, so the handoff is invisible.
+  FlutterNativeSplash.preserve(widgetsBinding: binding);
+  // The OS splash layer draws full-screen; without edge-to-edge the Flutter
+  // window stops above the navigation bar and the whole composition jumps
+  // up by the nav inset on handoff (48dp on a 3-button S20).
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   debugPrint('>>> Starting RustLib.init()');
   await RustLib.init();
   await ThemeController.instance.load(); // apply the persisted brand colour
@@ -41,17 +50,17 @@ class DotWaveApp extends StatelessWidget {
         theme: AppTheme.dark,
         home: const SplashScreen(),
         builder: (context, child) {
-        // Pin the transaction tracker badge above every route.
-        return Stack(
-          children: [
-            if (child != null) child,
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              right: 12,
-              child: const TxBadgeOverlay(),
-            ),
-          ],
-        );
+          // Pin the transaction tracker badge above every route.
+          return Stack(
+            children: [
+              if (child != null) child,
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 8,
+                right: 12,
+                child: const TxBadgeOverlay(),
+              ),
+            ],
+          );
         },
       ),
     );
@@ -65,74 +74,178 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with TickerProviderStateMixin {
   final _storage = const FlutterSecureStorage();
+
+  // ── Intro choreography ────────────────────────────────────────────────
+  // The first frame reproduces the OS splash composition exactly (mark
+  // centred, wordmark strip at the bottom), FlutterNativeSplash.remove()
+  // swaps the OS layer for it invisibly, and only then does the wordmark
+  // travel up to reassemble the designer's lockup. Geometry below is in
+  // dp, matched against the Android 12+ splash on-device; pre-12 devices
+  // get the same composition from our own legacy splash drawables, so one
+  // set of constants serves every Android version.
+  static const _splashBg = Color(0xFF0D0D0D); // OS splash background
+  static const _markHeight = 143.0; // mark image height; ink = OS icon mark
+  static const _markRise = 24.0; // recentres mark once lockup assembles
+  static const _lockupWordWidth = 167.0; // wordmark width in the lockup
+  static const _brandWordWidth = 150.0; // wordmark width in the bottom strip
+  // Wordmark image centre above the screen bottom while sitting in the OS
+  // branding slot: 87dp slot inset + half the image height at strip width.
+  static const _brandWordCentreFromBottom = 100.9;
+  // The one wordmark starts in the branding-strip position it occupied on
+  // the OS splash, travels up the screen growing to lockup width, touches
+  // the mark's leg with zero velocity (the dwell is the apex of the
+  // motion, not a frozen hold), then releases down to the designer
+  // lockup's own mark-to-wordmark gap. Offsets are wordmark centre
+  // relative to screen centre, with the mark already risen.
+  static const _wordTouch = 59.0; // wordmark centre offset at leg contact
+  static const _lockupGap = 21.4; // designer lockup gap = resting position
+
+  late final AnimationController _intro = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+  );
+  late final Animation<double> _rise = CurvedAnimation(
+    parent: _intro,
+    curve: const Interval(0.10, 0.38, curve: Curves.easeInOutCubic),
+  );
+  late final Animation<double> _approach = CurvedAnimation(
+    parent: _intro,
+    curve: const Interval(0.18, 0.72, curve: Curves.easeInOutSine),
+  );
+  late final Animation<double> _release = CurvedAnimation(
+    parent: _intro,
+    curve: const Interval(0.72, 0.95, curve: Curves.easeInOutSine),
+  );
+
+  // Exit: launch straight through the assembled lockup. Fired separately
+  // from the intro, right before navigation, so a pending biometric prompt
+  // holds on the docked lockup rather than a frozen mid-zoom frame.
+  //
+  // The zoom is aimed at the R's central counter, the black wedge between
+  // the crossing strokes, and runs to a scale where every stroke has flown
+  // past the screen edges: the viewer passes through the heart of the mark
+  // and the screen ends on pure splash background. It plays fully
+  // uncovered (no cross-fade stealing it) and the route swap happens only
+  // afterwards, on solid-colour frames, which also hides the destination's
+  // first-build jank. easeIn moves from the first frame. The wedge's white
+  // boundaries sit ~11dp from the origin, so full clearance needs ~42x;
+  // 48 leaves margin.
+  static const _zoomScale = 48.0;
+  // Zoom origin: centre of the R's counter wedge, measured in the mark
+  // raster, as dp offsets from screen centre with the mark risen.
+  static const _zoomOriginX = 3.1;
+  static const _zoomOriginY = -18.8;
+  late final AnimationController _zoom = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 460),
+  );
+  late final Animation<double> _launch = CurvedAnimation(
+    parent: _zoom,
+    curve: Curves.easeIn,
+  );
+  final _introDone = Completer<void>();
 
   @override
   void initState() {
     super.initState();
+    _intro.addStatusListener((status) {
+      if (status == AnimationStatus.completed && !_introDone.isCompleted) {
+        _introDone.complete();
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FlutterNativeSplash.remove();
+      _intro.forward();
+    });
     _checkExistingAccount();
   }
 
-Future<void> _checkExistingAccount() async {
-  // Single source of truth for "is this device onboarded": the
-  // passphrase-encrypted seed phrase. If it's on the device, the
-  // user has a recoverable wallet. If it's not, the user needs to
-  // onboard fresh regardless of what other keys are lying around.
-  final encryptedPhrase = await _storage.read(key: 'encrypted_phrase');
-  if (!mounted) return;
-
-  if (encryptedPhrase == null) {
-    // Clear any orphaned `account_address` left by earlier buggy
-    // code paths, then send the user through fresh onboarding. The
-    // address without the phrase is useless (can't sign) and would
-    // only cause confusion.
-    await _storage.delete(key: 'account_address');
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-    );
-    return;
+  @override
+  void dispose() {
+    _intro.dispose();
+    _zoom.dispose();
+    super.dispose();
   }
 
-  final address = await _storage.read(key: 'account_address');
-  if (!mounted) return;
-  if (address == null) {
-    // Defensive: encrypted_phrase without account_address shouldn't
-    // occur (we write them atomically in SetPassphraseScreen and the
-    // restore flow), but if it ever does, treat as corrupted state
-    // and re-onboard.
-    await _storage.delete(key: 'encrypted_phrase');
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-    );
-    return;
-  }
-
-  final authenticated = await _authenticateUser();
-  if (!mounted) return;
-  if (!authenticated) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Authentication required to access your account')),
-    );
-    await _checkExistingAccount();
-    return;
-  }
-
-  Navigator.pushReplacement(
-    context,
-    MaterialPageRoute(builder: (_) => HomeShell(address: address)),
+  /// Quick fade for the post-zoom route swap: both sides of the fade are
+  /// near-black (splash background → app background), so it reads as
+  /// arriving, not as the logo disappearing.
+  Route<T> _fadeRoute<T>(Widget page) => PageRouteBuilder<T>(
+    transitionDuration: const Duration(milliseconds: 140),
+    pageBuilder: (_, __, ___) => page,
+    transitionsBuilder: (_, anim, __, child) =>
+        FadeTransition(opacity: anim, child: child),
   );
-}
 
-Future<bool> _authenticateUser() async {
+  /// Play the launch zoom to completion, fully uncovered, then swap
+  /// routes on the resulting solid-background frame.
+  Future<void> _launchInto(Widget page) async {
+    await _zoom.forward();
+    if (!mounted) return;
+    Navigator.pushReplacement(context, _fadeRoute(page));
+  }
+
+  Future<void> _checkExistingAccount() async {
+    // Let the intro finish before any navigation or biometric prompt; the
+    // storage reads below are fast and would otherwise cut it short.
+    await _introDone.future;
+    if (!mounted) return;
+
+    // Single source of truth for "is this device onboarded": the
+    // passphrase-encrypted seed phrase. If it's on the device, the
+    // user has a recoverable wallet. If it's not, the user needs to
+    // onboard fresh regardless of what other keys are lying around.
+    final encryptedPhrase = await _storage.read(key: 'encrypted_phrase');
+    if (!mounted) return;
+
+    if (encryptedPhrase == null) {
+      // Clear any orphaned `account_address` left by earlier buggy
+      // code paths, then send the user through fresh onboarding. The
+      // address without the phrase is useless (can't sign) and would
+      // only cause confusion.
+      await _storage.delete(key: 'account_address');
+      if (!mounted) return;
+      await _launchInto(const OnboardingScreen());
+      return;
+    }
+
+    final address = await _storage.read(key: 'account_address');
+    if (!mounted) return;
+    if (address == null) {
+      // Defensive: encrypted_phrase without account_address shouldn't
+      // occur (we write them atomically in SetPassphraseScreen and the
+      // restore flow), but if it ever does, treat as corrupted state
+      // and re-onboard.
+      await _storage.delete(key: 'encrypted_phrase');
+      if (!mounted) return;
+      await _launchInto(const OnboardingScreen());
+      return;
+    }
+
+    final authenticated = await _authenticateUser();
+    if (!mounted) return;
+    if (!authenticated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Authentication required to access your account'),
+        ),
+      );
+      await _checkExistingAccount();
+      return;
+    }
+
+    await _launchInto(HomeShell(address: address));
+  }
+
+  Future<bool> _authenticateUser() async {
     if (kDebugMode) return true;
 
     final auth = LocalAuthentication();
-    final canAuth = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+    final canAuth =
+        await auth.canCheckBiometrics || await auth.isDeviceSupported();
     if (!canAuth) return true;
 
     try {
@@ -146,17 +259,64 @@ Future<bool> _authenticateUser() async {
 
   @override
   Widget build(BuildContext context) {
-    // Rostro lockup (mark + wordmark), white on the brand near-black. PNG
-    // derived from the designer's vector so the wordmark metrics are exact;
-    // width-only keeps its natural aspect (portrait).
+    // Start position is bottom-anchored (the OS branding slot is a fixed
+    // inset from the screen bottom), so derive it from the screen height:
+    // the first frame then matches the OS splash on any device.
+    final screenSize = MediaQuery.sizeOf(context);
+    final screenH = screenSize.height;
+    final wordStart = screenH / 2 - _brandWordCentreFromBottom;
     return Scaffold(
-      backgroundColor: AppTheme.bg,
-      body: Center(
-        child: Image.asset(
-          'assets/branding/rostro-lockup-white.png',
-          width: 150,
-          fit: BoxFit.contain,
-        ),
+      backgroundColor: _splashBg,
+      body: AnimatedBuilder(
+        animation: Listenable.merge([_intro, _zoom]),
+        builder: (context, _) {
+          final wordY =
+              wordStart +
+              (_wordTouch - wordStart) * _approach.value +
+              _lockupGap * _release.value;
+          final wordWidth =
+              _brandWordWidth +
+              (_lockupWordWidth - _brandWordWidth) * _approach.value;
+          return Transform.scale(
+            scale: 1 + (_zoomScale - 1) * _launch.value,
+            // Through the R's central counter, in fractional child
+            // coordinates (screen-relative, so correct on any device).
+            alignment: Alignment(
+              _zoomOriginX / (screenSize.width / 2),
+              _zoomOriginY / (screenH / 2),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // R mark: starts exactly where the OS splash left it, then
+                // rises to its lockup position.
+                Align(
+                  child: Transform.translate(
+                    offset: Offset(0, -_markRise * _rise.value),
+                    child: Image.asset(
+                      'assets/branding/rostro-mark-white.png',
+                      height: _markHeight,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                // The wordmark: picks up where the OS branding strip left
+                // it, travels up to touch the mark's leg, then settles into
+                // the lockup.
+                Align(
+                  child: Transform.translate(
+                    offset: Offset(0, wordY),
+                    child: Image.asset(
+                      'assets/branding/rostro-wordmark-white.png',
+                      width: wordWidth,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -198,7 +358,9 @@ class OnboardingScreen extends StatelessWidget {
               FilledButton(
                 onPressed: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const CreateAccountScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const CreateAccountScreen(),
+                  ),
                 ),
                 child: const Text('Create Account'),
               ),
@@ -206,7 +368,9 @@ class OnboardingScreen extends StatelessWidget {
               OutlinedButton(
                 onPressed: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const RestoreAccountScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const RestoreAccountScreen(),
+                  ),
                 ),
                 child: const Text('I already have an account'),
               ),
@@ -225,7 +389,6 @@ class CreateAccountScreen extends StatefulWidget {
   @override
   State<CreateAccountScreen> createState() => _CreateAccountScreenState();
 }
-
 
 class _CreateAccountScreenState extends State<CreateAccountScreen> {
   final _storage = const FlutterSecureStorage();
@@ -258,9 +421,9 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
     } catch (e) {
       setState(() => _loading = false);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to create account: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to create account: $e')));
     }
   }
 
@@ -286,10 +449,8 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (_) => SetPassphraseScreen(
-                  phrase: _phrase!,
-                  address: _address!,
-                ),
+                builder: (_) =>
+                    SetPassphraseScreen(phrase: _phrase!, address: _address!),
               ),
             );
           },
@@ -332,7 +493,10 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                   children: [
                     const Text(
                       'Write down your recovery phrase',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     const Text(
@@ -372,11 +536,14 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
   }
 }
 
-
 class SetPassphraseScreen extends StatefulWidget {
   final String phrase;
   final String address;
-  const SetPassphraseScreen({super.key, required this.phrase, required this.address});
+  const SetPassphraseScreen({
+    super.key,
+    required this.phrase,
+    required this.address,
+  });
 
   @override
   State<SetPassphraseScreen> createState() => _SetPassphraseScreenState();
@@ -391,14 +558,16 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
 
   Future<void> _savePassphrase() async {
     if (_passphraseController.text != _confirmController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passphrases do not match')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Passphrases do not match')));
       return;
     }
     if (_passphraseController.text.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passphrase must be at least 8 characters')),
+        const SnackBar(
+          content: Text('Passphrase must be at least 8 characters'),
+        ),
       );
       return;
     }
@@ -445,7 +614,9 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
       // would leave a persisted address with no recoverable key.
       await _storage.write(
         key: 'encrypted_phrase',
-        value: fullyEncrypted.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+        value: fullyEncrypted
+            .map((b) => b.toRadixString(16).padLeft(2, '0'))
+            .join(),
       );
       await _storage.write(key: 'account_address', value: widget.address);
       if (!mounted) return;
@@ -479,9 +650,9 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
     } catch (e) {
       setState(() => _loading = false);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to encrypt: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to encrypt: $e')));
     }
   }
 
@@ -493,112 +664,127 @@ class _SetPassphraseScreenState extends State<SetPassphraseScreen> {
   }
 
   @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(title: const Text('Set Recovery Passphrase')),
-    body: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: AutofillGroup(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Set a recovery passphrase',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'If you lose your phone, you\'ll need this passphrase plus your cloud backup to recover your account. Use a password manager with end-to-end encryption to generate and store your passphrase. Avoid storing it anywhere that syncs to a cloud service you don\'t control.',
-                style: TextStyle(color: Colors.white60),
-              ),
-              const SizedBox(height: 32),
-              TextField(
-                controller: _passphraseController,
-                obscureText: _obscure,
-                onChanged: (_) => setState(() {}),
-                enableSuggestions: false,
-                autocorrect: false,
-                autofillHints: const [AutofillHints.newPassword],
-                decoration: InputDecoration(
-                  labelText: 'Recovery passphrase',
-                  border: const OutlineInputBorder(),
-                  helperText: 'Paste from your password manager',
-                  helperStyle: const TextStyle(color: Colors.white38),
-                  suffixIcon: IconButton(
-                    icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setState(() => _obscure = !_obscure),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Set Recovery Passphrase')),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: AutofillGroup(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Set a recovery passphrase',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'If you lose your phone, you\'ll need this passphrase plus your cloud backup to recover your account. Use a password manager with end-to-end encryption to generate and store your passphrase. Avoid storing it anywhere that syncs to a cloud service you don\'t control.',
+                  style: TextStyle(color: Colors.white60),
+                ),
+                const SizedBox(height: 32),
+                TextField(
+                  controller: _passphraseController,
+                  obscureText: _obscure,
+                  onChanged: (_) => setState(() {}),
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  autofillHints: const [AutofillHints.newPassword],
+                  decoration: InputDecoration(
+                    labelText: 'Recovery passphrase',
+                    border: const OutlineInputBorder(),
+                    helperText: 'Paste from your password manager',
+                    helperStyle: const TextStyle(color: Colors.white38),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscure ? Icons.visibility : Icons.visibility_off,
+                      ),
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              if (_passphraseController.text.isNotEmpty)
-                Builder(builder: (context) {
-                  final strength = RustLib.instance.api.crateCoreCheckPassphraseStrength(
-                    passphrase: _passphraseController.text,
-                  );
-                  final colors = [
-                    Colors.red,
-                    Colors.orange,
-                    Colors.yellow,
-                    Colors.lightGreen,
-                    Colors.green,
-                  ];
-                  final labels = ['Very weak', 'Weak', 'Fair', 'Strong', 'Very strong'];
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      LinearProgressIndicator(
-                        value: (strength.score + 1) / 5,
-                        color: colors[strength.score],
-                        backgroundColor: Colors.white12,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        labels[strength.score],
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors[strength.score],
-                        ),
-                      ),
-                      if (strength.warning != null)
-                        Text(
-                          strength.warning!,
-                          style: const TextStyle(fontSize: 12, color: Colors.white60),
-                        ),
-                    ],
-                  );
-                }),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _confirmController,
-                obscureText: _obscure,
-                enableSuggestions: false,
-                autocorrect: false,
-                autofillHints: const [AutofillHints.newPassword],
-                decoration: const InputDecoration(
-                  labelText: 'Confirm passphrase',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 8),
+                if (_passphraseController.text.isNotEmpty)
+                  Builder(
+                    builder: (context) {
+                      final strength = RustLib.instance.api
+                          .crateCoreCheckPassphraseStrength(
+                            passphrase: _passphraseController.text,
+                          );
+                      final colors = [
+                        Colors.red,
+                        Colors.orange,
+                        Colors.yellow,
+                        Colors.lightGreen,
+                        Colors.green,
+                      ];
+                      final labels = [
+                        'Very weak',
+                        'Weak',
+                        'Fair',
+                        'Strong',
+                        'Very strong',
+                      ];
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          LinearProgressIndicator(
+                            value: (strength.score + 1) / 5,
+                            color: colors[strength.score],
+                            backgroundColor: Colors.white12,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            labels[strength.score],
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colors[strength.score],
+                            ),
+                          ),
+                          if (strength.warning != null)
+                            Text(
+                              strength.warning!,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white60,
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _confirmController,
+                  obscureText: _obscure,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  autofillHints: const [AutofillHints.newPassword],
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm passphrase',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 32),
-              FilledButton(
-                onPressed: _loading ? null : _savePassphrase,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: _loading
-                      ? const CircularProgressIndicator()
-                      : const Text('Save & Continue'),
+                const SizedBox(height: 32),
+                FilledButton(
+                  onPressed: _loading ? null : _savePassphrase,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: _loading
+                        ? const CircularProgressIndicator()
+                        : const Text('Save & Continue'),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
-}
+
 class RestoreAccountScreen extends StatefulWidget {
   const RestoreAccountScreen({super.key});
 
@@ -613,75 +799,76 @@ class _RestoreAccountScreenState extends State<RestoreAccountScreen> {
   bool _obscure = true;
 
   Future<void> _pickBackupSource() async {
-  if (_passphraseController.text.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please enter your recovery passphrase first')),
-    );
-    return;
-  }
+    if (_passphraseController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter your recovery passphrase first'),
+        ),
+      );
+      return;
+    }
 
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => RestoreProviderScreen(
-        onBlobDownloaded: (blob) {
-          Navigator.pop(context);
-          _restoreFromBlob(blob);
-        },
-      ),
-    ),
-  );
-}
-
-Future<void> _restoreFromBlob(Uint8List blob) async {
-  setState(() => _loading = true);
-
-  try {
-    final phrase = RustLib.instance.api.crateCoreDecryptPhrase(
-      blob: blob.toList(),
-      passphrase: _passphraseController.text,
-    );
-
-    final account = RustLib.instance.api.crateCoreRestoreAccount(
-      phrase: phrase,
-    );
-
-    // Write order matters: `account_address` is the splash gate, so
-    // it must be LAST. If any earlier write crashes, splash sees no
-    // address and the user re-runs onboarding cleanly rather than
-    // landing in a half-restored state.
-    //
-    // The downloaded blob IS already a passphrase-encrypted seed
-    // phrase (produced by the create flow's `crateCoreEncryptPhrase`
-    // call). Store it directly — re-encrypting would churn entropy
-    // for no gain, and the pre-fix path's Android Keystore wrap
-    // broke cross-device restore in the first place.
-    await _storage.write(
-      key: 'encrypted_phrase',
-      value: blob.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
-    );
-    // A restored account skips the TOTP / name-picking ceremony — the
-    // user already did those on the source device. Mark onboarding
-    // complete so the splash gate lets the user straight into HomeShell
-    // on next launch.
-    await _storage.write(key: 'onboarding_complete', value: 'true');
-    await _storage.write(key: 'account_address', value: account.address);
-
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
+    Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => HomeShell(address:
- account.address)),
-      (_) => false,
-    );
-  } catch (e) {
-    setState(() => _loading = false);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Restore failed: $e')),
+      MaterialPageRoute(
+        builder: (_) => RestoreProviderScreen(
+          onBlobDownloaded: (blob) {
+            Navigator.pop(context);
+            _restoreFromBlob(blob);
+          },
+        ),
+      ),
     );
   }
-}
+
+  Future<void> _restoreFromBlob(Uint8List blob) async {
+    setState(() => _loading = true);
+
+    try {
+      final phrase = RustLib.instance.api.crateCoreDecryptPhrase(
+        blob: blob.toList(),
+        passphrase: _passphraseController.text,
+      );
+
+      final account = RustLib.instance.api.crateCoreRestoreAccount(
+        phrase: phrase,
+      );
+
+      // Write order matters: `account_address` is the splash gate, so
+      // it must be LAST. If any earlier write crashes, splash sees no
+      // address and the user re-runs onboarding cleanly rather than
+      // landing in a half-restored state.
+      //
+      // The downloaded blob IS already a passphrase-encrypted seed
+      // phrase (produced by the create flow's `crateCoreEncryptPhrase`
+      // call). Store it directly — re-encrypting would churn entropy
+      // for no gain, and the pre-fix path's Android Keystore wrap
+      // broke cross-device restore in the first place.
+      await _storage.write(
+        key: 'encrypted_phrase',
+        value: blob.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+      );
+      // A restored account skips the TOTP / name-picking ceremony — the
+      // user already did those on the source device. Mark onboarding
+      // complete so the splash gate lets the user straight into HomeShell
+      // on next launch.
+      await _storage.write(key: 'onboarding_complete', value: 'true');
+      await _storage.write(key: 'account_address', value: account.address);
+
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => HomeShell(address: account.address)),
+        (_) => false,
+      );
+    } catch (e) {
+      setState(() => _loading = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Restore failed: $e')));
+    }
+  }
 
   @override
   void dispose() {
@@ -689,59 +876,61 @@ Future<void> _restoreFromBlob(Uint8List blob) async {
     super.dispose();
   }
 
- @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(title: const Text('Restore Account')),
-    body: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Restore your account',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Enter your recovery passphrase to restore your account from your backup.',
-              style: TextStyle(color: Colors.white60),
-            ),
-            const SizedBox(height: 32),
-            TextField(
-              controller: _passphraseController,
-              obscureText: _obscure,
-              enableSuggestions: false,
-              autocorrect: false,
-              autofillHints: const [AutofillHints.password],
-              decoration: InputDecoration(
-                labelText: 'Recovery passphrase',
-                border: const OutlineInputBorder(),
-                helperText: 'Paste from your password manager',
-                helperStyle: const TextStyle(color: Colors.white38),
-                suffixIcon: IconButton(
-                  icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-                  onPressed: () => setState(() => _obscure = !_obscure),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Restore Account')),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Restore your account',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Enter your recovery passphrase to restore your account from your backup.',
+                style: TextStyle(color: Colors.white60),
+              ),
+              const SizedBox(height: 32),
+              TextField(
+                controller: _passphraseController,
+                obscureText: _obscure,
+                enableSuggestions: false,
+                autocorrect: false,
+                autofillHints: const [AutofillHints.password],
+                decoration: InputDecoration(
+                  labelText: 'Recovery passphrase',
+                  border: const OutlineInputBorder(),
+                  helperText: 'Paste from your password manager',
+                  helperStyle: const TextStyle(color: Colors.white38),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscure ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 32),
-            FilledButton(
-              onPressed: _loading ? null : _pickBackupSource,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: _loading
-                    ? const CircularProgressIndicator()
-                    : const Text('Find My Backup'),
+              const SizedBox(height: 32),
+              FilledButton(
+                onPressed: _loading ? null : _pickBackupSource,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: _loading
+                      ? const CircularProgressIndicator()
+                      : const Text('Find My Backup'),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -786,8 +975,11 @@ class PickNamePromptScreen extends StatelessWidget {
                       width: 2,
                     ),
                   ),
-                  child: Icon(Icons.badge_outlined,
-                      color: AppTheme.accent, size: 40),
+                  child: Icon(
+                    Icons.badge_outlined,
+                    color: AppTheme.accent,
+                    size: 40,
+                  ),
                 ),
               ),
               const SizedBox(height: 28),
@@ -822,8 +1014,11 @@ class PickNamePromptScreen extends StatelessWidget {
                         'Friends and family can send you RST by typing yourname.rst instead of your 48-character address. Your name is also your identity across Rostro.',
                     preferBelow: true,
                     triggerMode: TooltipTriggerMode.tap,
-                    child: const Icon(Icons.info_outline,
-                        size: 16, color: AppTheme.textTertiary),
+                    child: const Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: AppTheme.textTertiary,
+                    ),
                   ),
                 ],
               ),
@@ -848,7 +1043,8 @@ class PickNamePromptScreen extends StatelessWidget {
                   Navigator.pushAndRemoveUntil(
                     context,
                     MaterialPageRoute(
-                        builder: (_) => HomeShell(address: address)),
+                      builder: (_) => HomeShell(address: address),
+                    ),
                     (_) => false,
                   );
                 },
