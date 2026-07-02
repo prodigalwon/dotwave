@@ -4,6 +4,7 @@ pub mod chat_dr;
 pub mod dead_drop;
 pub mod chat_session;
 pub mod core;
+pub mod membership;
 pub mod mime_wrap_client;
 pub mod mime_wrap_prover;
 pub mod rostro_config;

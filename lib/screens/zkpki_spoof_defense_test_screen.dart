@@ -25,6 +25,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../bridge/bridge_generated.dart/core.dart' as bridge;
 import '../bridge/bridge_generated.dart/frb_generated.dart' show RustLib;
 import '../config/rpc_endpoints.dart';
+import '../services/membership_enrollment_service.dart';
 import '../services/zkpki_ceremony_service.dart';
 
 class ZkPkiSpoofDefenseTestScreen extends StatefulWidget {
@@ -647,13 +648,28 @@ class _ZkPkiSpoofDefenseTestScreenState
       );
       final attestEcSec1 = Uint8List.fromList(attestSec1Vec);
 
-      // ── MockVerdict::Tpm SCALE blob for the testnet NoopBindingProofVerifier ──
-      // [variant 0 = Tpm][32 bytes ek_hash dummy][compact-u32(65)][SEC1].
+      // ── Chat membership enrollment (M1/M2) ──
+      // One biometric prompt: in-chip ECDH(W, P_FIXED) -> s ->
+      // id_commitment, then attest_ec signs the binding for THIS offer
+      // nonce. The chain verifies it against the attest pubkey the
+      // MockVerdict below reports, then inserts the membership leaf.
+      final enrollment =
+          await MembershipEnrollmentService().enroll(contractNonceText);
+
+      // ── MockVerdict::TpmWithAttest SCALE blob for the testnet
+      // NoopBindingProofVerifier ──
+      // [variant 5 = TpmWithAttest][32 bytes ek_hash dummy]
+      // [compact-u32(65)][cert_ec SEC1][compact-u32(65)][attest_ec SEC1].
+      // The distinct attest pubkey is what lets verify_chat_enrollment
+      // check the REAL attest_ec id-binding signature on the testnet
+      // posture (variant 0's single pubkey reports attest_ec = cert_ec).
       final mockVerdictBlob = Uint8List.fromList([
-        0x00,
+        0x05,
         ...List.filled(32, 0x42),
         0x05, 0x01,
         ...certEcSec1,
+        0x05, 0x01,
+        ...attestEcSec1,
       ]);
 
       final bundle = bridge.StrongBoxCeremonyBundle(
@@ -678,6 +694,8 @@ class _ZkPkiSpoofDefenseTestScreenState
         ecKeyPubClaimedHex: '0x${_bytesHex(ecKeyPub32)}',
         phrase: _phraseController.text.trim(),
         rpcUrl: _rpcUrlController.text.trim(),
+        chatIdCommitmentHex: '0x${enrollment.idCommitmentHex}',
+        chatIdBindingSignatureHex: '0x${enrollment.idBindingSignatureHex}',
       );
 
       _append(_LogEntry.success(
@@ -689,6 +707,10 @@ class _ZkPkiSpoofDefenseTestScreenState
           'commitment_c  = 0x${_bytesHex(commitment)}',
           'cert_ec SEC1  = 0x${_bytesHex(certEcSec1)}',
           'attest SEC1   = 0x${_bytesHex(attestEcSec1)}',
+          'id_commitment = 0x${enrollment.idCommitmentHex}',
+          'id_binding_sig= 0x${enrollment.idBindingSignatureHex}',
+          'membership_W  = 0x${enrollment.wPublicKeyHex}',
+          '(M1 gate: labtool verify-enrollment <attest_sec1> <id_commitment> <contract_nonce> <sig>)',
           '',
           'Read CertMinted event from the chain (System → Events) to',
           'pick up the cert thumbprint, then paste into the field above.',

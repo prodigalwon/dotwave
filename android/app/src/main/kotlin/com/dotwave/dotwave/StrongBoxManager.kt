@@ -57,6 +57,19 @@ object StrongBoxManager {
     // works on stable 1.1 and matches the batch-read UX.)
     private const val CONTENT_KEY_AUTH_WINDOW_SECS = 15
 
+    // The membership secret-derivation key `W` (anon-membership D1): a
+    // dedicated StrongBox AGREE_KEY whose ONLY peer is the fixed public
+    // point P_FIXED (rust_core `membership_p_fixed_sec1`). The member
+    // secret is s = hash_to_field(ECDH(W_priv, P_FIXED)); W never signs,
+    // never talks to any other peer, and is NOT the chat content key —
+    // separate purposes, separate keys. Losing W (uninstall, biometric
+    // re-enrollment) orphans the enrolled membership leaf; recovery is
+    // re-minting a cert with a fresh enrollment. Auth-gated like the
+    // content key: one BIOMETRIC_STRONG prompt per auth window, which in
+    // practice is one prompt per 24h-epoch membership handshake.
+    private const val MEMBERSHIP_W_ALIAS = "dotwave_membership_w"
+    private const val MEMBERSHIP_W_AUTH_WINDOW_SECS = 15
+
     /**
      * Check if this device has StrongBox hardware.
      * Returns false if only TEE is available — we require discrete secure element.
@@ -332,6 +345,78 @@ object StrongBoxManager {
             val privateKey = keyStore.getKey(CONTENT_KEY_ALIAS, null) as? PrivateKey
                 ?: return null
             val peer = sec1UncompressedToECPublicKey(ephemeralSec1Uncompressed)
+                ?: return null
+            val ka = KeyAgreement.getInstance("ECDH", "AndroidKeyStore")
+            ka.init(privateKey)
+            ka.doPhase(peer, true)
+            ka.generateSecret()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // ── Membership secret key W (anon-membership D1) ────────────────────
+
+    /**
+     * Ensure the membership `W` key exists, WITHOUT rotating it: unlike
+     * [generateContentKeyPair] (where regeneration is a deliberate key
+     * rotation), an existing `W` is always returned as-is — its ECDH
+     * output IS the member secret behind the on-chain membership leaf,
+     * so silently regenerating would orphan the enrollment.
+     *
+     * @return the public half as raw SEC1 uncompressed (65 bytes), or
+     *         null on failure (no StrongBox / API < 31).
+     */
+    fun ensureMembershipWKey(): ByteArray? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null // PURPOSE_AGREE_KEY is API 31+
+        return try {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+            keyStore.getCertificate(MEMBERSHIP_W_ALIAS)?.let {
+                return ecPublicKeyToSec1Uncompressed(it.publicKey)
+            }
+            val keyPairGenerator = KeyPairGenerator.getInstance(
+                KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore"
+            )
+            val spec = KeyGenParameterSpec.Builder(
+                MEMBERSHIP_W_ALIAS,
+                KeyProperties.PURPOSE_AGREE_KEY
+            )
+                .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                .setIsStrongBoxBacked(true)
+                .setUserAuthenticationRequired(true)
+                .setUserAuthenticationParameters(
+                    MEMBERSHIP_W_AUTH_WINDOW_SECS,
+                    KeyProperties.AUTH_BIOMETRIC_STRONG
+                )
+                .setInvalidatedByBiometricEnrollment(true)
+                .build()
+            keyPairGenerator.initialize(spec)
+            ecPublicKeyToSec1Uncompressed(keyPairGenerator.generateKeyPair().public)
+        } catch (e: StrongBoxUnavailableException) {
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Derive the raw membership shared secret: ECDH(W_priv, P_FIXED)
+     * INSIDE StrongBox. Caller MUST have passed a BIOMETRIC_STRONG prompt
+     * within the last [MEMBERSHIP_W_AUTH_WINDOW_SECS] seconds. The only
+     * legitimate peer is rust_core's P_FIXED; the Rust side reduces the
+     * result to the member secret `s` and zeroizes it.
+     *
+     * @param pFixedSec1 P_FIXED as raw SEC1 uncompressed (65 bytes).
+     * @return the raw shared secret (X coordinate, 32 bytes), or null.
+     */
+    fun computeMembershipEcdh(pFixedSec1: ByteArray): ByteArray? {
+        return try {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+            val privateKey = keyStore.getKey(MEMBERSHIP_W_ALIAS, null) as? PrivateKey
+                ?: return null
+            val peer = sec1UncompressedToECPublicKey(pFixedSec1)
                 ?: return null
             val ka = KeyAgreement.getInstance("ECDH", "AndroidKeyStore")
             ka.init(privateKey)

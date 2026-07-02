@@ -244,6 +244,8 @@ Future<ChatSendOutcome> chatSendOnion2Hop({
   String? prevSelfHashHex,
   required BigInt composedAtSecs,
   String? avatarWebpHex,
+  String? sessionKeyHex,
+  String? sessionSeedHex,
 }) => RustLib.instance.api.crateChatChatSendOnion2Hop(
   nodeRpc: nodeRpc,
   guardPubkeyHex: guardPubkeyHex,
@@ -259,6 +261,8 @@ Future<ChatSendOutcome> chatSendOnion2Hop({
   prevSelfHashHex: prevSelfHashHex,
   composedAtSecs: composedAtSecs,
   avatarWebpHex: avatarWebpHex,
+  sessionKeyHex: sessionKeyHex,
+  sessionSeedHex: sessionSeedHex,
 );
 
 /// Send a DEAD DROP: routed by an opaque `label` (a callsign) instead of

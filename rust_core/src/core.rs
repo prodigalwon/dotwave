@@ -2127,6 +2127,13 @@ pub fn submit_mint_cert_strongbox(
     ec_key_pub_claimed_hex: String,
     phrase: String,
     rpc_url: String,
+    // Chat membership enrollment (M2, DOTWAVE-MEMBERSHIP-AUTH-CLIENT-PLAN):
+    // both present -> mint enrolls a membership leaf; both absent -> mint
+    // without one. `id_commitment` from `membership_id_commitment`;
+    // signature from the Kotlin `zkpkiSignIdBinding` channel over
+    // `membership_id_binding_msg(id_commitment, contract_nonce)`.
+    chat_id_commitment_hex: Option<String>,
+    chat_id_binding_signature_hex: Option<String>,
 ) -> Result<String, String> {
     let contract_nonce = decode_hex_32(&contract_nonce_hex, "contract_nonce")?;
     let cert_ec_public_sec1 = decode_hex_n::<65>(
@@ -2151,6 +2158,29 @@ pub fn submit_mint_cert_strongbox(
     let commitment_c = decode_hex_32(&commitment_c_hex, "commitment_c")?;
     let ec_key_pub_claimed =
         decode_hex_32(&ec_key_pub_claimed_hex, "ec_key_pub_claimed")?;
+
+    // Validate-at-handoff: enrollment is all-or-nothing. One field without
+    // the other is a caller bug, not a mint without enrollment.
+    let chat_enrollment = match (chat_id_commitment_hex, chat_id_binding_signature_hex) {
+        (Some(idc_hex), Some(sig_hex)) => {
+            let id_commitment = decode_hex_32(&idc_hex, "chat_id_commitment")?;
+            let id_binding_signature = decode_hex_bytes(&sig_hex, "chat_id_binding_signature")?;
+            if id_binding_signature.is_empty() {
+                return Err("chat_id_binding_signature must not be empty".into());
+            }
+            Some(polkadot::runtime_types::zk_pki_tpm::chat_enrollment::ChatEnrollment {
+                id_commitment,
+                id_binding_signature,
+            })
+        }
+        (None, None) => None,
+        _ => {
+            return Err(
+                "chat enrollment needs BOTH id_commitment and id_binding_signature (or neither)"
+                    .into(),
+            )
+        }
+    };
 
     let attestation = TypedAttestationPayload {
         cert_ec_chain: vec![cert_ec_chain_leaf.clone()],
@@ -2189,6 +2219,7 @@ pub fn submit_mint_cert_strongbox(
             Some(hip_proof),
             Some(commitment_c),
             Some(ec_key_pub_claimed),
+            chat_enrollment,
         );
         let mut tx_client = api.tx().await.map_err(|e| e.to_string())?;
         let mut signable = tx_client
@@ -2618,6 +2649,184 @@ pub fn lab_set_node_record(
     .into();
     let tx = subxt::dynamic::tx("RnsResolvers", "set_record", fields);
     submit_typed(&phrase, &rpc_url, tx)
+}
+
+/// LAB: idempotent issuer-side zkpki bootstrap for the phone-mint E2E
+/// (DOTWAVE-MEMBERSHIP-AUTH-CLIENT-PLAN M2). Three steps, each skipped if
+/// already on chain:
+///   1. `register_root` for the ROOT dev account (via [`chat_mint_test_cert`],
+///      software P-256 device key; gemini's test verifiers accept it).
+///   2. `issue_issuer_cert` root -> ISSUER dev account.
+///   3. `create_cert_template` (PoP Required + MimeWrap) under the issuer —
+///      the template shape `submit_mint_cert_strongbox`'s payload targets.
+/// After this, `lab_offer_contract` can offer the phone a contract.
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_bootstrap_issuer(
+    root_suri: String,
+    issuer_suri: String,
+    template_name: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    use polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec;
+    use polkadot::runtime_types::zk_pki_primitives::crypto::{
+        DevicePublicKey as TypedDevicePublicKey, KeyAlgorithm as TypedKeyAlgorithm,
+    };
+    use polkadot::runtime_types::zk_pki_primitives::template::{
+        PopMechanism as TypedPopMechanism, PopRequirement as TypedPopRequirement,
+    };
+    use parity_scale_codec::Encode;
+
+    const ISSUER_TTL_BLOCKS: u32 = 900_000;
+    let mut log = Vec::new();
+
+    // 1. Root (idempotent inside chat_mint_test_cert).
+    let root_thumb = chat_mint_test_cert(
+        rpc_url.clone(),
+        root_suri.clone(),
+        dev_cert_seed_hex(root_suri.clone()),
+        1_000_000,
+    )?;
+    log.push(format!("root cert: 0x{root_thumb}"));
+
+    let issuer_pair = sr25519::Pair::from_string(&issuer_suri, None)
+        .map_err(|e| format!("issuer keypair: {e:?}"))?;
+    let issuer_account = AccountId32::from(issuer_pair.public().0);
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all().build().map_err(|e| e.to_string())?;
+
+    // 2. Issuer cert (issued by the root), skipped if registered.
+    let issuer_registered = rt.block_on(async {
+        let (client, metadata) = crate::rostro_client::connect(&rpc_url).await?;
+        Ok::<_, String>(
+            client
+                .fetch_storage(&metadata, "ZkPki", "Issuers", &[&issuer_account.0.encode()])
+                .await
+                .map_err(|e| format!("ZkPki.Issuers fetch: {e}"))?
+                .is_some(),
+        )
+    })?;
+    if issuer_registered {
+        log.push("issuer: already registered".into());
+    } else {
+        let issuer_sec1 = hex::decode(crate::chat::chat_cert_pubkey(dev_cert_seed_hex(
+            issuer_suri.clone(),
+        ))?)
+        .map_err(|e| format!("issuer cert pubkey hex: {e}"))?;
+        let tx = polkadot::tx().zk_pki().issue_issuer_cert(
+            issuer_account.clone(),
+            issuer_account.clone(), // proxy — NoopProxyValidator admits any value
+            TypedDevicePublicKey {
+                algorithm: TypedKeyAlgorithm::EcdsaP256,
+                key_bytes: BoundedVec(issuer_sec1),
+            },
+            BoundedVec(b"dev-test-attestation".to_vec()), // ignored by the test verifier
+            ISSUER_TTL_BLOCKS,
+            BoundedVec(vec![]), // no capability EKUs
+        );
+        let hash = submit_typed(&root_suri, &rpc_url, tx)?;
+        log.push(format!("issuer cert issued: {hash}"));
+    }
+
+    // 3. Template under the issuer, skipped if it exists.
+    let name_bytes = template_name.clone().into_bytes();
+    let template_exists = rt.block_on(async {
+        let (client, metadata) = crate::rostro_client::connect(&rpc_url).await?;
+        Ok::<_, String>(
+            client
+                .fetch_storage(
+                    &metadata,
+                    "ZkPki",
+                    "CertTemplates",
+                    &[&issuer_account.0.encode(), &name_bytes.encode()],
+                )
+                .await
+                .map_err(|e| format!("ZkPki.CertTemplates fetch: {e}"))?
+                .is_some(),
+        )
+    })?;
+    if template_exists {
+        log.push(format!("template '{template_name}': already exists"));
+    } else {
+        let tx = polkadot::tx().zk_pki().create_cert_template(
+            BoundedVec(name_bytes),
+            TypedPopRequirement::Required,
+            Some(TypedPopMechanism::MimeWrap),
+            // Must fit inside the issuer cert's remaining life
+            // (TemplateTtlExceedsIssuerCert): issuer TTL is 900k, so keep
+            // the template ceiling comfortably under it.
+            200_000, // max_ttl_blocks
+            100,     // min_ttl_blocks
+            None,      // max_certs
+            None,      // metadata_schema
+            BoundedVec(vec![]),
+        );
+        let hash = submit_typed(&issuer_suri, &rpc_url, tx)?;
+        log.push(format!("template '{template_name}' created: {hash}"));
+    }
+
+    Ok(log.join("\n"))
+}
+
+/// LAB: `offer_contract` from the issuer to `user_ss58`, then read back the
+/// offer nonce + created_at block the phone's mint screen needs. The nonce
+/// doubles as the ceremony's attestation challenge AND the enrollment
+/// binding challenge.
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_offer_contract(
+    issuer_suri: String,
+    user_ss58: String,
+    template_name: String,
+    ttl_blocks: u32,
+    rpc_url: String,
+) -> Result<String, String> {
+    use polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec;
+    use parity_scale_codec::Encode;
+
+    let user = AccountId32::from_str(&user_ss58)
+        .map_err(|e| format!("user_ss58: {e}"))?;
+    let issuer_pair = sr25519::Pair::from_string(&issuer_suri, None)
+        .map_err(|e| format!("issuer keypair: {e:?}"))?;
+    let issuer_account = AccountId32::from(issuer_pair.public().0);
+
+    let tx = polkadot::tx().zk_pki().offer_contract(
+        user.clone(),
+        ttl_blocks,
+        BoundedVec(template_name.into_bytes()),
+        BoundedVec(vec![]), // metadata
+    );
+    submit_typed(&issuer_suri, &rpc_url, tx)?;
+
+    // Read the offer back: OfferIndex((issuer, user)) -> nonce, then
+    // ContractOffers(nonce) -> created_at.
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all().build().map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let (client, metadata) = crate::rostro_client::connect(&rpc_url).await?;
+        let mut index_key = issuer_account.0.encode();
+        index_key.extend(user.0.encode());
+        let nonce_val = client
+            .fetch_storage(&metadata, "ZkPki", "OfferIndex", &[&index_key])
+            .await
+            .map_err(|e| format!("ZkPki.OfferIndex fetch: {e}"))?
+            .ok_or("offer submitted but OfferIndex entry never appeared")?;
+        let nonce: [u8; 32] = crate::rostro_client::as_bytes(&nonce_val)
+            .ok_or("OfferIndex value is not bytes")?
+            .try_into()
+            .map_err(|_| "offer nonce is not 32 bytes".to_string())?;
+        let offer = client
+            .fetch_storage(&metadata, "ZkPki", "ContractOffers", &[&nonce.encode()])
+            .await
+            .map_err(|e| format!("ZkPki.ContractOffers fetch: {e}"))?
+            .ok_or("ContractOffers entry missing for indexed nonce")?;
+        let created_at = crate::rostro_client::field(&offer, "created_at")
+            .and_then(crate::rostro_client::as_u32)
+            .ok_or("ContractOffer missing created_at")?;
+        Ok(format!(
+            "contract_nonce=0x{}\noffer_created_at_block={created_at}",
+            hex::encode(&nonce),
+        ))
+    })
 }
 
 pub(crate) fn decode_hex_n<const N: usize>(hex: &str, label: &str) -> Result<[u8; N], String> {

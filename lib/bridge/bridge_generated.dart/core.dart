@@ -9,6 +9,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 // These functions are ignored because they are not marked as `pub`: `confirmed`, `connect_rostro_with_rpc`, `connect_rostro`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `dispatch_action`, `encode_record_type`, `estimate_action_fee`, `estimate_call`, `failed`, `fetch_best_nonce`, `fetch_root_thumbprint`, `hex_encode_lower`, `rostro_tx_params`, `run_streamed`, `submit_signed_watched`, `submit_typed`, `submitted`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Sr25519Signer`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `fmt`, `sign`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `lab_authenticate_membership`, `lab_bootstrap_issuer`, `lab_offer_contract`, `lab_register_name`, `lab_set_node_record`, `lab_test_enroll`
 
 /// Estimate the network fee (in planck) for a write action, without the user's
 /// phrase. The fee depends only on the call's weight + encoded length, not the
@@ -628,6 +629,8 @@ Future<String> submitMintCertStrongbox({
   required String ecKeyPubClaimedHex,
   required String phrase,
   required String rpcUrl,
+  String? chatIdCommitmentHex,
+  String? chatIdBindingSignatureHex,
 }) => RustLib.instance.api.crateCoreSubmitMintCertStrongbox(
   contractNonceHex: contractNonceHex,
   offerCreatedAtBlock: offerCreatedAtBlock,
@@ -637,6 +640,8 @@ Future<String> submitMintCertStrongbox({
   ecKeyPubClaimedHex: ecKeyPubClaimedHex,
   phrase: phrase,
   rpcUrl: rpcUrl,
+  chatIdCommitmentHex: chatIdCommitmentHex,
+  chatIdBindingSignatureHex: chatIdBindingSignatureHex,
 );
 
 /// `self_discard_cert` with `PopAssertion::MimeWrap`. Cert holder asserts

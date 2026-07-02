@@ -877,6 +877,8 @@ pub fn chat_send_onion(
         auth_cert_thumbprint_hex,
         auth_cert_seed_hex,
         None,
+        None,
+        None,
     )
 }
 
@@ -914,6 +916,14 @@ pub fn chat_send_onion_2hop(
     // `prev_self_hash.is_none()` below so a follow-up never carries it even
     // if one is passed.
     avatar_webp_hex: Option<String>,
+    // Membership-session auth (M5): when BOTH are present the drop is
+    // signed by the software session key (no secure element, no cert)
+    // and the `auth_cert_*` pair above is unused. From
+    // `membership_authenticate`'s outcome: `session_key_hex` = the
+    // session pubkey (the guard's lookup key), `session_seed_hex` = the
+    // session's Ed25519 seed.
+    session_key_hex: Option<String>,
+    session_seed_hex: Option<String>,
 ) -> Result<ChatSendOutcome, String> {
     let prev_self_hash = match prev_self_hash_hex.filter(|h| !h.is_empty()) {
         Some(h) => Some(decode_hex32(&h)?),
@@ -949,6 +959,8 @@ pub fn chat_send_onion_2hop(
         total_shares,
         auth_cert_thumbprint_hex,
         auth_cert_seed_hex,
+        session_key_hex,
+        session_seed_hex,
         None,
     )?;
     outcome.new_self_hash_hex = hex::encode(new_self_hash);
@@ -1011,6 +1023,8 @@ pub fn chat_send_deaddrop(
         total_shares,
         auth_cert_thumbprint_hex,
         auth_cert_seed_hex,
+        None,
+        None,
         Some(pickup),
     )?;
     outcome.new_self_hash_hex = hex::encode(new_self_hash);
@@ -1175,6 +1189,8 @@ pub fn chat_send_to_pickup(
         total_shares,
         auth_cert_thumbprint_hex,
         auth_cert_seed_hex,
+        None,
+        None,
         Some(target),
     )?;
     outcome.new_self_hash_hex = hex::encode(new_self_hash);
@@ -1268,6 +1284,15 @@ fn send_content_onion(
     total_shares: u8,
     auth_cert_thumbprint_hex: Option<String>,
     auth_cert_seed_hex: Option<String>,
+    // Session auth (M5): when BOTH are present the drop is admitted by the
+    // cheap Ed25519 session signature and cert auth is skipped entirely.
+    // `session_key_hex` is the guard's 32-byte session lookup key — the
+    // session pubkey for an anonymous membership session
+    // (`chat_authenticateMembership`), or the cert thumbprint for an
+    // identified session (`chat_authenticate`). `session_seed_hex` is the
+    // software session-key seed from the handshake.
+    session_key_hex: Option<String>,
+    session_seed_hex: Option<String>,
     // `Some(pickup)` routes by a caller-derived pickup key (a dead drop's
     // for_deaddrop(label)); `None` derives for_pairwise over the recipient.
     pickup_override: Option<[u8; 32]>,
@@ -1310,9 +1335,31 @@ fn send_content_onion(
     let packet_bytes = packet.encode();
     let packet_hex = hex::encode(&packet_bytes);
 
-    // Cert-auth (Phase 2) over the ONION PACKET bytes.
+    // Auth over the ONION PACKET bytes: session signature when a live
+    // session is supplied (validate-at-handoff: one session field without
+    // the other is a caller bug), else per-drop cert auth (Phase 2).
+    let (session_key_param, session_sig_param) = match (&session_key_hex, &session_seed_hex) {
+        (Some(key), Some(seed)) => {
+            let sig = crate::chat_session::chat_session_sign_drop(
+                seed.clone(),
+                packet_hex.clone(),
+            )?;
+            (Some(key.clone()), Some(sig))
+        }
+        (None, None) => (None, None),
+        _ => {
+            return Err(
+                "session auth needs BOTH session_key_hex and session_seed_hex (or neither)"
+                    .into(),
+            )
+        }
+    };
     let (auth_thumbprint_hex, auth_timestamp_secs, auth_sig_hex) =
-        build_cert_auth(&packet_bytes, auth_cert_thumbprint_hex, auth_cert_seed_hex)?;
+        if session_key_param.is_some() {
+            (None, None, None)
+        } else {
+            build_cert_auth(&packet_bytes, auth_cert_thumbprint_hex, auth_cert_seed_hex)?
+        };
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1330,7 +1377,9 @@ fn send_content_onion(
                     total_shares,
                     auth_thumbprint_hex,
                     auth_timestamp_secs,
-                    auth_sig_hex
+                    auth_sig_hex,
+                    session_key_param,
+                    session_sig_param
                 ],
             )
             .await
