@@ -95,6 +95,26 @@ Future<MembershipSessionOutcome> membershipAuthenticate({
   pkBytes: pkBytes,
 );
 
+/// The chain's current membership epoch (the 24h nullifier rate-limit
+/// clock). Cheap state_call, no biometric — the client uses it to decide
+/// whether a persisted session is still valid before reusing its ticket.
+Future<BigInt> membershipCurrentEpoch({required String chainRpc}) => RustLib
+    .instance
+    .api
+    .crateMembershipMembershipCurrentEpoch(chainRpc: chainRpc);
+
+/// Present a portable session ticket to `guard_rpc` — install the session
+/// at a guard that never ran the handshake (CHAT-SESSION-TICKET.md 2.2).
+/// `ticket_hex` is the record from a prior `membership_authenticate`.
+/// Returns the epoch the session is valid through.
+Future<BigInt> membershipPresentTicket({
+  required String guardRpc,
+  required String ticketHex,
+}) => RustLib.instance.api.crateMembershipMembershipPresentTicket(
+  guardRpc: guardRpc,
+  ticketHex: ticketHex,
+);
+
 /// The anonymous membership session (M4): what the phone holds after a
 /// successful `chat_authenticateMembership`. `session_seed_hex` is the
 /// software Ed25519 seed that signs each drop (`chat_session_sign_drop`);
@@ -107,6 +127,12 @@ class MembershipSessionOutcome {
   final String nullifierHex;
   final String guardNodeIdHex;
 
+  /// The witnessed spend record, SCALE-encoded (hex): the PORTABLE
+  /// admission ticket (CHAT-SESSION-TICKET.md). Persist it with the
+  /// session; present it at another guard via `membership_present_ticket`
+  /// to enter there without a fresh handshake (or spend).
+  final String ticketHex;
+
   const MembershipSessionOutcome({
     required this.sessionPubkeyHex,
     required this.sessionSeedHex,
@@ -114,6 +140,7 @@ class MembershipSessionOutcome {
     required this.currentEpoch,
     required this.nullifierHex,
     required this.guardNodeIdHex,
+    required this.ticketHex,
   });
 
   @override
@@ -123,7 +150,8 @@ class MembershipSessionOutcome {
       expiresEpoch.hashCode ^
       currentEpoch.hashCode ^
       nullifierHex.hashCode ^
-      guardNodeIdHex.hashCode;
+      guardNodeIdHex.hashCode ^
+      ticketHex.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -135,7 +163,8 @@ class MembershipSessionOutcome {
           expiresEpoch == other.expiresEpoch &&
           currentEpoch == other.currentEpoch &&
           nullifierHex == other.nullifierHex &&
-          guardNodeIdHex == other.guardNodeIdHex;
+          guardNodeIdHex == other.guardNodeIdHex &&
+          ticketHex == other.ticketHex;
 }
 
 /// The cert's membership witness, fetched from the chain and verified

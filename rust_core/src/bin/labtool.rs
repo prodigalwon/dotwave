@@ -25,7 +25,7 @@ use rust_core::core::{
     fetch_balance, lab_authenticate_membership, lab_bootstrap_issuer, lab_offer_contract,
     lab_register_name, lab_set_node_record, lab_test_enroll, send_dot,
 };
-use rust_core::membership::{lab_witness_check, verify_id_binding};
+use rust_core::membership::{lab_witness_check, membership_present_ticket, verify_id_binding};
 use rust_core::dead_drop::DeadDropThread;
 
 const FERDIE_CHAT_SEED: &str = "f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1";
@@ -752,6 +752,21 @@ fn main() {
                 }
             }
         }
+        "present-ticket" => {
+            // present-ticket <ticket_hex> <guard_rpc>
+            // Install a portable session ticket at a guard that never ran the
+            // handshake (CHAT-SESSION-TICKET.md). The ticket is the `ticket=`
+            // line from a prior `auth`.
+            let ticket = args.get(2).expect("usage: present-ticket <ticket_hex> <guard_rpc>").clone();
+            let guard_rpc = args.get(3).expect("need <guard_rpc>").clone();
+            match membership_present_ticket(guard_rpc, ticket) {
+                Ok(epoch) => println!("TICKET INSTALLED: session valid through epoch {epoch}"),
+                Err(e) => {
+                    eprintln!("present-ticket FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
         "bootstrap-issuer" => {
             // bootstrap-issuer [root_suri] [issuer_suri] [template] [rpc]
             // Idempotent issuer-side zkpki bootstrap for the phone mint:
@@ -822,7 +837,7 @@ fn main() {
             }
         }
         _ => {
-            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-say <callsign> <recipient_name> \"<text>\" ...|deaddrop-poll <label> [guard]|deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]|test-enroll <s_hex> [suri] [rpc]|enroll-node <name> <node_key_hex> [suri] [rpc]|auth <s_hex> <guard_rpc> <pk_path> [chain_rpc]|bootstrap-issuer [root] [issuer] [template] [rpc]|offer <user_ss58> [ttl] [issuer] [template] [rpc]|verify-enrollment <attest_sec1> <idc> <challenge> <sig>|witness-check <thumbprint> <idc> [rpc]>");
+            eprintln!("usage: labtool <ferdie-keys|ferdie-setup [rpc]|fund <ss58> [amount] [rpc]|ferdie-read [rpc]|ferdie-send [count] [start] ...|ferdie-say \"<text>\" [guard] [relay2] [chain]|ferdie-send-to <pubkey> <content_key> [count] [start] ...|deaddrop-send-to <label> <pubkey> <content_key> [count] [start] ...|deaddrop-say <callsign> <recipient_name> \"<text>\" ...|deaddrop-poll <label> [guard]|deaddrop-pingpong <label> [rounds] [guard] [relay2] [chain]|test-enroll <s_hex> [suri] [rpc]|enroll-node <name> <node_key_hex> [suri] [rpc]|auth <s_hex> <guard_rpc> <pk_path> [chain_rpc]|bootstrap-issuer [root] [issuer] [template] [rpc]|offer <user_ss58> [ttl] [issuer] [template] [rpc]|verify-enrollment <attest_sec1> <idc> <challenge> <sig>|witness-check <thumbprint> <idc> [rpc]|present-ticket <ticket_hex> <guard_rpc>>");
             std::process::exit(2);
         }
     }

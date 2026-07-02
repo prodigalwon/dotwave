@@ -437,6 +437,11 @@ pub struct MembershipSessionOutcome {
     pub current_epoch: u64,
     pub nullifier_hex: String,
     pub guard_node_id_hex: String,
+    /// The witnessed spend record, SCALE-encoded (hex): the PORTABLE
+    /// admission ticket (CHAT-SESSION-TICKET.md). Persist it with the
+    /// session; present it at another guard via `membership_present_ticket`
+    /// to enter there without a fresh handshake (or spend).
+    pub ticket_hex: String,
 }
 
 /// M4: the real membership handshake. Re-derives `s` from the in-chip ECDH
@@ -547,6 +552,11 @@ pub fn membership_authenticate(
         .get("expires_epoch")
         .and_then(|v| v.as_u64())
         .ok_or_else(|| format!("guard response missing expires_epoch: {result}"))?;
+    let ticket_hex = result
+        .get("ticket_hex")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| format!("guard response missing ticket_hex: {result}"))?
+        .to_string();
     Ok(MembershipSessionOutcome {
         session_pubkey_hex: session.pubkey_hex,
         session_seed_hex: session.seed_hex,
@@ -554,6 +564,54 @@ pub fn membership_authenticate(
         current_epoch,
         nullifier_hex: hex::encode(fr_to_bytes_le(&null)),
         guard_node_id_hex,
+        ticket_hex,
+    })
+}
+
+/// The chain's current membership epoch (the 24h nullifier rate-limit
+/// clock). Cheap state_call, no biometric — the client uses it to decide
+/// whether a persisted session is still valid before reusing its ticket.
+pub fn membership_current_epoch(chain_rpc: String) -> Result<u64, String> {
+    use parity_scale_codec::Decode;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let rpc = subxt::rpcs::RpcClient::from_insecure_url(&chain_rpc)
+            .await
+            .map_err(|e| format!("connecting to {chain_rpc}: {e}"))?;
+        let out = zkpki_state_call(&rpc, "ZkPkiApi_membership_epoch", &[]).await?;
+        let epoch = u32::decode(&mut &out[..])
+            .map_err(|e| format!("membership_epoch decode: {e}"))?;
+        Ok(epoch as u64)
+    })
+}
+
+/// Present a portable session ticket to `guard_rpc` — install the session
+/// at a guard that never ran the handshake (CHAT-SESSION-TICKET.md 2.2).
+/// `ticket_hex` is the record from a prior `membership_authenticate`.
+/// Returns the epoch the session is valid through.
+pub fn membership_present_ticket(
+    guard_rpc: String,
+    ticket_hex: String,
+) -> Result<u64, String> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let guard = subxt::rpcs::RpcClient::from_insecure_url(&guard_rpc)
+            .await
+            .map_err(|e| format!("connecting to {guard_rpc}: {e}"))?;
+        let epoch: u64 = guard
+            .request(
+                "chat_presentSessionTicket",
+                subxt::rpcs::rpc_params![ticket_hex],
+            )
+            .await
+            .map_err(|e| format!("chat_presentSessionTicket: {e}"))?;
+        Ok(epoch)
     })
 }
 

@@ -2601,8 +2601,9 @@ pub fn lab_authenticate_membership(
     })?;
 
     Ok(format!(
-        "epoch={current_epoch} anchor={anchor_block} nullifier=0x{} session={result}",
-        hex::encode(fr_to_bytes_le(&null))
+        "epoch={current_epoch} anchor={anchor_block} nullifier=0x{}\nticket={}\nsession={result}",
+        hex::encode(fr_to_bytes_le(&null)),
+        result.get("ticket_hex").and_then(|v| v.as_str()).unwrap_or("<none>"),
     ))
 }
 
