@@ -955,7 +955,7 @@ class ChatStore extends ChangeNotifier {
       // Session went stale under us (epoch rolled, guard restarted): drop
       // it, re-handshake once, and only then fall back to cert auth.
       if (session == null || !e.toString().contains('session')) rethrow;
-      MembershipSessionService.instance.invalidate(address);
+      await MembershipSessionService.instance.invalidate(address);
       session = await MembershipSessionService.instance.ensureSession(
         address,
         chainRpc: node,

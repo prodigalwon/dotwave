@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1545111188;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1814854346;
 
 // Section: executor
 
@@ -2779,6 +2779,39 @@ fn wire__crate__membership__membership_authenticate_impl(
         },
     )
 }
+fn wire__crate__membership__membership_current_epoch_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "membership_current_epoch",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_chain_rpc = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::membership::membership_current_epoch(api_chain_rpc)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__membership__membership_enrolled_thumbprint_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -2953,6 +2986,43 @@ fn wire__crate__membership__membership_p_fixed_sec1_impl(
                 transform_result_sse::<_, ()>((move || {
                     let output_ok =
                         Result::<_, ()>::Ok(crate::membership::membership_p_fixed_sec1())?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__membership__membership_present_ticket_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "membership_present_ticket",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_guard_rpc = <String>::sse_decode(&mut deserializer);
+            let api_ticket_hex = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::membership::membership_present_ticket(
+                        api_guard_rpc,
+                        api_ticket_hex,
+                    )?;
                     Ok(output_ok)
                 })())
             }
@@ -4513,6 +4583,7 @@ impl SseDecode for crate::membership::MembershipSessionOutcome {
         let mut var_currentEpoch = <u64>::sse_decode(deserializer);
         let mut var_nullifierHex = <String>::sse_decode(deserializer);
         let mut var_guardNodeIdHex = <String>::sse_decode(deserializer);
+        let mut var_ticketHex = <String>::sse_decode(deserializer);
         return crate::membership::MembershipSessionOutcome {
             session_pubkey_hex: var_sessionPubkeyHex,
             session_seed_hex: var_sessionSeedHex,
@@ -4520,6 +4591,7 @@ impl SseDecode for crate::membership::MembershipSessionOutcome {
             current_epoch: var_currentEpoch,
             nullifier_hex: var_nullifierHex,
             guard_node_id_hex: var_guardNodeIdHex,
+            ticket_hex: var_ticketHex,
         };
     }
 }
@@ -5073,80 +5145,92 @@ fn pde_ffi_dispatcher_primary_impl(
         71 => {
             wire__crate__membership__membership_authenticate_impl(port, ptr, rust_vec_len, data_len)
         }
-        72 => wire__crate__membership__membership_enrolled_thumbprint_impl(
+        72 => wire__crate__membership__membership_current_epoch_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        73 => wire__crate__membership__membership_fetch_witness_impl(
+        73 => wire__crate__membership__membership_enrolled_thumbprint_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        74 => wire__crate__membership__membership_id_binding_msg_impl(
+        74 => wire__crate__membership__membership_fetch_witness_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        75 => wire__crate__membership__membership_id_commitment_impl(
+        75 => wire__crate__membership__membership_id_binding_msg_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        76 => {
+        76 => wire__crate__membership__membership_id_commitment_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        77 => {
             wire__crate__membership__membership_p_fixed_sec1_impl(port, ptr, rust_vec_len, data_len)
         }
-        77 => wire__crate__core__offer_subdomain_impl(port, ptr, rust_vec_len, data_len),
-        78 => wire__crate__mime_wrap_client__prepare_mime_wrap_setup_impl(
+        78 => wire__crate__membership__membership_present_ticket_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        79 => wire__crate__personhood__query_pop_cert_impl(port, ptr, rust_vec_len, data_len),
-        80 => wire__crate__core__register_name_impl(port, ptr, rust_vec_len, data_len),
-        81 => wire__crate__core__register_name_for_impl(port, ptr, rust_vec_len, data_len),
-        82 => wire__crate__core__reject_subdomain_impl(port, ptr, rust_vec_len, data_len),
-        83 => wire__crate__core__release_name_impl(port, ptr, rust_vec_len, data_len),
-        84 => wire__crate__core__release_subdomain_impl(port, ptr, rust_vec_len, data_len),
-        85 => wire__crate__core__renew_name_impl(port, ptr, rust_vec_len, data_len),
-        86 => wire__crate__core__resolve_address_to_name_impl(port, ptr, rust_vec_len, data_len),
-        87 => wire__crate__core__resolve_name_verified_impl(port, ptr, rust_vec_len, data_len),
-        89 => wire__crate__core__revoke_subdomain_impl(port, ptr, rust_vec_len, data_len),
-        90 => wire__crate__core__send_dot_impl(port, ptr, rust_vec_len, data_len),
-        91 => wire__crate__core__set_record_impl(port, ptr, rust_vec_len, data_len),
-        92 => wire__crate__core__set_text_impl(port, ptr, rust_vec_len, data_len),
-        93 => wire__crate__core__submit_action_impl(port, ptr, rust_vec_len, data_len),
-        94 => wire__crate__personhood__submit_discard_pop_impl(port, ptr, rust_vec_len, data_len),
-        95 => wire__crate__core__submit_mint_cert_strongbox_impl(port, ptr, rust_vec_len, data_len),
-        96 => wire__crate__personhood__submit_mint_pop_impl(port, ptr, rust_vec_len, data_len),
-        97 => wire__crate__core__submit_self_discard_cert_mime_wrap_impl(
+        79 => wire__crate__core__offer_subdomain_impl(port, ptr, rust_vec_len, data_len),
+        80 => wire__crate__mime_wrap_client__prepare_mime_wrap_setup_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        98 => wire__crate__core__submit_set_mime_wrap_vk_impl(port, ptr, rust_vec_len, data_len),
-        99 => wire__crate__personhood__submit_srt_set_csca_root_impl(
+        81 => wire__crate__personhood__query_pop_cert_impl(port, ptr, rust_vec_len, data_len),
+        82 => wire__crate__core__register_name_impl(port, ptr, rust_vec_len, data_len),
+        83 => wire__crate__core__register_name_for_impl(port, ptr, rust_vec_len, data_len),
+        84 => wire__crate__core__reject_subdomain_impl(port, ptr, rust_vec_len, data_len),
+        85 => wire__crate__core__release_name_impl(port, ptr, rust_vec_len, data_len),
+        86 => wire__crate__core__release_subdomain_impl(port, ptr, rust_vec_len, data_len),
+        87 => wire__crate__core__renew_name_impl(port, ptr, rust_vec_len, data_len),
+        88 => wire__crate__core__resolve_address_to_name_impl(port, ptr, rust_vec_len, data_len),
+        89 => wire__crate__core__resolve_name_verified_impl(port, ptr, rust_vec_len, data_len),
+        91 => wire__crate__core__revoke_subdomain_impl(port, ptr, rust_vec_len, data_len),
+        92 => wire__crate__core__send_dot_impl(port, ptr, rust_vec_len, data_len),
+        93 => wire__crate__core__set_record_impl(port, ptr, rust_vec_len, data_len),
+        94 => wire__crate__core__set_text_impl(port, ptr, rust_vec_len, data_len),
+        95 => wire__crate__core__submit_action_impl(port, ptr, rust_vec_len, data_len),
+        96 => wire__crate__personhood__submit_discard_pop_impl(port, ptr, rust_vec_len, data_len),
+        97 => wire__crate__core__submit_mint_cert_strongbox_impl(port, ptr, rust_vec_len, data_len),
+        98 => wire__crate__personhood__submit_mint_pop_impl(port, ptr, rust_vec_len, data_len),
+        99 => wire__crate__core__submit_self_discard_cert_mime_wrap_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        100 => wire__crate__personhood__submit_srt_set_seats_root_impl(
+        100 => wire__crate__core__submit_set_mime_wrap_vk_impl(port, ptr, rust_vec_len, data_len),
+        101 => wire__crate__personhood__submit_srt_set_csca_root_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        101 => wire__crate__personhood__submit_srt_set_vk_impl(port, ptr, rust_vec_len, data_len),
-        102 => wire__crate__core__transfer_name_impl(port, ptr, rust_vec_len, data_len),
-        103 => wire__crate__core__verify_name_ownership_impl(port, ptr, rust_vec_len, data_len),
-        104 => wire__crate__core__vote_on_referendum_impl(port, ptr, rust_vec_len, data_len),
+        102 => wire__crate__personhood__submit_srt_set_seats_root_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        103 => wire__crate__personhood__submit_srt_set_vk_impl(port, ptr, rust_vec_len, data_len),
+        104 => wire__crate__core__transfer_name_impl(port, ptr, rust_vec_len, data_len),
+        105 => wire__crate__core__verify_name_ownership_impl(port, ptr, rust_vec_len, data_len),
+        106 => wire__crate__core__vote_on_referendum_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -5172,8 +5256,8 @@ fn pde_ffi_dispatcher_sync_impl(
             rust_vec_len,
             data_len,
         ),
-        88 => wire__crate__core__restore_account_impl(ptr, rust_vec_len, data_len),
-        105 => wire__crate__totp_enrollment__zeroize_bytes_impl(ptr, rust_vec_len, data_len),
+        90 => wire__crate__core__restore_account_impl(ptr, rust_vec_len, data_len),
+        107 => wire__crate__totp_enrollment__zeroize_bytes_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -5551,6 +5635,7 @@ impl flutter_rust_bridge::IntoDart for crate::membership::MembershipSessionOutco
             self.current_epoch.into_into_dart().into_dart(),
             self.nullifier_hex.into_into_dart().into_dart(),
             self.guard_node_id_hex.into_into_dart().into_dart(),
+            self.ticket_hex.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -6256,6 +6341,7 @@ impl SseEncode for crate::membership::MembershipSessionOutcome {
         <u64>::sse_encode(self.current_epoch, serializer);
         <String>::sse_encode(self.nullifier_hex, serializer);
         <String>::sse_encode(self.guard_node_id_hex, serializer);
+        <String>::sse_encode(self.ticket_hex, serializer);
     }
 }
 
