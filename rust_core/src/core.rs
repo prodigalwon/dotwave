@@ -2316,6 +2316,28 @@ pub fn submit_self_discard_cert_mime_wrap(
     })
 }
 
+/// Self-discard a cert via the pallet's recovery path
+/// (`pop_assertion: None`): SS58 ownership of the bound account is the
+/// sole authorization, so this works for every cert regardless of
+/// template or PoP mechanism and needs no retained ceremony bytes. The
+/// chain emits `CertSelfDiscardedRecovery` (vs `CertSelfDiscarded` for
+/// the PoP-asserted path) so issuer-side audit can see the discard
+/// happened without a hardware assertion. Used by the ZK-PKI cert
+/// management screen's release flow.
+pub fn submit_self_discard_cert_recovery(
+    cert_thumbprint_hex: String,
+    phrase: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    let tp_bytes = hex::decode(cert_thumbprint_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("thumbprint hex: {e}"))?;
+    let cert_thumbprint: [u8; 32] = tp_bytes
+        .try_into()
+        .map_err(|_| "thumbprint must be 32 bytes".to_string())?;
+    let tx = polkadot::tx().zk_pki().self_discard_cert(cert_thumbprint, None);
+    submit_typed(&phrase, &rpc_url, tx)
+}
+
 /// Deterministic P-256 cert seed for a dev account phrase. One seed
 /// per account, always: `chat_mint_test_cert` is idempotent against
 /// the on-chain `Roots` entry, so re-minting the same account with a
@@ -2828,6 +2850,116 @@ pub fn lab_offer_contract(
             hex::encode(&nonce),
         ))
     })
+}
+
+/// LAB: create a PoP-free template (`NotRequired`, no mechanism) under an
+/// already-bootstrapped issuer. Lets the rig mint plain certs from the desk
+/// (no StrongBox / HIP / mime-wrap) to exercise the app's cert-management
+/// surface, which covers ALL `mint_cert` certs, not just chat-enrolled ones.
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_create_plain_template(
+    issuer_suri: String,
+    template_name: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    use polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec;
+    use polkadot::runtime_types::zk_pki_primitives::template::PopRequirement as TypedPopRequirement;
+
+    let tx = polkadot::tx().zk_pki().create_cert_template(
+        BoundedVec(template_name.into_bytes()),
+        TypedPopRequirement::NotRequired,
+        None,    // pop_mechanism — must be None iff NotRequired
+        200_000, // max_ttl_blocks (inside the 900k issuer cert)
+        100,     // min_ttl_blocks
+        None,    // max_certs
+        None,    // metadata_schema
+        BoundedVec(vec![]),
+    );
+    submit_typed(&issuer_suri, &rpc_url, tx)
+}
+
+/// LAB: accept a pending offer with a plain desktop `mint_cert` — the
+/// testnet Noop verifier reads the verdict from `integrity_blob`
+/// (`MockVerdict::Tpm`), so no ceremony bytes are needed. Only valid
+/// against a PoP-free template ([`lab_create_plain_template`]); the
+/// device key is a deterministic software P-256, and the mock `ek_hash`
+/// is derived from it so two lab users never collide in the EK registry.
+/// Returns the extrinsic hash.
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_mint_plain(
+    user_suri: String,
+    issuer_ss58: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    use parity_scale_codec::Encode;
+
+    let user_pair = sr25519::Pair::from_string(&user_suri, None)
+        .map_err(|e| format!("user keypair: {e:?}"))?;
+    let user_account = AccountId32::from(user_pair.public().0);
+    let issuer_account =
+        AccountId32::from_str(&issuer_ss58).map_err(|e| format!("issuer_ss58: {e}"))?;
+
+    // Pending offer: OfferIndex((issuer, user)) -> nonce -> created_at.
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all().build().map_err(|e| e.to_string())?;
+    let (contract_nonce, created_at) = rt.block_on(async {
+        let (client, metadata) = crate::rostro_client::connect(&rpc_url).await?;
+        let mut index_key = issuer_account.0.encode();
+        index_key.extend(user_account.0.encode());
+        let nonce_val = client
+            .fetch_storage(&metadata, "ZkPki", "OfferIndex", &[&index_key])
+            .await
+            .map_err(|e| format!("ZkPki.OfferIndex fetch: {e}"))?
+            .ok_or("no pending offer from this issuer to this user")?;
+        let nonce: [u8; 32] = crate::rostro_client::as_bytes(&nonce_val)
+            .ok_or("OfferIndex value is not bytes")?
+            .try_into()
+            .map_err(|_| "offer nonce is not 32 bytes".to_string())?;
+        let offer = client
+            .fetch_storage(&metadata, "ZkPki", "ContractOffers", &[&nonce.encode()])
+            .await
+            .map_err(|e| format!("ZkPki.ContractOffers fetch: {e}"))?
+            .ok_or("ContractOffers entry missing for indexed nonce")?;
+        let created_at = crate::rostro_client::field(&offer, "created_at")
+            .and_then(crate::rostro_client::as_u32)
+            .ok_or("ContractOffer missing created_at")?;
+        Ok::<_, String>((nonce, created_at))
+    })?;
+
+    // Deterministic software device key (distinct domain from the dev chat
+    // cert seed so a user can hold both without key reuse).
+    let seed_hex = hex::encode(sp_core::hashing::blake2_256(
+        format!("rostro-plain-mint/{user_suri}").as_bytes(),
+    ));
+    let sec1 = hex::decode(crate::chat::chat_cert_pubkey(seed_hex)?)
+        .map_err(|e| format!("device pubkey hex: {e}"))?;
+    let ek_hash =
+        sp_core::hashing::blake2_256(&[&sec1[..], b"rostro-plain-mint-ek"].concat());
+
+    // MockVerdict::Tpm { ek_hash, pubkey_bytes } — variant 0, then the
+    // fields SCALE-encoded in order.
+    let mut mock_verdict = vec![0u8];
+    mock_verdict.extend_from_slice(&ek_hash);
+    mock_verdict.extend(sec1.encode());
+
+    let attestation = TypedAttestationPayload {
+        cert_ec_chain: vec![],
+        attest_ec_chain: vec![],
+        hmac_binding_output: [0u8; 32],
+        binding_signature: vec![],
+        integrity_blob: mock_verdict,
+        integrity_signature: vec![],
+    };
+    let tx = polkadot::tx().zk_pki().mint_cert(
+        contract_nonce,
+        attestation,
+        created_at,
+        None, // hip_proof_at_genesis — PoP-free template
+        None, // commitment_c
+        None, // ec_key_pub_claimed
+        None, // chat_enrollment
+    );
+    submit_typed(&user_suri, &rpc_url, tx)
 }
 
 pub(crate) fn decode_hex_n<const N: usize>(hex: &str, label: &str) -> Result<[u8; N], String> {

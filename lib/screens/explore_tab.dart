@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
+import 'zkpki_screen.dart';
 
 class ExploreTab extends StatelessWidget {
-  const ExploreTab({super.key});
+  final String address;
+  const ExploreTab({super.key, required this.address});
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +26,7 @@ class ExploreTab extends StatelessWidget {
           itemCount: _apps.length,
           itemBuilder: (context, index) {
             final app = _apps[index];
-            return _AppTile(app: app);
+            return _AppTile(app: app, address: address);
           },
         ),
       ),
@@ -37,18 +39,22 @@ class _RostroApp {
   final IconData icon;
   final Color color;
 
+  /// Live tiles navigate here on tap; null = "coming soon" placeholder.
+  final Widget Function(String address)? open;
+
   const _RostroApp({
     required this.name,
     required this.icon,
     required this.color,
+    this.open,
   });
 }
 
-// Rostro app surfaces. Every tile is a "coming soon" placeholder for now —
-// none of these have an on-chain backend before testnet. Parachains, Bridge,
-// and Auctions were intentionally dropped: those are Polkadot multi-chain
-// structures that Rostro culled at inception (monolithic sovereign L1, no
-// parachains / relay chain / XCM / EVM bridges), so they will never ship.
+// Rostro app surfaces. Placeholder tiles ("coming soon") have no on-chain
+// backend before testnet. Parachains, Bridge, and Auctions were intentionally
+// dropped: those are Polkadot multi-chain structures that Rostro culled at
+// inception (monolithic sovereign L1, no parachains / relay chain / XCM /
+// EVM bridges), so they will never ship.
 final _apps = [
   _RostroApp(
     name: 'Governance',
@@ -71,9 +77,10 @@ final _apps = [
     color: Color(0xFF10B981),
   ),
   _RostroApp(
-    name: 'Identity',
-    icon: Icons.badge_outlined,
+    name: 'ZK-PKI',
+    icon: Icons.verified_user_outlined,
     color: Color(0xFFF59E0B),
+    open: (address) => ZkPkiScreen(address: address),
   ),
   _RostroApp(
     name: 'More',
@@ -84,15 +91,23 @@ final _apps = [
 
 class _AppTile extends StatelessWidget {
   final _RostroApp app;
-  const _AppTile({required this.app});
+  final String address;
+  const _AppTile({required this.app, required this.address});
 
   @override
   Widget build(BuildContext context) {
+    final live = app.open != null;
     return GestureDetector(
       onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${app.name} coming soon')),
-        );
+        if (live) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => app.open!(address)),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${app.name} coming soon')),
+          );
+        }
       },
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -116,9 +131,9 @@ class _AppTile extends StatelessWidget {
             ),
             textAlign: TextAlign.center,
           ),
-          const Text(
-            'soon',
-            style: TextStyle(color: Colors.white24, fontSize: 10),
+          Text(
+            live ? '' : 'soon',
+            style: const TextStyle(color: Colors.white24, fontSize: 10),
           ),
         ],
       ),

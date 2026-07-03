@@ -17,6 +17,7 @@ import 'mime_wrap_prover.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart';
 import 'personhood.dart';
 import 'totp_enrollment.dart';
+import 'zkpki_certs.dart';
 
 abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RustLibApiImplPlatform({
@@ -43,6 +44,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   bool dco_decode_bool(dynamic raw);
+
+  @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw);
 
   @protected
   DeadDropThreadDto dco_decode_box_autoadd_dead_drop_thread_dto(dynamic raw);
@@ -76,6 +80,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+
+  @protected
+  CertListFfi dco_decode_cert_list_ffi(dynamic raw);
+
+  @protected
+  CertStatusFfi dco_decode_cert_status_ffi(dynamic raw);
+
+  @protected
+  CertSummaryFfi dco_decode_cert_summary_ffi(dynamic raw);
 
   @protected
   ChatIdentity dco_decode_chat_identity(dynamic raw);
@@ -123,6 +139,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DrPrekeySetup dco_decode_dr_prekey_setup(dynamic raw);
 
   @protected
+  EkuFlagFfi dco_decode_eku_flag_ffi(dynamic raw);
+
+  @protected
   double dco_decode_f_64(dynamic raw);
 
   @protected
@@ -135,6 +154,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<AtRestMessage> dco_decode_list_at_rest_message(dynamic raw);
 
   @protected
+  List<CertSummaryFfi> dco_decode_list_cert_summary_ffi(dynamic raw);
+
+  @protected
   List<DeadDropGraceEntry> dco_decode_list_dead_drop_grace_entry(dynamic raw);
 
   @protected
@@ -142,6 +164,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<DrOpkSecret> dco_decode_list_dr_opk_secret(dynamic raw);
+
+  @protected
+  List<EkuFlagFfi> dco_decode_list_eku_flag_ffi(dynamic raw);
 
   @protected
   List<int> dco_decode_list_prim_u_32_loose(dynamic raw);
@@ -183,6 +208,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
+
+  @protected
   NameListing? dco_decode_opt_box_autoadd_name_listing(dynamic raw);
 
   @protected
@@ -193,6 +221,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
 
   @protected
   OsAttestation dco_decode_os_attestation(dynamic raw);
@@ -271,6 +302,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
+
+  @protected
   DeadDropThreadDto sse_decode_box_autoadd_dead_drop_thread_dto(
     SseDeserializer deserializer,
   );
@@ -308,6 +342,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
+  CertListFfi sse_decode_cert_list_ffi(SseDeserializer deserializer);
+
+  @protected
+  CertStatusFfi sse_decode_cert_status_ffi(SseDeserializer deserializer);
+
+  @protected
+  CertSummaryFfi sse_decode_cert_summary_ffi(SseDeserializer deserializer);
 
   @protected
   ChatIdentity sse_decode_chat_identity(SseDeserializer deserializer);
@@ -365,6 +411,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DrPrekeySetup sse_decode_dr_prekey_setup(SseDeserializer deserializer);
 
   @protected
+  EkuFlagFfi sse_decode_eku_flag_ffi(SseDeserializer deserializer);
+
+  @protected
   double sse_decode_f_64(SseDeserializer deserializer);
 
   @protected
@@ -379,6 +428,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<CertSummaryFfi> sse_decode_list_cert_summary_ffi(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<DeadDropGraceEntry> sse_decode_list_dead_drop_grace_entry(
     SseDeserializer deserializer,
   );
@@ -388,6 +442,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<DrOpkSecret> sse_decode_list_dr_opk_secret(SseDeserializer deserializer);
+
+  @protected
+  List<EkuFlagFfi> sse_decode_list_eku_flag_ffi(SseDeserializer deserializer);
 
   @protected
   List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer);
@@ -439,6 +496,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
+
+  @protected
   NameListing? sse_decode_opt_box_autoadd_name_listing(
     SseDeserializer deserializer,
   );
@@ -455,6 +515,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
   OsAttestation sse_decode_os_attestation(SseDeserializer deserializer);
@@ -548,6 +611,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
+
+  @protected
   void sse_encode_box_autoadd_dead_drop_thread_dto(
     DeadDropThreadDto self,
     SseSerializer serializer,
@@ -597,6 +663,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_cert_list_ffi(CertListFfi self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_cert_status_ffi(CertStatusFfi self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_cert_summary_ffi(
+    CertSummaryFfi self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_chat_identity(ChatIdentity self, SseSerializer serializer);
@@ -665,6 +746,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_dr_prekey_setup(DrPrekeySetup self, SseSerializer serializer);
 
   @protected
+  void sse_encode_eku_flag_ffi(EkuFlagFfi self, SseSerializer serializer);
+
+  @protected
   void sse_encode_f_64(double self, SseSerializer serializer);
 
   @protected
@@ -676,6 +760,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_at_rest_message(
     List<AtRestMessage> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_cert_summary_ffi(
+    List<CertSummaryFfi> self,
     SseSerializer serializer,
   );
 
@@ -694,6 +784,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_dr_opk_secret(
     List<DrOpkSecret> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_eku_flag_ffi(
+    List<EkuFlagFfi> self,
     SseSerializer serializer,
   );
 
@@ -767,6 +863,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_box_autoadd_name_listing(
     NameListing? self,
     SseSerializer serializer,
@@ -786,6 +885,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
 
   @protected
   void sse_encode_os_attestation(OsAttestation self, SseSerializer serializer);

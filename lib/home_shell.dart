@@ -30,7 +30,7 @@ class _HomeShellState extends State<HomeShell> {
           children: [
             HomeTab(address: widget.address),
             MessagesTab(address: widget.address),
-            const ExploreTab(),
+            ExploreTab(address: widget.address),
             ProfileTab(address: widget.address),
           ],
         ),

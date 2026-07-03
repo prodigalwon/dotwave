@@ -11,3 +11,4 @@ pub mod rostro_config;
 pub mod personhood;
 pub mod rostro_client;
 pub mod totp_enrollment;
+pub mod zkpki_certs;

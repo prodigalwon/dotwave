@@ -949,7 +949,14 @@ class _ZkPkiSpoofDefenseTestScreenState
               label: const Text('OTP panel'),
               onPressed: () => _openPostCeremonyPanel(_lastCeremony!),
             ),
-      body: Column(
+      // The ENTIRE body is one scroll view — banner and probe buttons
+      // included — so the soft keyboard can never bury a field or
+      // overflow the fixed header rows on a short viewport: the user
+      // can always swipe everything up past the keyboard inset.
+      body: ListView(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
         children: [
           _EnvironmentBanner(),
           const Divider(height: 1, color: Color(0xFF333333)),
@@ -962,54 +969,42 @@ class _ZkPkiSpoofDefenseTestScreenState
             onRunMimeWrapSetup: _runMimeWrapSetup,
           ),
           const Divider(height: 1, color: Color(0xFF333333)),
-          // Panel + log share one scroll view so the soft keyboard can
-          // never bury the Stage 4c URL field or its action buttons —
-          // the user can always swipe up past the keyboard inset.
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-              ),
-              children: [
-                _Stage4cPanel(
-                  busy: _busy,
-                  rpcUrlController: _rpcUrlController,
-                  phraseController: _phraseController,
-                  contractNonceController: _contractNonceController,
-                  offerBlockController: _offerBlockController,
-                  certThumbprintController: _certThumbprintController,
-                  reuseLastNonce: _reuseLastNonce,
-                  onToggleReuseLastNonce: (v) =>
-                      setState(() => _reuseLastNonce = v),
-                  onMintCert: _runMintCert,
-                  onSelfDiscardCert: _runSelfDiscardCert,
-                ),
-                const Divider(height: 1, color: Color(0xFF333333)),
-                if (_log.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(40),
-                    child: Center(
-                      child: Text(
-                        'Tap a probe above to begin.',
-                        style: TextStyle(color: Color(0xFF888888)),
-                      ),
-                    ),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      children: [
-                        for (int i = 0; i < _log.length; i++) ...[
-                          if (i > 0) const SizedBox(height: 8),
-                          _LogTile(entry: _log[i]),
-                        ],
-                      ],
-                    ),
-                  ),
-              ],
-            ),
+          _Stage4cPanel(
+            busy: _busy,
+            rpcUrlController: _rpcUrlController,
+            phraseController: _phraseController,
+            contractNonceController: _contractNonceController,
+            offerBlockController: _offerBlockController,
+            certThumbprintController: _certThumbprintController,
+            reuseLastNonce: _reuseLastNonce,
+            onToggleReuseLastNonce: (v) =>
+                setState(() => _reuseLastNonce = v),
+            onMintCert: _runMintCert,
+            onSelfDiscardCert: _runSelfDiscardCert,
           ),
+          const Divider(height: 1, color: Color(0xFF333333)),
+          if (_log.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(40),
+              child: Center(
+                child: Text(
+                  'Tap a probe above to begin.',
+                  style: TextStyle(color: Color(0xFF888888)),
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  for (int i = 0; i < _log.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 8),
+                    _LogTile(entry: _log[i]),
+                  ],
+                ],
+              ),
+            ),
         ],
       ),
     );

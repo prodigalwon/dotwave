@@ -18,6 +18,7 @@ import 'mime_wrap_prover.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'personhood.dart';
 import 'totp_enrollment.dart';
+import 'zkpki_certs.dart';
 
 /// Main entrypoint of the Rust API
 class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
@@ -72,7 +73,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1814854346;
+  int get rustContentHash => 1396637063;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -686,6 +687,12 @@ abstract class RustLibApi extends BaseApi {
     required String rpcUrl,
   });
 
+  Future<String> crateCoreSubmitSelfDiscardCertRecovery({
+    required String certThumbprintHex,
+    required String phrase,
+    required String rpcUrl,
+  });
+
   Future<String> crateCoreSubmitSetMimeWrapVk({
     required String vkBytesHex,
     required String phrase,
@@ -736,6 +743,16 @@ abstract class RustLibApi extends BaseApi {
   });
 
   void crateTotpEnrollmentZeroizeBytes({required List<int> data});
+
+  Future<CertStatusFfi> crateZkpkiCertsZkpkiCertStatus({
+    required String chainRpc,
+    required String thumbprintHex,
+  });
+
+  Future<CertListFfi> crateZkpkiCertsZkpkiCertsByUser({
+    required String chainRpc,
+    required String address,
+  });
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -4672,6 +4689,43 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateCoreSubmitSelfDiscardCertRecovery({
+    required String certThumbprintHex,
+    required String phrase,
+    required String rpcUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(certThumbprintHex, serializer);
+          sse_encode_String(phrase, serializer);
+          sse_encode_String(rpcUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 100,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateCoreSubmitSelfDiscardCertRecoveryConstMeta,
+        argValues: [certThumbprintHex, phrase, rpcUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateCoreSubmitSelfDiscardCertRecoveryConstMeta =>
+      const TaskConstMeta(
+        debugName: "submit_self_discard_cert_recovery",
+        argNames: ["certThumbprintHex", "phrase", "rpcUrl"],
+      );
+
+  @override
   Future<String> crateCoreSubmitSetMimeWrapVk({
     required String vkBytesHex,
     required String phrase,
@@ -4687,7 +4741,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 100,
+            funcId: 101,
             port: port_,
           );
         },
@@ -4724,7 +4778,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 101,
+            funcId: 102,
             port: port_,
           );
         },
@@ -4761,7 +4815,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 102,
+            funcId: 103,
             port: port_,
           );
         },
@@ -4804,7 +4858,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 103,
+            funcId: 104,
             port: port_,
           );
         },
@@ -4855,7 +4909,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 104,
+            funcId: 105,
             port: port_,
           );
         },
@@ -4893,7 +4947,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 105,
+            funcId: 106,
             port: port_,
           );
         },
@@ -4936,7 +4990,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 106,
+            funcId: 107,
             port: port_,
           );
         },
@@ -4980,7 +5034,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 107,
+            funcId: 108,
           )!;
         },
         codec: SseCodec(
@@ -4996,6 +5050,76 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateTotpEnrollmentZeroizeBytesConstMeta =>
       const TaskConstMeta(debugName: "zeroize_bytes", argNames: ["data"]);
+
+  @override
+  Future<CertStatusFfi> crateZkpkiCertsZkpkiCertStatus({
+    required String chainRpc,
+    required String thumbprintHex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(chainRpc, serializer);
+          sse_encode_String(thumbprintHex, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 109,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_cert_status_ffi,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateZkpkiCertsZkpkiCertStatusConstMeta,
+        argValues: [chainRpc, thumbprintHex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateZkpkiCertsZkpkiCertStatusConstMeta =>
+      const TaskConstMeta(
+        debugName: "zkpki_cert_status",
+        argNames: ["chainRpc", "thumbprintHex"],
+      );
+
+  @override
+  Future<CertListFfi> crateZkpkiCertsZkpkiCertsByUser({
+    required String chainRpc,
+    required String address,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(chainRpc, serializer);
+          sse_encode_String(address, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 110,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_cert_list_ffi,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateZkpkiCertsZkpkiCertsByUserConstMeta,
+        argValues: [chainRpc, address],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateZkpkiCertsZkpkiCertsByUserConstMeta =>
+      const TaskConstMeta(
+        debugName: "zkpki_certs_by_user",
+        argNames: ["chainRpc", "address"],
+      );
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
@@ -5045,6 +5169,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   bool dco_decode_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as bool;
   }
@@ -5107,6 +5237,70 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int dco_decode_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
+  }
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_u_64(raw);
+  }
+
+  @protected
+  CertListFfi dco_decode_cert_list_ffi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return CertListFfi(
+      bestBlock: dco_decode_u_64(arr[0]),
+      certs: dco_decode_list_cert_summary_ffi(arr[1]),
+    );
+  }
+
+  @protected
+  CertStatusFfi dco_decode_cert_status_ffi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 19)
+      throw Exception('unexpected arr length: expect 19 but see ${arr.length}');
+    return CertStatusFfi(
+      thumbprintHex: dco_decode_String(arr[0]),
+      ocspStatus: dco_decode_String(arr[1]),
+      thisUpdate: dco_decode_u_64(arr[2]),
+      revocationTime: dco_decode_opt_box_autoadd_u_64(arr[3]),
+      revocationReason: dco_decode_opt_String(arr[4]),
+      state: dco_decode_String(arr[5]),
+      isActive: dco_decode_bool(arr[6]),
+      expiryBlock: dco_decode_u_64(arr[7]),
+      mintBlock: dco_decode_u_64(arr[8]),
+      issuerSs58: dco_decode_String(arr[9]),
+      issuerStatus: dco_decode_String(arr[10]),
+      rootSs58: dco_decode_String(arr[11]),
+      rootStatus: dco_decode_String(arr[12]),
+      attestationType: dco_decode_String(arr[13]),
+      manufacturerVerified: dco_decode_bool(arr[14]),
+      templateName: dco_decode_String(arr[15]),
+      popRequired: dco_decode_opt_box_autoadd_bool(arr[16]),
+      ekus: dco_decode_list_eku_flag_ffi(arr[17]),
+      hasPersonhood: dco_decode_bool(arr[18]),
+    );
+  }
+
+  @protected
+  CertSummaryFfi dco_decode_cert_summary_ffi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return CertSummaryFfi(
+      thumbprintHex: dco_decode_String(arr[0]),
+      state: dco_decode_String(arr[1]),
+      isActive: dco_decode_bool(arr[2]),
+      expiryBlock: dco_decode_u_64(arr[3]),
+      mintBlock: dco_decode_u_64(arr[4]),
+      attestationType: dco_decode_String(arr[5]),
+      manufacturerVerified: dco_decode_bool(arr[6]),
+    );
   }
 
   @protected
@@ -5309,6 +5503,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  EkuFlagFfi dco_decode_eku_flag_ffi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return EkuFlagFfi(
+      label: dco_decode_String(arr[0]),
+      held: dco_decode_bool(arr[1]),
+    );
+  }
+
+  @protected
   double dco_decode_f_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as double;
@@ -5333,6 +5539,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<CertSummaryFfi> dco_decode_list_cert_summary_ffi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_cert_summary_ffi).toList();
+  }
+
+  @protected
   List<DeadDropGraceEntry> dco_decode_list_dead_drop_grace_entry(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>)
@@ -5350,6 +5562,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<DrOpkSecret> dco_decode_list_dr_opk_secret(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_dr_opk_secret).toList();
+  }
+
+  @protected
+  List<EkuFlagFfi> dco_decode_list_eku_flag_ffi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_eku_flag_ffi).toList();
   }
 
   @protected
@@ -5508,6 +5726,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_bool(raw);
+  }
+
+  @protected
   NameListing? dco_decode_opt_box_autoadd_name_listing(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_name_listing(raw);
@@ -5529,6 +5753,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_u_64(raw);
   }
 
   @protected
@@ -5800,6 +6030,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_bool(deserializer));
+  }
+
+  @protected
   DeadDropThreadDto sse_decode_box_autoadd_dead_drop_thread_dto(
     SseDeserializer deserializer,
   ) {
@@ -5865,6 +6101,86 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_u_32(deserializer));
+  }
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_u_64(deserializer));
+  }
+
+  @protected
+  CertListFfi sse_decode_cert_list_ffi(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_bestBlock = sse_decode_u_64(deserializer);
+    var var_certs = sse_decode_list_cert_summary_ffi(deserializer);
+    return CertListFfi(bestBlock: var_bestBlock, certs: var_certs);
+  }
+
+  @protected
+  CertStatusFfi sse_decode_cert_status_ffi(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_thumbprintHex = sse_decode_String(deserializer);
+    var var_ocspStatus = sse_decode_String(deserializer);
+    var var_thisUpdate = sse_decode_u_64(deserializer);
+    var var_revocationTime = sse_decode_opt_box_autoadd_u_64(deserializer);
+    var var_revocationReason = sse_decode_opt_String(deserializer);
+    var var_state = sse_decode_String(deserializer);
+    var var_isActive = sse_decode_bool(deserializer);
+    var var_expiryBlock = sse_decode_u_64(deserializer);
+    var var_mintBlock = sse_decode_u_64(deserializer);
+    var var_issuerSs58 = sse_decode_String(deserializer);
+    var var_issuerStatus = sse_decode_String(deserializer);
+    var var_rootSs58 = sse_decode_String(deserializer);
+    var var_rootStatus = sse_decode_String(deserializer);
+    var var_attestationType = sse_decode_String(deserializer);
+    var var_manufacturerVerified = sse_decode_bool(deserializer);
+    var var_templateName = sse_decode_String(deserializer);
+    var var_popRequired = sse_decode_opt_box_autoadd_bool(deserializer);
+    var var_ekus = sse_decode_list_eku_flag_ffi(deserializer);
+    var var_hasPersonhood = sse_decode_bool(deserializer);
+    return CertStatusFfi(
+      thumbprintHex: var_thumbprintHex,
+      ocspStatus: var_ocspStatus,
+      thisUpdate: var_thisUpdate,
+      revocationTime: var_revocationTime,
+      revocationReason: var_revocationReason,
+      state: var_state,
+      isActive: var_isActive,
+      expiryBlock: var_expiryBlock,
+      mintBlock: var_mintBlock,
+      issuerSs58: var_issuerSs58,
+      issuerStatus: var_issuerStatus,
+      rootSs58: var_rootSs58,
+      rootStatus: var_rootStatus,
+      attestationType: var_attestationType,
+      manufacturerVerified: var_manufacturerVerified,
+      templateName: var_templateName,
+      popRequired: var_popRequired,
+      ekus: var_ekus,
+      hasPersonhood: var_hasPersonhood,
+    );
+  }
+
+  @protected
+  CertSummaryFfi sse_decode_cert_summary_ffi(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_thumbprintHex = sse_decode_String(deserializer);
+    var var_state = sse_decode_String(deserializer);
+    var var_isActive = sse_decode_bool(deserializer);
+    var var_expiryBlock = sse_decode_u_64(deserializer);
+    var var_mintBlock = sse_decode_u_64(deserializer);
+    var var_attestationType = sse_decode_String(deserializer);
+    var var_manufacturerVerified = sse_decode_bool(deserializer);
+    return CertSummaryFfi(
+      thumbprintHex: var_thumbprintHex,
+      state: var_state,
+      isActive: var_isActive,
+      expiryBlock: var_expiryBlock,
+      mintBlock: var_mintBlock,
+      attestationType: var_attestationType,
+      manufacturerVerified: var_manufacturerVerified,
+    );
   }
 
   @protected
@@ -6065,6 +6381,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  EkuFlagFfi sse_decode_eku_flag_ffi(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_label = sse_decode_String(deserializer);
+    var var_held = sse_decode_bool(deserializer);
+    return EkuFlagFfi(label: var_label, held: var_held);
+  }
+
+  @protected
   double sse_decode_f_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getFloat64();
@@ -6098,6 +6422,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <AtRestMessage>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_at_rest_message(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<CertSummaryFfi> sse_decode_list_cert_summary_ffi(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <CertSummaryFfi>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_cert_summary_ffi(deserializer));
     }
     return ans_;
   }
@@ -6138,6 +6476,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <DrOpkSecret>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_dr_opk_secret(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<EkuFlagFfi> sse_decode_list_eku_flag_ffi(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <EkuFlagFfi>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_eku_flag_ffi(deserializer));
     }
     return ans_;
   }
@@ -6334,6 +6684,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_bool(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   NameListing? sse_decode_opt_box_autoadd_name_listing(
     SseDeserializer deserializer,
   ) {
@@ -6378,6 +6739,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_u_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_u_64(deserializer));
     } else {
       return null;
     }
@@ -6685,6 +7057,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_dead_drop_thread_dto(
     DeadDropThreadDto self,
     SseSerializer serializer,
@@ -6760,6 +7138,61 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_32(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self, serializer);
+  }
+
+  @protected
+  void sse_encode_cert_list_ffi(CertListFfi self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.bestBlock, serializer);
+    sse_encode_list_cert_summary_ffi(self.certs, serializer);
+  }
+
+  @protected
+  void sse_encode_cert_status_ffi(
+    CertStatusFfi self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.thumbprintHex, serializer);
+    sse_encode_String(self.ocspStatus, serializer);
+    sse_encode_u_64(self.thisUpdate, serializer);
+    sse_encode_opt_box_autoadd_u_64(self.revocationTime, serializer);
+    sse_encode_opt_String(self.revocationReason, serializer);
+    sse_encode_String(self.state, serializer);
+    sse_encode_bool(self.isActive, serializer);
+    sse_encode_u_64(self.expiryBlock, serializer);
+    sse_encode_u_64(self.mintBlock, serializer);
+    sse_encode_String(self.issuerSs58, serializer);
+    sse_encode_String(self.issuerStatus, serializer);
+    sse_encode_String(self.rootSs58, serializer);
+    sse_encode_String(self.rootStatus, serializer);
+    sse_encode_String(self.attestationType, serializer);
+    sse_encode_bool(self.manufacturerVerified, serializer);
+    sse_encode_String(self.templateName, serializer);
+    sse_encode_opt_box_autoadd_bool(self.popRequired, serializer);
+    sse_encode_list_eku_flag_ffi(self.ekus, serializer);
+    sse_encode_bool(self.hasPersonhood, serializer);
+  }
+
+  @protected
+  void sse_encode_cert_summary_ffi(
+    CertSummaryFfi self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.thumbprintHex, serializer);
+    sse_encode_String(self.state, serializer);
+    sse_encode_bool(self.isActive, serializer);
+    sse_encode_u_64(self.expiryBlock, serializer);
+    sse_encode_u_64(self.mintBlock, serializer);
+    sse_encode_String(self.attestationType, serializer);
+    sse_encode_bool(self.manufacturerVerified, serializer);
   }
 
   @protected
@@ -6911,6 +7344,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_eku_flag_ffi(EkuFlagFfi self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.label, serializer);
+    sse_encode_bool(self.held, serializer);
+  }
+
+  @protected
   void sse_encode_f_64(double self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putFloat64(self);
@@ -6940,6 +7380,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_at_rest_message(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_cert_summary_ffi(
+    List<CertSummaryFfi> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_cert_summary_ffi(item, serializer);
     }
   }
 
@@ -6976,6 +7428,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_dr_opk_secret(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_eku_flag_ffi(
+    List<EkuFlagFfi> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_eku_flag_ffi(item, serializer);
     }
   }
 
@@ -7140,6 +7604,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_bool(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_name_listing(
     NameListing? self,
     SseSerializer serializer,
@@ -7185,6 +7659,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_u_32(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_u_64(self, serializer);
     }
   }
 

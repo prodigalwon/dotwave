@@ -183,7 +183,9 @@ struct FetchedWitness {
 }
 
 /// `state_call` a zkpki runtime-API method and return the SCALE result.
-async fn zkpki_state_call(
+/// `pub(crate)`: also the read primitive for the cert-management surface
+/// (`zkpki_certs`), which mirrors other `ZkPkiApi_*` methods the same way.
+pub(crate) async fn zkpki_state_call(
     rpc: &subxt::rpcs::RpcClient,
     method: &str,
     args: &[u8],
