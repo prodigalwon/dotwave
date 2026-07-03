@@ -4383,6 +4383,7 @@ impl SseDecode for crate::zkpki_certs::CertStatusFfi {
         let mut var_popRequired = <Option<bool>>::sse_decode(deserializer);
         let mut var_ekus = <Vec<crate::zkpki_certs::EkuFlagFfi>>::sse_decode(deserializer);
         let mut var_hasPersonhood = <bool>::sse_decode(deserializer);
+        let mut var_hasChatAuth = <bool>::sse_decode(deserializer);
         return crate::zkpki_certs::CertStatusFfi {
             thumbprint_hex: var_thumbprintHex,
             ocsp_status: var_ocspStatus,
@@ -4403,6 +4404,7 @@ impl SseDecode for crate::zkpki_certs::CertStatusFfi {
             pop_required: var_popRequired,
             ekus: var_ekus,
             has_personhood: var_hasPersonhood,
+            has_chat_auth: var_hasChatAuth,
         };
     }
 }
@@ -4417,6 +4419,7 @@ impl SseDecode for crate::zkpki_certs::CertSummaryFfi {
         let mut var_mintBlock = <u64>::sse_decode(deserializer);
         let mut var_attestationType = <String>::sse_decode(deserializer);
         let mut var_manufacturerVerified = <bool>::sse_decode(deserializer);
+        let mut var_chatAuth = <bool>::sse_decode(deserializer);
         return crate::zkpki_certs::CertSummaryFfi {
             thumbprint_hex: var_thumbprintHex,
             state: var_state,
@@ -4425,6 +4428,7 @@ impl SseDecode for crate::zkpki_certs::CertSummaryFfi {
             mint_block: var_mintBlock,
             attestation_type: var_attestationType,
             manufacturer_verified: var_manufacturerVerified,
+            chat_auth: var_chatAuth,
         };
     }
 }
@@ -5608,6 +5612,7 @@ impl flutter_rust_bridge::IntoDart for crate::zkpki_certs::CertStatusFfi {
             self.pop_required.into_into_dart().into_dart(),
             self.ekus.into_into_dart().into_dart(),
             self.has_personhood.into_into_dart().into_dart(),
+            self.has_chat_auth.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5634,6 +5639,7 @@ impl flutter_rust_bridge::IntoDart for crate::zkpki_certs::CertSummaryFfi {
             self.mint_block.into_into_dart().into_dart(),
             self.attestation_type.into_into_dart().into_dart(),
             self.manufacturer_verified.into_into_dart().into_dart(),
+            self.chat_auth.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -6493,6 +6499,7 @@ impl SseEncode for crate::zkpki_certs::CertStatusFfi {
         <Option<bool>>::sse_encode(self.pop_required, serializer);
         <Vec<crate::zkpki_certs::EkuFlagFfi>>::sse_encode(self.ekus, serializer);
         <bool>::sse_encode(self.has_personhood, serializer);
+        <bool>::sse_encode(self.has_chat_auth, serializer);
     }
 }
 
@@ -6506,6 +6513,7 @@ impl SseEncode for crate::zkpki_certs::CertSummaryFfi {
         <u64>::sse_encode(self.mint_block, serializer);
         <String>::sse_encode(self.attestation_type, serializer);
         <bool>::sse_encode(self.manufacturer_verified, serializer);
+        <bool>::sse_encode(self.chat_auth, serializer);
     }
 }
 

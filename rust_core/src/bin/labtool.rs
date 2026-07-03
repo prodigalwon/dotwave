@@ -23,8 +23,8 @@ use rust_core::chat::{
 use rust_core::core::{
     chat_mint_test_cert, chat_resolve_identity, chat_setup_messaging, dev_cert_seed_hex,
     fetch_balance, lab_authenticate_membership, lab_bootstrap_issuer, lab_create_plain_template,
-    lab_mint_plain, lab_offer_contract, lab_register_name, lab_set_node_record, lab_test_enroll,
-    send_dot, submit_self_discard_cert_recovery,
+    lab_mint_enroll, lab_mint_plain, lab_offer_contract, lab_register_name, lab_set_node_record,
+    lab_test_enroll, send_dot, submit_self_discard_cert_recovery,
 };
 use rust_core::membership::{lab_witness_check, membership_present_ticket, verify_id_binding};
 use rust_core::zkpki_certs::{zkpki_cert_status, zkpki_certs_by_user};
@@ -807,13 +807,47 @@ fn main() {
             // plain-template [issuer_suri] [template] [rpc]
             // PoP-free template under the bootstrapped issuer, for desktop
             // plain mints (cert-management smoke, no StrongBox needed).
+            // No ChatAuth: mints under it can NOT carry chat enrollments.
             let issuer = args.get(2).map(String::as_str).unwrap_or("//Charlie").to_string();
             let template = args.get(3).map(String::as_str).unwrap_or("plain-lab").to_string();
             let rpc = args.get(4).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
-            match lab_create_plain_template(issuer, template, rpc) {
+            match lab_create_plain_template(issuer, template, false, rpc) {
                 Ok(h) => println!("plain-template ok: {h}"),
                 Err(e) => {
                     eprintln!("plain-template FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "chatauth-template" => {
+            // chatauth-template [issuer_suri] [template] [rpc]
+            // PoP-free template CARRYING the ChatAuth EKU — desktop
+            // enrollment mints (mint-enroll) are chartered under it.
+            let issuer = args.get(2).map(String::as_str).unwrap_or("//Charlie").to_string();
+            let template = args.get(3).map(String::as_str).unwrap_or("chatauth-lab").to_string();
+            let rpc = args.get(4).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match lab_create_plain_template(issuer, template, true, rpc) {
+                Ok(h) => println!("chatauth-template ok: {h}"),
+                Err(e) => {
+                    eprintln!("chatauth-template FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "mint-enroll" => {
+            // mint-enroll <user_suri> <issuer_ss58> <s_hex> [rpc]
+            // Accept the pending offer with a desktop mint_cert CARRYING a
+            // chat enrollment (soft attest key, TpmWithAttest verdict).
+            // Chartered templates only — under a non-ChatAuth template the
+            // chain must reject with ChatEnrollmentNotPermittedByTemplate.
+            let user = args.get(2).expect("usage: mint-enroll <user_suri> <issuer_ss58> <s_hex> [rpc]").clone();
+            let issuer = args.get(3).expect("need <issuer_ss58>").clone();
+            let s_hex = args.get(4).expect("need <s_hex>").clone();
+            let rpc = args.get(5).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match lab_mint_enroll(user, issuer, s_hex, rpc) {
+                Ok(o) => println!("mint-enroll ok: {o}"),
+                Err(e) => {
+                    eprintln!("mint-enroll FAILED: {e}");
                     std::process::exit(1);
                 }
             }
@@ -846,9 +880,9 @@ fn main() {
                     }
                     for c in list.certs {
                         println!(
-                            "0x{} state={} active={} mint={} expiry={} attestation={:?} vendor_verified={}",
+                            "0x{} state={} active={} mint={} expiry={} attestation={:?} chat_auth={}",
                             c.thumbprint_hex, c.state, c.is_active, c.mint_block,
-                            c.expiry_block, c.attestation_type, c.manufacturer_verified,
+                            c.expiry_block, c.attestation_type, c.chat_auth,
                         );
                     }
                 }

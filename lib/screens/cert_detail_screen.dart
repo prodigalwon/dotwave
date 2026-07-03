@@ -19,13 +19,11 @@ import 'my_certs_screen.dart' show certStateColor, shortThumbprint;
 class CertDetailScreen extends StatefulWidget {
   final String address;
   final String thumbprintHex;
-  final bool isChatEnrolled;
 
   const CertDetailScreen({
     super.key,
     required this.address,
     required this.thumbprintHex,
-    this.isChatEnrolled = false,
   });
 
   @override
@@ -200,7 +198,7 @@ class _CertDetailScreenState extends State<CertDetailScreen> {
                 _StateChip(label: s.state, color: stateColor),
               ],
             ),
-            if (widget.isChatEnrolled) ...[
+            if (s.hasChatAuth) ...[
               const SizedBox(height: 8),
               Row(
                 children: [
