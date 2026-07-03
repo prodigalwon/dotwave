@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1814854346;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1396637063;
 
 // Section: executor
 
@@ -3858,6 +3858,45 @@ fn wire__crate__core__submit_self_discard_cert_mime_wrap_impl(
         },
     )
 }
+fn wire__crate__core__submit_self_discard_cert_recovery_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "submit_self_discard_cert_recovery",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_cert_thumbprint_hex = <String>::sse_decode(&mut deserializer);
+            let api_phrase = <String>::sse_decode(&mut deserializer);
+            let api_rpc_url = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::core::submit_self_discard_cert_recovery(
+                        api_cert_thumbprint_hex,
+                        api_phrase,
+                        api_rpc_url,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__core__submit_set_mime_wrap_vk_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -4174,6 +4213,76 @@ fn wire__crate__totp_enrollment__zeroize_bytes_impl(
         },
     )
 }
+fn wire__crate__zkpki_certs__zkpki_cert_status_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "zkpki_cert_status",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_chain_rpc = <String>::sse_decode(&mut deserializer);
+            let api_thumbprint_hex = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok =
+                        crate::zkpki_certs::zkpki_cert_status(api_chain_rpc, api_thumbprint_hex)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__zkpki_certs__zkpki_certs_by_user_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "zkpki_certs_by_user",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_chain_rpc = <String>::sse_decode(&mut deserializer);
+            let api_address = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok =
+                        crate::zkpki_certs::zkpki_certs_by_user(api_chain_rpc, api_address)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 
 // Section: dart2rust
 
@@ -4237,6 +4346,86 @@ impl SseDecode for bool {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_u8().unwrap() != 0
+    }
+}
+
+impl SseDecode for crate::zkpki_certs::CertListFfi {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_bestBlock = <u64>::sse_decode(deserializer);
+        let mut var_certs = <Vec<crate::zkpki_certs::CertSummaryFfi>>::sse_decode(deserializer);
+        return crate::zkpki_certs::CertListFfi {
+            best_block: var_bestBlock,
+            certs: var_certs,
+        };
+    }
+}
+
+impl SseDecode for crate::zkpki_certs::CertStatusFfi {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_thumbprintHex = <String>::sse_decode(deserializer);
+        let mut var_ocspStatus = <String>::sse_decode(deserializer);
+        let mut var_thisUpdate = <u64>::sse_decode(deserializer);
+        let mut var_revocationTime = <Option<u64>>::sse_decode(deserializer);
+        let mut var_revocationReason = <Option<String>>::sse_decode(deserializer);
+        let mut var_state = <String>::sse_decode(deserializer);
+        let mut var_isActive = <bool>::sse_decode(deserializer);
+        let mut var_expiryBlock = <u64>::sse_decode(deserializer);
+        let mut var_mintBlock = <u64>::sse_decode(deserializer);
+        let mut var_issuerSs58 = <String>::sse_decode(deserializer);
+        let mut var_issuerStatus = <String>::sse_decode(deserializer);
+        let mut var_rootSs58 = <String>::sse_decode(deserializer);
+        let mut var_rootStatus = <String>::sse_decode(deserializer);
+        let mut var_attestationType = <String>::sse_decode(deserializer);
+        let mut var_manufacturerVerified = <bool>::sse_decode(deserializer);
+        let mut var_templateName = <String>::sse_decode(deserializer);
+        let mut var_popRequired = <Option<bool>>::sse_decode(deserializer);
+        let mut var_ekus = <Vec<crate::zkpki_certs::EkuFlagFfi>>::sse_decode(deserializer);
+        let mut var_hasPersonhood = <bool>::sse_decode(deserializer);
+        return crate::zkpki_certs::CertStatusFfi {
+            thumbprint_hex: var_thumbprintHex,
+            ocsp_status: var_ocspStatus,
+            this_update: var_thisUpdate,
+            revocation_time: var_revocationTime,
+            revocation_reason: var_revocationReason,
+            state: var_state,
+            is_active: var_isActive,
+            expiry_block: var_expiryBlock,
+            mint_block: var_mintBlock,
+            issuer_ss58: var_issuerSs58,
+            issuer_status: var_issuerStatus,
+            root_ss58: var_rootSs58,
+            root_status: var_rootStatus,
+            attestation_type: var_attestationType,
+            manufacturer_verified: var_manufacturerVerified,
+            template_name: var_templateName,
+            pop_required: var_popRequired,
+            ekus: var_ekus,
+            has_personhood: var_hasPersonhood,
+        };
+    }
+}
+
+impl SseDecode for crate::zkpki_certs::CertSummaryFfi {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_thumbprintHex = <String>::sse_decode(deserializer);
+        let mut var_state = <String>::sse_decode(deserializer);
+        let mut var_isActive = <bool>::sse_decode(deserializer);
+        let mut var_expiryBlock = <u64>::sse_decode(deserializer);
+        let mut var_mintBlock = <u64>::sse_decode(deserializer);
+        let mut var_attestationType = <String>::sse_decode(deserializer);
+        let mut var_manufacturerVerified = <bool>::sse_decode(deserializer);
+        return crate::zkpki_certs::CertSummaryFfi {
+            thumbprint_hex: var_thumbprintHex,
+            state: var_state,
+            is_active: var_isActive,
+            expiry_block: var_expiryBlock,
+            mint_block: var_mintBlock,
+            attestation_type: var_attestationType,
+            manufacturer_verified: var_manufacturerVerified,
+        };
     }
 }
 
@@ -4458,6 +4647,18 @@ impl SseDecode for crate::chat_dr::DrPrekeySetup {
     }
 }
 
+impl SseDecode for crate::zkpki_certs::EkuFlagFfi {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_label = <String>::sse_decode(deserializer);
+        let mut var_held = <bool>::sse_decode(deserializer);
+        return crate::zkpki_certs::EkuFlagFfi {
+            label: var_label,
+            held: var_held,
+        };
+    }
+}
+
 impl SseDecode for f64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4496,6 +4697,20 @@ impl SseDecode for Vec<crate::chat::AtRestMessage> {
     }
 }
 
+impl SseDecode for Vec<crate::zkpki_certs::CertSummaryFfi> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<crate::zkpki_certs::CertSummaryFfi>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::chat::DeadDropGraceEntry> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4527,6 +4742,18 @@ impl SseDecode for Vec<crate::chat_dr::DrOpkSecret> {
         let mut ans_ = vec![];
         for idx_ in 0..len_ {
             ans_.push(<crate::chat_dr::DrOpkSecret>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::zkpki_certs::EkuFlagFfi> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<crate::zkpki_certs::EkuFlagFfi>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -4721,6 +4948,17 @@ impl SseDecode for Option<String> {
     }
 }
 
+impl SseDecode for Option<bool> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<bool>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<crate::core::NameListing> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4759,6 +4997,17 @@ impl SseDecode for Option<u32> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<u32>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<u64>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -5214,23 +5463,33 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        100 => wire__crate__core__submit_set_mime_wrap_vk_impl(port, ptr, rust_vec_len, data_len),
-        101 => wire__crate__personhood__submit_srt_set_csca_root_impl(
+        100 => wire__crate__core__submit_self_discard_cert_recovery_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        102 => wire__crate__personhood__submit_srt_set_seats_root_impl(
+        101 => wire__crate__core__submit_set_mime_wrap_vk_impl(port, ptr, rust_vec_len, data_len),
+        102 => wire__crate__personhood__submit_srt_set_csca_root_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        103 => wire__crate__personhood__submit_srt_set_vk_impl(port, ptr, rust_vec_len, data_len),
-        104 => wire__crate__core__transfer_name_impl(port, ptr, rust_vec_len, data_len),
-        105 => wire__crate__core__verify_name_ownership_impl(port, ptr, rust_vec_len, data_len),
-        106 => wire__crate__core__vote_on_referendum_impl(port, ptr, rust_vec_len, data_len),
+        103 => wire__crate__personhood__submit_srt_set_seats_root_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        104 => wire__crate__personhood__submit_srt_set_vk_impl(port, ptr, rust_vec_len, data_len),
+        105 => wire__crate__core__transfer_name_impl(port, ptr, rust_vec_len, data_len),
+        106 => wire__crate__core__verify_name_ownership_impl(port, ptr, rust_vec_len, data_len),
+        107 => wire__crate__core__vote_on_referendum_impl(port, ptr, rust_vec_len, data_len),
+        109 => wire__crate__zkpki_certs__zkpki_cert_status_impl(port, ptr, rust_vec_len, data_len),
+        110 => {
+            wire__crate__zkpki_certs__zkpki_certs_by_user_impl(port, ptr, rust_vec_len, data_len)
+        }
         _ => unreachable!(),
     }
 }
@@ -5257,7 +5516,7 @@ fn pde_ffi_dispatcher_sync_impl(
             data_len,
         ),
         90 => wire__crate__core__restore_account_impl(ptr, rust_vec_len, data_len),
-        107 => wire__crate__totp_enrollment__zeroize_bytes_impl(ptr, rust_vec_len, data_len),
+        108 => wire__crate__totp_enrollment__zeroize_bytes_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -5302,6 +5561,91 @@ impl flutter_rust_bridge::IntoDart for crate::chat::AtRestMessage {
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::chat::AtRestMessage {}
 impl flutter_rust_bridge::IntoIntoDart<crate::chat::AtRestMessage> for crate::chat::AtRestMessage {
     fn into_into_dart(self) -> crate::chat::AtRestMessage {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::zkpki_certs::CertListFfi {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.best_block.into_into_dart().into_dart(),
+            self.certs.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::zkpki_certs::CertListFfi
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::zkpki_certs::CertListFfi>
+    for crate::zkpki_certs::CertListFfi
+{
+    fn into_into_dart(self) -> crate::zkpki_certs::CertListFfi {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::zkpki_certs::CertStatusFfi {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.thumbprint_hex.into_into_dart().into_dart(),
+            self.ocsp_status.into_into_dart().into_dart(),
+            self.this_update.into_into_dart().into_dart(),
+            self.revocation_time.into_into_dart().into_dart(),
+            self.revocation_reason.into_into_dart().into_dart(),
+            self.state.into_into_dart().into_dart(),
+            self.is_active.into_into_dart().into_dart(),
+            self.expiry_block.into_into_dart().into_dart(),
+            self.mint_block.into_into_dart().into_dart(),
+            self.issuer_ss58.into_into_dart().into_dart(),
+            self.issuer_status.into_into_dart().into_dart(),
+            self.root_ss58.into_into_dart().into_dart(),
+            self.root_status.into_into_dart().into_dart(),
+            self.attestation_type.into_into_dart().into_dart(),
+            self.manufacturer_verified.into_into_dart().into_dart(),
+            self.template_name.into_into_dart().into_dart(),
+            self.pop_required.into_into_dart().into_dart(),
+            self.ekus.into_into_dart().into_dart(),
+            self.has_personhood.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::zkpki_certs::CertStatusFfi
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::zkpki_certs::CertStatusFfi>
+    for crate::zkpki_certs::CertStatusFfi
+{
+    fn into_into_dart(self) -> crate::zkpki_certs::CertStatusFfi {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::zkpki_certs::CertSummaryFfi {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.thumbprint_hex.into_into_dart().into_dart(),
+            self.state.into_into_dart().into_dart(),
+            self.is_active.into_into_dart().into_dart(),
+            self.expiry_block.into_into_dart().into_dart(),
+            self.mint_block.into_into_dart().into_dart(),
+            self.attestation_type.into_into_dart().into_dart(),
+            self.manufacturer_verified.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::zkpki_certs::CertSummaryFfi
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::zkpki_certs::CertSummaryFfi>
+    for crate::zkpki_certs::CertSummaryFfi
+{
+    fn into_into_dart(self) -> crate::zkpki_certs::CertSummaryFfi {
         self
     }
 }
@@ -5598,6 +5942,27 @@ impl flutter_rust_bridge::IntoIntoDart<crate::chat_dr::DrPrekeySetup>
     for crate::chat_dr::DrPrekeySetup
 {
     fn into_into_dart(self) -> crate::chat_dr::DrPrekeySetup {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::zkpki_certs::EkuFlagFfi {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.label.into_into_dart().into_dart(),
+            self.held.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::zkpki_certs::EkuFlagFfi
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::zkpki_certs::EkuFlagFfi>
+    for crate::zkpki_certs::EkuFlagFfi
+{
+    fn into_into_dart(self) -> crate::zkpki_certs::EkuFlagFfi {
         self
     }
 }
@@ -6098,6 +6463,52 @@ impl SseEncode for bool {
     }
 }
 
+impl SseEncode for crate::zkpki_certs::CertListFfi {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u64>::sse_encode(self.best_block, serializer);
+        <Vec<crate::zkpki_certs::CertSummaryFfi>>::sse_encode(self.certs, serializer);
+    }
+}
+
+impl SseEncode for crate::zkpki_certs::CertStatusFfi {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.thumbprint_hex, serializer);
+        <String>::sse_encode(self.ocsp_status, serializer);
+        <u64>::sse_encode(self.this_update, serializer);
+        <Option<u64>>::sse_encode(self.revocation_time, serializer);
+        <Option<String>>::sse_encode(self.revocation_reason, serializer);
+        <String>::sse_encode(self.state, serializer);
+        <bool>::sse_encode(self.is_active, serializer);
+        <u64>::sse_encode(self.expiry_block, serializer);
+        <u64>::sse_encode(self.mint_block, serializer);
+        <String>::sse_encode(self.issuer_ss58, serializer);
+        <String>::sse_encode(self.issuer_status, serializer);
+        <String>::sse_encode(self.root_ss58, serializer);
+        <String>::sse_encode(self.root_status, serializer);
+        <String>::sse_encode(self.attestation_type, serializer);
+        <bool>::sse_encode(self.manufacturer_verified, serializer);
+        <String>::sse_encode(self.template_name, serializer);
+        <Option<bool>>::sse_encode(self.pop_required, serializer);
+        <Vec<crate::zkpki_certs::EkuFlagFfi>>::sse_encode(self.ekus, serializer);
+        <bool>::sse_encode(self.has_personhood, serializer);
+    }
+}
+
+impl SseEncode for crate::zkpki_certs::CertSummaryFfi {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.thumbprint_hex, serializer);
+        <String>::sse_encode(self.state, serializer);
+        <bool>::sse_encode(self.is_active, serializer);
+        <u64>::sse_encode(self.expiry_block, serializer);
+        <u64>::sse_encode(self.mint_block, serializer);
+        <String>::sse_encode(self.attestation_type, serializer);
+        <bool>::sse_encode(self.manufacturer_verified, serializer);
+    }
+}
+
 impl SseEncode for crate::chat::ChatIdentity {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6237,6 +6648,14 @@ impl SseEncode for crate::chat_dr::DrPrekeySetup {
     }
 }
 
+impl SseEncode for crate::zkpki_certs::EkuFlagFfi {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.label, serializer);
+        <bool>::sse_encode(self.held, serializer);
+    }
+}
+
 impl SseEncode for f64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6271,6 +6690,16 @@ impl SseEncode for Vec<crate::chat::AtRestMessage> {
     }
 }
 
+impl SseEncode for Vec<crate::zkpki_certs::CertSummaryFfi> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::zkpki_certs::CertSummaryFfi>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::chat::DeadDropGraceEntry> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6297,6 +6726,16 @@ impl SseEncode for Vec<crate::chat_dr::DrOpkSecret> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::chat_dr::DrOpkSecret>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::zkpki_certs::EkuFlagFfi> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::zkpki_certs::EkuFlagFfi>::sse_encode(item, serializer);
         }
     }
 }
@@ -6424,6 +6863,16 @@ impl SseEncode for Option<String> {
     }
 }
 
+impl SseEncode for Option<bool> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <bool>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<crate::core::NameListing> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6460,6 +6909,16 @@ impl SseEncode for Option<u32> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <u32>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <u64>::sse_encode(value, serializer);
         }
     }
 }

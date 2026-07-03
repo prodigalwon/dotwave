@@ -22,10 +22,12 @@ use rust_core::chat::{
 };
 use rust_core::core::{
     chat_mint_test_cert, chat_resolve_identity, chat_setup_messaging, dev_cert_seed_hex,
-    fetch_balance, lab_authenticate_membership, lab_bootstrap_issuer, lab_offer_contract,
-    lab_register_name, lab_set_node_record, lab_test_enroll, send_dot,
+    fetch_balance, lab_authenticate_membership, lab_bootstrap_issuer, lab_create_plain_template,
+    lab_mint_plain, lab_offer_contract, lab_register_name, lab_set_node_record, lab_test_enroll,
+    send_dot, submit_self_discard_cert_recovery,
 };
 use rust_core::membership::{lab_witness_check, membership_present_ticket, verify_id_binding};
+use rust_core::zkpki_certs::{zkpki_cert_status, zkpki_certs_by_user};
 use rust_core::dead_drop::DeadDropThread;
 
 const FERDIE_CHAT_SEED: &str = "f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1";
@@ -797,6 +799,103 @@ fn main() {
                 Ok(o) => println!("{o}"),
                 Err(e) => {
                     eprintln!("offer FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "plain-template" => {
+            // plain-template [issuer_suri] [template] [rpc]
+            // PoP-free template under the bootstrapped issuer, for desktop
+            // plain mints (cert-management smoke, no StrongBox needed).
+            let issuer = args.get(2).map(String::as_str).unwrap_or("//Charlie").to_string();
+            let template = args.get(3).map(String::as_str).unwrap_or("plain-lab").to_string();
+            let rpc = args.get(4).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match lab_create_plain_template(issuer, template, rpc) {
+                Ok(h) => println!("plain-template ok: {h}"),
+                Err(e) => {
+                    eprintln!("plain-template FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "mint-plain" => {
+            // mint-plain <user_suri> <issuer_ss58> [rpc]
+            // Accept the pending offer with a desktop mint_cert (MockVerdict
+            // Tpm, software P-256 device key). PoP-free templates only.
+            let user = args.get(2).expect("usage: mint-plain <user_suri> <issuer_ss58> [rpc]").clone();
+            let issuer = args.get(3).expect("need <issuer_ss58>").clone();
+            let rpc = args.get(4).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match lab_mint_plain(user, issuer, rpc) {
+                Ok(h) => println!("mint-plain ok: {h}"),
+                Err(e) => {
+                    eprintln!("mint-plain FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "certs" => {
+            // certs <ss58> [rpc]
+            // The app's My Certs read (ZkPkiApi_certs_by_user), verbatim.
+            let ss58 = args.get(2).expect("usage: certs <ss58> [rpc]").clone();
+            let rpc = args.get(3).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match zkpki_certs_by_user(rpc, ss58) {
+                Ok(list) => {
+                    println!("best_block={}", list.best_block);
+                    if list.certs.is_empty() {
+                        println!("(no certs)");
+                    }
+                    for c in list.certs {
+                        println!(
+                            "0x{} state={} active={} mint={} expiry={} attestation={:?} vendor_verified={}",
+                            c.thumbprint_hex, c.state, c.is_active, c.mint_block,
+                            c.expiry_block, c.attestation_type, c.manufacturer_verified,
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("certs FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "cert-status" => {
+            // cert-status <thumbprint_hex> [rpc]
+            // The app's cert-detail read (ZkPkiApi_cert_status), verbatim.
+            let tp = args.get(2).expect("usage: cert-status <thumbprint_hex> [rpc]").clone();
+            let rpc = args.get(3).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match zkpki_cert_status(rpc, tp) {
+                Ok(s) => {
+                    println!("thumbprint    0x{}", s.thumbprint_hex);
+                    println!("ocsp/state    {} / {} (active={})", s.ocsp_status, s.state, s.is_active);
+                    println!("mint/expiry   {} / {} (as of block {})", s.mint_block, s.expiry_block, s.this_update);
+                    println!("issuer        {} [{}]", s.issuer_ss58, s.issuer_status);
+                    println!("root          {} [{}]", s.root_ss58, s.root_status);
+                    println!("attestation   {} (vendor_verified={})", s.attestation_type, s.manufacturer_verified);
+                    println!("template      '{}' pop_required={:?}", s.template_name, s.pop_required);
+                    let held: Vec<&str> =
+                        s.ekus.iter().filter(|e| e.held).map(|e| e.label.as_str()).collect();
+                    println!("ekus          {held:?} (personhood={})", s.has_personhood);
+                    if let Some(r) = s.revocation_reason {
+                        println!("REVOKED       {r} at block {:?}", s.revocation_time);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("cert-status FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "discard-recovery" => {
+            // discard-recovery <thumbprint_hex> <user_suri> [rpc]
+            // The app's release-cert write (self_discard_cert recovery path),
+            // verbatim.
+            let tp = args.get(2).expect("usage: discard-recovery <thumbprint_hex> <user_suri> [rpc]").clone();
+            let suri = args.get(3).expect("need <user_suri>").clone();
+            let rpc = args.get(4).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            match submit_self_discard_cert_recovery(tp, suri, rpc) {
+                Ok(h) => println!("discard-recovery ok: {h}"),
+                Err(e) => {
+                    eprintln!("discard-recovery FAILED: {e}");
                     std::process::exit(1);
                 }
             }

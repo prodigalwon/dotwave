@@ -78,6 +78,12 @@ class TransactionBlade extends StatefulWidget {
   /// form). If it navigates away (unmounting the blade), the shrink is skipped.
   final VoidCallback? onSubmitted;
 
+  /// Set false when the caller already ran its own biometric gate immediately
+  /// before opening the blade (e.g. the cert-release confirm dialog), so the
+  /// user isn't prompted twice in a row. Default true: the blade owns the
+  /// biometric step.
+  final bool requireBiometric;
+
   const TransactionBlade({
     super.key,
     required this.transactionType,
@@ -92,6 +98,7 @@ class TransactionBlade extends StatefulWidget {
     this.preflightCheck,
     this.onSuccess,
     this.onSubmitted,
+    this.requireBiometric = true,
   }) : assert(txAction != null || onConfirm != null || streamedSubmit != null,
             'Provide txAction (tracked), streamedSubmit (tracked stream), or onConfirm (legacy)');
 
@@ -249,30 +256,30 @@ class _TransactionBladeState extends State<TransactionBlade>
       }
     }
 
-    // Step 2: biometric
-// Step 2: biometric
-// Step 2: biometric
-    final auth = LocalAuthentication();
-    bool authenticated = false;
-    if (kDebugMode) {
-      authenticated = true;
-    } else {
-      try {
-        final canAuth = await auth.canCheckBiometrics || await auth.isDeviceSupported();
-        if (canAuth) {
-          authenticated = await auth.authenticate(
-            localizedReason: 'Confirm ${widget.transactionType}',
-          );
-        } else {
-          authenticated = true;
+    // Step 2: biometric (skipped when the caller gated on it already)
+    if (widget.requireBiometric) {
+      final auth = LocalAuthentication();
+      bool authenticated = false;
+      if (kDebugMode) {
+        authenticated = true;
+      } else {
+        try {
+          final canAuth = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+          if (canAuth) {
+            authenticated = await auth.authenticate(
+              localizedReason: 'Confirm ${widget.transactionType}',
+            );
+          } else {
+            authenticated = true;
+          }
+        } catch (_) {
+          authenticated = false;
         }
-      } catch (_) {
-        authenticated = false;
       }
-    }
-    if (!authenticated) {
-      setState(() => _state = _BladeState.idle);
-      return;
+      if (!authenticated) {
+        setState(() => _state = _BladeState.idle);
+        return;
+      }
     }
 
     // Step 3: show passphrase entry

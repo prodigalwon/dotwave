@@ -9,7 +9,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 // These functions are ignored because they are not marked as `pub`: `confirmed`, `connect_rostro_with_rpc`, `connect_rostro`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `dispatch_action`, `encode_record_type`, `estimate_action_fee`, `estimate_call`, `failed`, `fetch_best_nonce`, `fetch_root_thumbprint`, `hex_encode_lower`, `rostro_tx_params`, `run_streamed`, `submit_signed_watched`, `submit_typed`, `submitted`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Sr25519Signer`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `fmt`, `sign`
-// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `lab_authenticate_membership`, `lab_bootstrap_issuer`, `lab_offer_contract`, `lab_register_name`, `lab_set_node_record`, `lab_test_enroll`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `lab_authenticate_membership`, `lab_bootstrap_issuer`, `lab_create_plain_template`, `lab_mint_plain`, `lab_offer_contract`, `lab_register_name`, `lab_set_node_record`, `lab_test_enroll`
 
 /// Estimate the network fee (in planck) for a write action, without the user's
 /// phrase. The fee depends only on the call's weight + encoded length, not the
@@ -666,6 +666,24 @@ Future<String> submitSelfDiscardCertMimeWrap({
   userOtp: userOtp,
   proofBytesHex: proofBytesHex,
   bundle: bundle,
+  phrase: phrase,
+  rpcUrl: rpcUrl,
+);
+
+/// Self-discard a cert via the pallet's recovery path
+/// (`pop_assertion: None`): SS58 ownership of the bound account is the
+/// sole authorization, so this works for every cert regardless of
+/// template or PoP mechanism and needs no retained ceremony bytes. The
+/// chain emits `CertSelfDiscardedRecovery` (vs `CertSelfDiscarded` for
+/// the PoP-asserted path) so issuer-side audit can see the discard
+/// happened without a hardware assertion. Used by the ZK-PKI cert
+/// management screen's release flow.
+Future<String> submitSelfDiscardCertRecovery({
+  required String certThumbprintHex,
+  required String phrase,
+  required String rpcUrl,
+}) => RustLib.instance.api.crateCoreSubmitSelfDiscardCertRecovery(
+  certThumbprintHex: certThumbprintHex,
   phrase: phrase,
   rpcUrl: rpcUrl,
 );

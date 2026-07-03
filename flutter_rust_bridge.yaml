@@ -1,3 +1,3 @@
-rust_input: "crate::core,crate::chat,crate::chat_dr,crate::chat_session,crate::totp_enrollment,crate::mime_wrap_prover,crate::mime_wrap_client,crate::personhood,crate::membership"
+rust_input: "crate::core,crate::chat,crate::chat_dr,crate::chat_session,crate::totp_enrollment,crate::mime_wrap_prover,crate::mime_wrap_client,crate::personhood,crate::membership,crate::zkpki_certs"
 rust_root: rust_core/
 dart_output: lib/bridge/bridge_generated.dart
