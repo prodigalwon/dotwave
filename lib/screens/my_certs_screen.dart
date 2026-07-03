@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../bridge/bridge_generated.dart/membership.dart' as bridge_membership;
 import '../bridge/bridge_generated.dart/zkpki_certs.dart' as bridge_certs;
 import '../config/rpc_endpoints.dart';
 import '../theme.dart';
@@ -23,9 +22,6 @@ class _MyCertsScreenState extends State<MyCertsScreen> {
   String? _error;
   bridge_certs.CertListFfi? _list;
 
-  /// Thumbprint of the chat-enrolled cert, if any — badged in the list.
-  String? _enrolledThumbprint;
-
   @override
   void initState() {
     super.initState();
@@ -38,22 +34,15 @@ class _MyCertsScreenState extends State<MyCertsScreen> {
       _error = null;
     });
     try {
+      // The chat badge rides the summary's ChatAuth EKU — no per-cert
+      // membership_witness probes needed.
       final list = await bridge_certs.zkpkiCertsByUser(
         chainRpc: RpcEndpoints.chain,
         address: widget.address,
       );
-      // Best-effort: the badge is decoration, the list must not fail on it.
-      String? enrolled;
-      try {
-        enrolled = await bridge_membership.membershipEnrolledThumbprint(
-          chainRpc: RpcEndpoints.chain,
-          accountSs58: widget.address,
-        );
-      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _list = list;
-        _enrolledThumbprint = enrolled;
         _loading = false;
       });
     } catch (e) {
@@ -115,15 +104,12 @@ class _MyCertsScreenState extends State<MyCertsScreen> {
           return _CertRow(
             cert: cert,
             bestBlock: list.bestBlock,
-            isChatEnrolled: _enrolledThumbprint != null &&
-                _enrolledThumbprint == cert.thumbprintHex,
             onTap: () async {
               await Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => CertDetailScreen(
                     address: widget.address,
                     thumbprintHex: cert.thumbprintHex,
-                    isChatEnrolled: _enrolledThumbprint == cert.thumbprintHex,
                   ),
                 ),
               );
@@ -157,13 +143,11 @@ Color certStateColor(String state) {
 class _CertRow extends StatelessWidget {
   final bridge_certs.CertSummaryFfi cert;
   final BigInt bestBlock;
-  final bool isChatEnrolled;
   final VoidCallback onTap;
 
   const _CertRow({
     required this.cert,
     required this.bestBlock,
-    required this.isChatEnrolled,
     required this.onTap,
   });
 
@@ -222,7 +206,7 @@ class _CertRow extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (isChatEnrolled) ...[
+                        if (cert.chatAuth) ...[
                           const SizedBox(width: 6),
                           _Chip(label: 'chat', color: AppTheme.accent),
                         ],

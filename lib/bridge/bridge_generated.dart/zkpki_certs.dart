@@ -8,7 +8,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `best_block`, `block_on`, `connect`, `label`, `label`, `label`, `label`, `summary_to_ffi`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AttestationTypeScale`, `CertStateScale`, `CertStatusResponseScale`, `CertSummaryScale`, `EkuScale`, `EntityStateScale`, `OcspStatusScale`, `PopRequirementScale`, `RevocationReasonScale`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `eq`
 
 /// All certs bound to `address` (any issuer, any template), newest mint
 /// first, plus the best block for countdown rendering.
@@ -82,6 +82,10 @@ class CertStatusFfi {
   /// mechanism requirement (`pop_required`).
   final bool hasPersonhood;
 
+  /// True iff the cert holds the ChatAuth EKU (⇔ a live membership
+  /// leaf, by the mint-time stamping invariant).
+  final bool hasChatAuth;
+
   const CertStatusFfi({
     required this.thumbprintHex,
     required this.ocspStatus,
@@ -102,6 +106,7 @@ class CertStatusFfi {
     this.popRequired,
     required this.ekus,
     required this.hasPersonhood,
+    required this.hasChatAuth,
   });
 
   @override
@@ -124,7 +129,8 @@ class CertStatusFfi {
       templateName.hashCode ^
       popRequired.hashCode ^
       ekus.hashCode ^
-      hasPersonhood.hashCode;
+      hasPersonhood.hashCode ^
+      hasChatAuth.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -149,7 +155,8 @@ class CertStatusFfi {
           templateName == other.templateName &&
           popRequired == other.popRequired &&
           ekus == other.ekus &&
-          hasPersonhood == other.hasPersonhood;
+          hasPersonhood == other.hasPersonhood &&
+          hasChatAuth == other.hasChatAuth;
 }
 
 /// One row of the My Certs list.
@@ -164,6 +171,11 @@ class CertSummaryFfi {
   final String attestationType;
   final bool manufacturerVerified;
 
+  /// Cert carries the ChatAuth EKU — the declared (EKU ⇔ leaf)
+  /// form of "may authenticate to chat guards". Replaces the old
+  /// per-cert membership_witness probe for list badging.
+  final bool chatAuth;
+
   const CertSummaryFfi({
     required this.thumbprintHex,
     required this.state,
@@ -172,6 +184,7 @@ class CertSummaryFfi {
     required this.mintBlock,
     required this.attestationType,
     required this.manufacturerVerified,
+    required this.chatAuth,
   });
 
   @override
@@ -182,7 +195,8 @@ class CertSummaryFfi {
       expiryBlock.hashCode ^
       mintBlock.hashCode ^
       attestationType.hashCode ^
-      manufacturerVerified.hashCode;
+      manufacturerVerified.hashCode ^
+      chatAuth.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -195,7 +209,8 @@ class CertSummaryFfi {
           expiryBlock == other.expiryBlock &&
           mintBlock == other.mintBlock &&
           attestationType == other.attestationType &&
-          manufacturerVerified == other.manufacturerVerified;
+          manufacturerVerified == other.manufacturerVerified &&
+          chatAuth == other.chatAuth;
 }
 
 /// One entry of the full EKU catalog: `held` marks capabilities this

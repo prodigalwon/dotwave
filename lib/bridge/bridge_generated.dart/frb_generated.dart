@@ -5261,8 +5261,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   CertStatusFfi dco_decode_cert_status_ffi(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 19)
-      throw Exception('unexpected arr length: expect 19 but see ${arr.length}');
+    if (arr.length != 20)
+      throw Exception('unexpected arr length: expect 20 but see ${arr.length}');
     return CertStatusFfi(
       thumbprintHex: dco_decode_String(arr[0]),
       ocspStatus: dco_decode_String(arr[1]),
@@ -5283,6 +5283,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       popRequired: dco_decode_opt_box_autoadd_bool(arr[16]),
       ekus: dco_decode_list_eku_flag_ffi(arr[17]),
       hasPersonhood: dco_decode_bool(arr[18]),
+      hasChatAuth: dco_decode_bool(arr[19]),
     );
   }
 
@@ -5290,8 +5291,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   CertSummaryFfi dco_decode_cert_summary_ffi(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
     return CertSummaryFfi(
       thumbprintHex: dco_decode_String(arr[0]),
       state: dco_decode_String(arr[1]),
@@ -5300,6 +5301,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       mintBlock: dco_decode_u_64(arr[4]),
       attestationType: dco_decode_String(arr[5]),
       manufacturerVerified: dco_decode_bool(arr[6]),
+      chatAuth: dco_decode_bool(arr[7]),
     );
   }
 
@@ -6139,6 +6141,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_popRequired = sse_decode_opt_box_autoadd_bool(deserializer);
     var var_ekus = sse_decode_list_eku_flag_ffi(deserializer);
     var var_hasPersonhood = sse_decode_bool(deserializer);
+    var var_hasChatAuth = sse_decode_bool(deserializer);
     return CertStatusFfi(
       thumbprintHex: var_thumbprintHex,
       ocspStatus: var_ocspStatus,
@@ -6159,6 +6162,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       popRequired: var_popRequired,
       ekus: var_ekus,
       hasPersonhood: var_hasPersonhood,
+      hasChatAuth: var_hasChatAuth,
     );
   }
 
@@ -6172,6 +6176,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_mintBlock = sse_decode_u_64(deserializer);
     var var_attestationType = sse_decode_String(deserializer);
     var var_manufacturerVerified = sse_decode_bool(deserializer);
+    var var_chatAuth = sse_decode_bool(deserializer);
     return CertSummaryFfi(
       thumbprintHex: var_thumbprintHex,
       state: var_state,
@@ -6180,6 +6185,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       mintBlock: var_mintBlock,
       attestationType: var_attestationType,
       manufacturerVerified: var_manufacturerVerified,
+      chatAuth: var_chatAuth,
     );
   }
 
@@ -7178,6 +7184,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_opt_box_autoadd_bool(self.popRequired, serializer);
     sse_encode_list_eku_flag_ffi(self.ekus, serializer);
     sse_encode_bool(self.hasPersonhood, serializer);
+    sse_encode_bool(self.hasChatAuth, serializer);
   }
 
   @protected
@@ -7193,6 +7200,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.mintBlock, serializer);
     sse_encode_String(self.attestationType, serializer);
     sse_encode_bool(self.manufacturerVerified, serializer);
+    sse_encode_bool(self.chatAuth, serializer);
   }
 
   @protected

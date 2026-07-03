@@ -2694,6 +2694,7 @@ pub fn lab_bootstrap_issuer(
     use polkadot::runtime_types::zk_pki_primitives::crypto::{
         DevicePublicKey as TypedDevicePublicKey, KeyAlgorithm as TypedKeyAlgorithm,
     };
+    use polkadot::runtime_types::zk_pki_primitives::eku::Eku as TypedEku;
     use polkadot::runtime_types::zk_pki_primitives::template::{
         PopMechanism as TypedPopMechanism, PopRequirement as TypedPopRequirement,
     };
@@ -2702,14 +2703,37 @@ pub fn lab_bootstrap_issuer(
     const ISSUER_TTL_BLOCKS: u32 = 900_000;
     let mut log = Vec::new();
 
-    // 1. Root (idempotent inside chat_mint_test_cert).
-    let root_thumb = chat_mint_test_cert(
-        rpc_url.clone(),
-        root_suri.clone(),
-        dev_cert_seed_hex(root_suri.clone()),
-        1_000_000,
-    )?;
-    log.push(format!("root cert: 0x{root_thumb}"));
+    // 1. Root, registered with the ChatAuth capability so it can charter
+    //    chat issuers (issuer capabilities must be a subset of the
+    //    root's). Inline rather than via chat_mint_test_cert, which
+    //    registers capability-free dev roots. Idempotent on Roots.
+    let root_pair = sr25519::Pair::from_string(&root_suri, None)
+        .map_err(|e| format!("root keypair: {e:?}"))?;
+    let root_account = AccountId32::from(root_pair.public().0);
+    let rt0 = tokio::runtime::Builder::new_current_thread()
+        .enable_all().build().map_err(|e| e.to_string())?;
+    let existing_root = rt0.block_on(fetch_root_thumbprint(&rpc_url, &root_account))?;
+    match existing_root {
+        Some(tp) => log.push(format!("root cert: 0x{} (already registered)", hex::encode(tp))),
+        None => {
+            let root_sec1 = hex::decode(crate::chat::chat_cert_pubkey(dev_cert_seed_hex(
+                root_suri.clone(),
+            ))?)
+            .map_err(|e| format!("root cert pubkey hex: {e}"))?;
+            let tx = polkadot::tx().zk_pki().register_root(
+                root_account.clone(), // proxy — NoopProxyValidator admits any value
+                TypedDevicePublicKey {
+                    algorithm: TypedKeyAlgorithm::EcdsaP256,
+                    key_bytes: BoundedVec(root_sec1),
+                },
+                BoundedVec(b"dev-test-attestation".to_vec()),
+                1_000_000u32,
+                BoundedVec(vec![TypedEku::ChatAuth]),
+            );
+            let hash = submit_typed(&root_suri, &rpc_url, tx)?;
+            log.push(format!("root registered (ChatAuth capability): {hash}"));
+        }
+    }
 
     let issuer_pair = sr25519::Pair::from_string(&issuer_suri, None)
         .map_err(|e| format!("issuer keypair: {e:?}"))?;
@@ -2745,10 +2769,12 @@ pub fn lab_bootstrap_issuer(
             },
             BoundedVec(b"dev-test-attestation".to_vec()), // ignored by the test verifier
             ISSUER_TTL_BLOCKS,
-            BoundedVec(vec![]), // no capability EKUs
+            // ChatAuth capability (⊆ the root's) so this issuer's
+            // templates may admit chat enrollments.
+            BoundedVec(vec![TypedEku::ChatAuth]),
         );
         let hash = submit_typed(&root_suri, &rpc_url, tx)?;
-        log.push(format!("issuer cert issued: {hash}"));
+        log.push(format!("issuer cert issued (ChatAuth capability): {hash}"));
     }
 
     // 3. Template under the issuer, skipped if it exists.
@@ -2782,10 +2808,12 @@ pub fn lab_bootstrap_issuer(
             100,     // min_ttl_blocks
             None,      // max_certs
             None,      // metadata_schema
-            BoundedVec(vec![]),
+            // ChatAuth: mints under this template may carry a chat
+            // enrollment (and get the EKU stamped when they do).
+            BoundedVec(vec![TypedEku::ChatAuth]),
         );
         let hash = submit_typed(&issuer_suri, &rpc_url, tx)?;
-        log.push(format!("template '{template_name}' created: {hash}"));
+        log.push(format!("template '{template_name}' created (ChatAuth): {hash}"));
     }
 
     Ok(log.join("\n"))
@@ -2856,15 +2884,22 @@ pub fn lab_offer_contract(
 /// already-bootstrapped issuer. Lets the rig mint plain certs from the desk
 /// (no StrongBox / HIP / mime-wrap) to exercise the app's cert-management
 /// surface, which covers ALL `mint_cert` certs, not just chat-enrolled ones.
+///
+/// `chat_auth: true` additionally grants the ChatAuth EKU on the template
+/// (issuer must carry the capability — see `lab_bootstrap_issuer`), so a
+/// desktop `lab_mint_enroll` under it can exercise the EKU ⇔ leaf invariant.
 #[flutter_rust_bridge::frb(ignore)]
 pub fn lab_create_plain_template(
     issuer_suri: String,
     template_name: String,
+    chat_auth: bool,
     rpc_url: String,
 ) -> Result<String, String> {
     use polkadot::runtime_types::bounded_collections::bounded_vec::BoundedVec;
+    use polkadot::runtime_types::zk_pki_primitives::eku::Eku as TypedEku;
     use polkadot::runtime_types::zk_pki_primitives::template::PopRequirement as TypedPopRequirement;
 
+    let ekus = if chat_auth { vec![TypedEku::ChatAuth] } else { vec![] };
     let tx = polkadot::tx().zk_pki().create_cert_template(
         BoundedVec(template_name.into_bytes()),
         TypedPopRequirement::NotRequired,
@@ -2873,9 +2908,126 @@ pub fn lab_create_plain_template(
         100,     // min_ttl_blocks
         None,    // max_certs
         None,    // metadata_schema
-        BoundedVec(vec![]),
+        BoundedVec(ekus),
     );
     submit_typed(&issuer_suri, &rpc_url, tx)
+}
+
+/// LAB: accept a pending offer with a desktop `mint_cert` CARRYING a chat
+/// enrollment — the software twin of the phone's enrollment mint, for
+/// exercising the ChatAuth charter gate + EKU ⇔ leaf invariant on the rig
+/// without hardware. `MockVerdict::TpmWithAttest` reports a soft attest
+/// key whose id-binding signature the chain verifies for real (same code
+/// path as the phone's StrongBox attest_ec on testnet posture).
+///
+/// `s_hex` is the 32-byte member secret; the id_commitment derivation
+/// matches the phone (`hash_to_field` → Poseidon) and is echoed back for
+/// `witness-check`.
+#[flutter_rust_bridge::frb(ignore)]
+pub fn lab_mint_enroll(
+    user_suri: String,
+    issuer_ss58: String,
+    s_hex: String,
+    rpc_url: String,
+) -> Result<String, String> {
+    use p256::ecdsa::{signature::Signer, Signature, SigningKey, VerifyingKey};
+    use parity_scale_codec::Encode;
+    use polkadot::runtime_types::zk_pki_tpm::chat_enrollment::ChatEnrollment as TypedChatEnrollment;
+
+    let user_pair = sr25519::Pair::from_string(&user_suri, None)
+        .map_err(|e| format!("user keypair: {e:?}"))?;
+    let user_account = AccountId32::from(user_pair.public().0);
+    let issuer_account =
+        AccountId32::from_str(&issuer_ss58).map_err(|e| format!("issuer_ss58: {e}"))?;
+
+    // Pending offer -> (nonce, created_at). Same read as lab_mint_plain.
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all().build().map_err(|e| e.to_string())?;
+    let (contract_nonce, created_at) = rt.block_on(async {
+        let (client, metadata) = crate::rostro_client::connect(&rpc_url).await?;
+        let mut index_key = issuer_account.0.encode();
+        index_key.extend(user_account.0.encode());
+        let nonce_val = client
+            .fetch_storage(&metadata, "ZkPki", "OfferIndex", &[&index_key])
+            .await
+            .map_err(|e| format!("ZkPki.OfferIndex fetch: {e}"))?
+            .ok_or("no pending offer from this issuer to this user")?;
+        let nonce: [u8; 32] = crate::rostro_client::as_bytes(&nonce_val)
+            .ok_or("OfferIndex value is not bytes")?
+            .try_into()
+            .map_err(|_| "offer nonce is not 32 bytes".to_string())?;
+        let offer = client
+            .fetch_storage(&metadata, "ZkPki", "ContractOffers", &[&nonce.encode()])
+            .await
+            .map_err(|e| format!("ZkPki.ContractOffers fetch: {e}"))?
+            .ok_or("ContractOffers entry missing for indexed nonce")?;
+        let created_at = crate::rostro_client::field(&offer, "created_at")
+            .and_then(crate::rostro_client::as_u32)
+            .ok_or("ContractOffer missing created_at")?;
+        Ok::<_, String>((nonce, created_at))
+    })?;
+
+    // Soft device + attest keys, distinct deterministic domains.
+    let device_seed = sp_core::hashing::blake2_256(
+        format!("rostro-enroll-mint/{user_suri}").as_bytes(),
+    );
+    let device_sec1 = hex::decode(crate::chat::chat_cert_pubkey(hex::encode(device_seed))?)
+        .map_err(|e| format!("device pubkey hex: {e}"))?;
+    let attest_seed = sp_core::hashing::blake2_256(
+        format!("rostro-enroll-attest/{user_suri}").as_bytes(),
+    );
+    let attest_sk = SigningKey::from_slice(&attest_seed)
+        .map_err(|e| format!("attest key: {e}"))?;
+    let attest_sec1 = {
+        let vk: VerifyingKey = *attest_sk.verifying_key();
+        vk.to_encoded_point(false).as_bytes().to_vec()
+    };
+
+    // Enrollment: idc = Poseidon(hash_to_field(s)); binding signature by
+    // the soft attest key over blake2(ctx || idc || nonce), DER-encoded.
+    let idc_hex = crate::membership::membership_id_commitment(s_hex)?;
+    let msg_hex = crate::membership::membership_id_binding_msg(
+        idc_hex.clone(),
+        hex::encode(contract_nonce),
+    )?;
+    let msg = hex::decode(&msg_hex).map_err(|e| format!("binding msg hex: {e}"))?;
+    let sig: Signature = attest_sk.sign(&msg);
+    let id_commitment: [u8; 32] = hex::decode(&idc_hex)
+        .map_err(|e| format!("idc hex: {e}"))?
+        .try_into()
+        .map_err(|_| "idc must be 32 bytes".to_string())?;
+
+    // MockVerdict::TpmWithAttest { ek_hash, pubkey_bytes, attest_pubkey_bytes }
+    // — variant 5, fields SCALE-encoded in order.
+    let ek_hash =
+        sp_core::hashing::blake2_256(&[&device_sec1[..], b"rostro-enroll-ek"].concat());
+    let mut mock_verdict = vec![5u8];
+    mock_verdict.extend_from_slice(&ek_hash);
+    mock_verdict.extend(device_sec1.encode());
+    mock_verdict.extend(attest_sec1.encode());
+
+    let attestation = TypedAttestationPayload {
+        cert_ec_chain: vec![],
+        attest_ec_chain: vec![],
+        hmac_binding_output: [0u8; 32],
+        binding_signature: vec![],
+        integrity_blob: mock_verdict,
+        integrity_signature: vec![],
+    };
+    let tx = polkadot::tx().zk_pki().mint_cert(
+        contract_nonce,
+        attestation,
+        created_at,
+        None, // hip_proof_at_genesis — PoP-free template
+        None, // commitment_c
+        None, // ec_key_pub_claimed
+        Some(TypedChatEnrollment {
+            id_commitment,
+            id_binding_signature: sig.to_der().as_bytes().to_vec(),
+        }),
+    );
+    let hash = submit_typed(&user_suri, &rpc_url, tx)?;
+    Ok(format!("{hash}\nid_commitment=0x{idc_hex}"))
 }
 
 /// LAB: accept a pending offer with a plain desktop `mint_cert` — the

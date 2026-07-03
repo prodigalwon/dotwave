@@ -62,7 +62,7 @@ enum PopRequirementScale {
     NotRequired,
 }
 
-#[derive(Decode)]
+#[derive(Decode, PartialEq)]
 enum EkuScale {
     ServerAuth,
     ClientAuth,
@@ -74,6 +74,7 @@ enum EkuScale {
     IssuerCert,
     RootCert,
     SmartContractIssuer,
+    ChatAuth,
 }
 
 #[derive(Decode)]
@@ -84,6 +85,7 @@ struct CertSummaryScale {
     mint_block: u64,
     attestation_type: AttestationTypeScale,
     manufacturer_verified: bool,
+    ekus: Vec<EkuScale>,
 }
 
 // Unread fields still decode: SCALE is positional, the full struct must
@@ -161,13 +163,14 @@ impl EkuScale {
             EkuScale::IssuerCert => "Issuer",
             EkuScale::RootCert => "Root",
             EkuScale::SmartContractIssuer => "Smart-contract issuer",
+            EkuScale::ChatAuth => "Chat auth",
         }
     }
 }
 
 /// The full EKU catalog in enum order — the detail screen renders every
 /// entry as a read-only checkbox, checked when the cert holds it.
-const EKU_CATALOG: [EkuScale; 10] = [
+const EKU_CATALOG: [EkuScale; 11] = [
     EkuScale::ServerAuth,
     EkuScale::ClientAuth,
     EkuScale::CodeSigning,
@@ -178,6 +181,7 @@ const EKU_CATALOG: [EkuScale; 10] = [
     EkuScale::IssuerCert,
     EkuScale::RootCert,
     EkuScale::SmartContractIssuer,
+    EkuScale::ChatAuth,
 ];
 
 // ── FRB-facing types ─────────────────────────────────────────────────────
@@ -192,6 +196,10 @@ pub struct CertSummaryFfi {
     pub mint_block: u64,
     pub attestation_type: String,
     pub manufacturer_verified: bool,
+    /// Cert carries the ChatAuth EKU — the declared (EKU ⇔ leaf)
+    /// form of "may authenticate to chat guards". Replaces the old
+    /// per-cert membership_witness probe for list badging.
+    pub chat_auth: bool,
 }
 
 /// The My Certs list plus the best block it was read at, so the UI can
@@ -235,6 +243,9 @@ pub struct CertStatusFfi {
     /// *credential*, distinct from the template's mint-time PoP
     /// mechanism requirement (`pop_required`).
     pub has_personhood: bool,
+    /// True iff the cert holds the ChatAuth EKU (⇔ a live membership
+    /// leaf, by the mint-time stamping invariant).
+    pub has_chat_auth: bool,
 }
 
 fn block_on<F: std::future::Future>(fut: F) -> Result<F::Output, String> {
@@ -273,6 +284,7 @@ fn summary_to_ffi(s: CertSummaryScale) -> CertSummaryFfi {
         mint_block: s.mint_block,
         attestation_type: s.attestation_type.label(),
         manufacturer_verified: s.manufacturer_verified,
+        chat_auth: s.ekus.contains(&EkuScale::ChatAuth),
     }
 }
 
@@ -361,5 +373,6 @@ pub fn zkpki_cert_status(
             .ekus
             .iter()
             .any(|e| matches!(e, EkuScale::ProofOfPersonhood)),
+        has_chat_auth: status.ekus.contains(&EkuScale::ChatAuth),
     })
 }
