@@ -19,8 +19,10 @@
 //!
 //! Crypto calls are byte-identical to
 //! `substrate/bin/utils/rostro-chat-cli/src/main.rs`:
-//!   send:    `sign_inner` → `ss_seal` → `SealedEnvelope` → `chat_send_envelope`
-//!   recover: `chat_fetch_shares` → group-by-message_id → `combine_xor`
+//!   send:    `sign_inner` → `ss_seal` → `SealedEnvelope` →
+//!             `prepare_batch` → `chat_send_prepared`
+//!   recover: `chat_fetch_shares` → group-by-message_id →
+//!             `combine_chunks_verified`
 //!            → `ss_unseal` → `verify_sender`
 //!
 //! The two `auth_*` parameters on [`chat_send`] are the cert-auth
@@ -41,18 +43,18 @@ use parity_scale_codec::{Decode, Encode};
 // rand_core::CryptoRng` bound. The chat layer must use the 0.6 OsRng.
 use rand_core_06::{OsRng, RngCore};
 use rostro_chat_primitives::{
-    descriptor::{MessageId, PickupKey},
+    chunk::{combine_chunks_verified, prepare_batch, PreparedBatch, TaggedChunk},
+    descriptor::{MessageId, PickupKey, CHAT_TTL_SECONDS},
     envelope::{sign_inner, EnvelopeKind, SealedEnvelope, UnsealedInner},
     identity_key::{ed25519_seed_to_x25519_secret, ed25519_to_x25519_pubkey},
-    stripe::combine_xor,
-    verify::verify_sender,
+    verify::{verify_sender, ChunkChecksum},
 };
 use rostro_chat_content_seal::{
     seal as content_seal, unseal_software as content_unseal_software, unseal_with, ContentCurve,
     ContentEcdh, ContentPublicKey, ContentSealError, ContentSealed, SoftwareContentKey,
 };
 use rostro_chat_sealed_sender::{seal as ss_seal, unseal as ss_unseal, SealedOutput};
-use rostro_chat_onion::{wrap_onion, OnionDeliverPayload};
+use rostro_chat_onion::wrap_onion;
 use rostro_node_identity::NodeIdentity;
 
 /// Domain-separation prefix for chat-auth signatures. MUST stay
@@ -97,7 +99,7 @@ pub struct ChatIdentity {
     pub pickup_key_hex: String,
 }
 
-/// Outcome of a successful `chat_send_envelope` dispatch.
+/// Outcome of a successful `chat_send_prepared` / onion dispatch.
 pub struct ChatSendOutcome {
     pub message_id_hex: String,
     pub share_count: u32,
@@ -283,7 +285,6 @@ struct ChatShareDescriptorRpc {
     total_shares: u8,
     #[allow(dead_code)]
     pickup_key_hex: String,
-    #[allow(dead_code)]
     expires_at_unix_ts: u64,
 }
 
@@ -291,8 +292,7 @@ struct ChatShareDescriptorRpc {
 struct ChatFetchedShareRaw {
     descriptor: ChatShareDescriptorRpc,
     share_bytes_hex: String,
-    #[allow(dead_code)]
-    mac_tag_hex: String,
+    checksum_hex: String,
 }
 
 // ── crypto helpers (ported from rostro-chat-cli) ────────────────────
@@ -720,7 +720,7 @@ fn chat_auth_sign(
 // ── FRB: send ───────────────────────────────────────────────────────
 
 /// Build + sign + sealed-sender-seal a pairwise message on-device, then
-/// dispatch it through the named node via `chat_send_envelope`.
+/// dispatch it through the named node via `chat_send_prepared`.
 ///
 /// `recipient_content_key_hex` is the recipient's published content key
 /// (hex of the SCALE curve-tagged `ContentPublicKey`, from the resolved
@@ -792,7 +792,7 @@ pub fn chat_send(
 /// 1:1 path — reserved for one-way payloads with no conversation:
 /// prekey-bundle publications (`chat_dr`) and, later,
 /// authority-signed System messages.
-pub(crate) fn chat_send_plain(
+pub fn chat_send_plain(
     node_rpc: String,
     sender_seed_hex: String,
     recipient_pubkey_hex: String,
@@ -1242,6 +1242,36 @@ fn build_sealed_envelope(
     Ok((envelope, recipient_ed))
 }
 
+/// Chunk cutover (docs/CHAT-SHARE-CHUNKING.md): split the SCALE-encoded
+/// envelope into `total_chunks` contiguous chunks and attach a keyless
+/// integrity checksum to each, producing the `PreparedBatch` that is
+/// both the `chat_send_prepared` payload and the onion `Deliver` drop.
+/// `pickup_key` is the sender-derived routing key (for_pairwise for a
+/// normal DM, for_deaddrop / a raw return address for a dead drop — the
+/// relay only ever sees opaque bytes). Keyless: the recipient needs no
+/// session state to verify, and authenticity remains the sealed-sender
+/// AEAD + sender signature downstream.
+fn build_prepared_batch(
+    envelope: &SealedEnvelope,
+    pickup_key: [u8; 32],
+    total_chunks: u8,
+) -> Result<PreparedBatch, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // A 0 slips through as the crate default (5); the crate rejects <2.
+    let n = if total_chunks == 0 { 5 } else { total_chunks as usize };
+    prepare_batch(
+        &envelope.encode(),
+        n,
+        envelope.message_id,
+        PickupKey(pickup_key),
+        now + CHAT_TTL_SECONDS,
+    )
+    .map_err(|e| format!("prepare_batch: {e:?}"))
+}
+
 /// Build the (thumbprint, ts, sig) cert-auth triple over `signed_bytes`
 /// — the envelope for a direct send, the onion packet for an onion
 /// send. The node recomputes the same digest and verifies against the
@@ -1322,15 +1352,14 @@ fn send_content_onion(
             PickupKey::for_pairwise(&recipient_x).0
         }
     };
-    let deliver = OnionDeliverPayload {
-        pickup_key,
-        envelope_bytes: envelope.encode(),
-    };
+    // The onion Deliver drop IS the client-prepared chunk batch
+    // (split + checksummed here); the relay treats it as opaque bytes.
+    let batch = build_prepared_batch(&envelope, pickup_key, total_shares)?;
     let path: Vec<NodeIdentity> = match relay2_pubkey_hex {
         Some(r2) => vec![guard, NodeIdentity::from_ed25519_pubkey(decode_hex32(r2)?)],
         None => vec![guard],
     };
-    let packet = wrap_onion(&path, &deliver.encode(), &mut OsRng)
+    let packet = wrap_onion(&path, &batch.encode(), &mut OsRng)
         .map_err(|e| format!("onion wrap: {e:?}"))?;
     let packet_bytes = packet.encode();
     let packet_hex = hex::encode(&packet_bytes);
@@ -1374,7 +1403,6 @@ fn send_content_onion(
                 "chat_send_onion",
                 subxt::rpcs::rpc_params![
                     packet_hex,
-                    total_shares,
                     auth_thumbprint_hex,
                     auth_timestamp_secs,
                     auth_sig_hex,
@@ -1412,12 +1440,18 @@ fn send_content(
         recipient_content_key_hex,
         &content_payload_bytes,
     )?;
-    let envelope_bytes = envelope.encode();
-    let envelope_hex = hex::encode(&envelope_bytes);
+    // Direct DM: pickup is the recipient's pairwise bucket. Chunk +
+    // checksum on-device into the PreparedBatch the node distributes.
+    let recipient_x = ed25519_to_x25519_pubkey(&recipient_ed)
+        .ok_or_else(|| "recipient pubkey not on Edwards curve".to_string())?;
+    let pickup_key = PickupKey::for_pairwise(&recipient_x).0;
+    let batch = build_prepared_batch(&envelope, pickup_key, total_shares)?;
+    let batch_bytes = batch.encode();
+    let batch_hex = hex::encode(&batch_bytes);
 
-    // Cert-auth (Phase 2) over the envelope bytes.
+    // Cert-auth (Phase 2) over the EXACT batch bytes the node receives.
     let (auth_thumbprint_hex, auth_timestamp_secs, auth_sig_hex) =
-        build_cert_auth(&envelope_bytes, auth_cert_thumbprint_hex, auth_cert_seed_hex)?;
+        build_cert_auth(&batch_bytes, auth_cert_thumbprint_hex, auth_cert_seed_hex)?;
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1429,18 +1463,16 @@ fn send_content(
             .map_err(|e| format!("connecting to {node_rpc}: {e}"))?;
         let result: ChatSendResultRpc = rpc
             .request(
-                "chat_send_envelope",
+                "chat_send_prepared",
                 subxt::rpcs::rpc_params![
-                    hex::encode(recipient_ed),
-                    envelope_hex,
-                    total_shares,
+                    batch_hex,
                     auth_thumbprint_hex,
                     auth_timestamp_secs,
                     auth_sig_hex
                 ],
             )
             .await
-            .map_err(|e| format!("chat_send_envelope RPC failed: {e}"))?;
+            .map_err(|e| format!("chat_send_prepared RPC failed: {e}"))?;
         Ok(ChatSendOutcome {
             message_id_hex: result.message_id_hex,
             share_count: result.share_count,
@@ -1525,27 +1557,56 @@ fn fetch_and_decrypt(
         .map_err(|e| format!("chat_fetch_shares RPC failed: {e}"))
     })?;
 
-    // Group by message_id_hex; track total_shares per message.
-    let mut by_message: HashMap<String, (u8, Vec<(u8, Vec<u8>)>)> = HashMap::new();
+    // Group fetched chunks by message_id, keeping the descriptor fields
+    // (index, total, expires) + checksum per chunk exactly as fetched
+    // (the checksum binds them all). Dedupe on (message_id, index): with
+    // per-chunk replica sets, aggregation may return a chunk from more
+    // than one relay.
+    type FetchedChunk = (u8, u8, u64, Vec<u8>, ChunkChecksum);
+    let mut by_message: HashMap<String, Vec<FetchedChunk>> = HashMap::new();
     for s in shares {
         let mid = s.descriptor.message_id_hex.clone();
         let bytes = hex::decode(s.share_bytes_hex.trim_start_matches("0x"))
             .map_err(|e| format!("share_bytes_hex not valid hex: {e}"))?;
-        let entry = by_message
-            .entry(mid)
-            .or_insert((s.descriptor.total_shares, Vec::new()));
-        entry.1.push((s.descriptor.share_index, bytes));
-    }
-
-    let mut recovered = Vec::new();
-    for (mid_hex, (total, mut share_list)) in by_message {
-        // Incomplete stripe — can't reconstruct; skip.
-        if share_list.len() != total as usize {
+        let checksum = decode_hex32(&s.checksum_hex)?;
+        let entry = by_message.entry(mid).or_default();
+        if entry.iter().any(|(idx, ..)| *idx == s.descriptor.share_index) {
             continue;
         }
-        share_list.sort_by_key(|(idx, _)| *idx);
-        let share_refs: Vec<&[u8]> = share_list.iter().map(|(_, b)| b.as_slice()).collect();
-        let envelope_bytes = match combine_xor(&share_refs) {
+        entry.push((
+            s.descriptor.share_index,
+            s.descriptor.total_shares,
+            s.descriptor.expires_at_unix_ts,
+            bytes,
+            checksum,
+        ));
+    }
+
+    // The recipient fetched under `pickup_bytes`; that key is bound into
+    // every chunk's checksum, so verification uses it directly.
+    let pickup_key = PickupKey(pickup_bytes);
+
+    let mut recovered = Vec::new();
+    for (mid_hex, chunk_list) in by_message {
+        let message_id = match decode_hex32(&mid_hex) {
+            Ok(b) => MessageId(b),
+            Err(_) => continue,
+        };
+        let refs: Vec<TaggedChunk<'_>> = chunk_list
+            .iter()
+            .map(|(idx, total, expires, bytes, checksum)| TaggedChunk {
+                share_index: *idx,
+                total_shares: *total,
+                expires_at_unix_ts: *expires,
+                bytes,
+                checksum,
+            })
+            .collect();
+        // Verify each chunk's checksum + concatenate. On a corrupt or
+        // incomplete set the message is skipped; the bucket-subscription
+        // scheme supplies a good copy on a later poll (no client-side
+        // recovery — docs/CHAT-SHARE-CHUNKING.md §4.3a).
+        let envelope_bytes = match combine_chunks_verified(&message_id, &pickup_key, &refs) {
             Ok(b) => b,
             Err(_) => continue,
         };
