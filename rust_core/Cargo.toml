@@ -26,18 +26,18 @@ scale-info = { version = "2.11", default-features = false }
 # deps (e.g. rostro-chat-primitives) resolve to a single version, no
 # two-versions-of-a-crate type mismatches. The dead-drop engine (the
 # OnionDeliverPayload.pickup_key wire cutover) is merged into rostro-main.
-rostro-client = { path = "/home/coder/Rostro-chat-chunk/substrate/utils/rostro-client" }
-rostro-chat-primitives = { path = "/home/coder/Rostro-chat-chunk/substrate/utils/rostro-chat-primitives" }
-rostro-chat-sealed-sender = { path = "/home/coder/Rostro-chat-chunk/substrate/utils/rostro-chat-sealed-sender" }
+rostro-client = { path = "/home/coder/Rostro/substrate/utils/rostro-client" }
+rostro-chat-primitives = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-primitives" }
+rostro-chat-sealed-sender = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-sealed-sender" }
 # Phase 3: inner content sealed to the recipient's silicon content key
 # (P-256 StrongBox / P-384 TPM; software stand-in on the dev box).
-rostro-chat-content-seal = { path = "/home/coder/Rostro-chat-chunk/substrate/utils/rostro-chat-content-seal" }
+rostro-chat-content-seal = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-content-seal" }
 # Phase 5: Double Ratchet + full X3DH for forward-secret 1:1.
-rostro-chat-dr = { path = "/home/coder/Rostro-chat-chunk/substrate/utils/rostro-chat-dr" }
+rostro-chat-dr = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-dr" }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 # Phase 4: one-hop onion (network-origin anonymity) + node identity.
-rostro-chat-onion = { path = "/home/coder/Rostro-chat-chunk/substrate/utils/rostro-chat-onion" }
-rostro-node-identity = { path = "/home/coder/Rostro-chat-chunk/substrate/utils/rostro-node-identity" }
+rostro-chat-onion = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-onion" }
+rostro-node-identity = { path = "/home/coder/Rostro/substrate/utils/rostro-node-identity" }
 # Matched to the Rostro workspace so the chat-crate types unify.
 ed25519-zebra = "4.0.3"
 # Phase 2 chat-auth: software P-256 ECDSA stand-in for the StrongBox/TPM
@@ -78,10 +78,10 @@ sha2 = "0.10"
 # re-implementation to drift. The groth16 feature pulls the BN254 proving
 # machinery; the chat-membership-auth crate supplies the exact challenge /
 # session-commit derivations the guard reconstructs.
-rostro-poseidon-bn254 = { path = "/home/coder/Rostro-chat-chunk/substrate/utils/rostro-poseidon-bn254" }
-rostro-membership-tree = { path = "/home/coder/Rostro-chat-chunk/substrate/utils/rostro-membership-tree" }
-rostro-membership-circuit = { path = "/home/coder/Rostro-chat-chunk/substrate/utils/rostro-membership-circuit", features = ["groth16"] }
-rostro-chat-membership-auth = { path = "/home/coder/Rostro-chat-chunk/substrate/utils/rostro-chat-membership-auth" }
+rostro-poseidon-bn254 = { path = "/home/coder/Rostro/substrate/utils/rostro-poseidon-bn254" }
+rostro-membership-tree = { path = "/home/coder/Rostro/substrate/utils/rostro-membership-tree" }
+rostro-membership-circuit = { path = "/home/coder/Rostro/substrate/utils/rostro-membership-circuit", features = ["groth16"] }
+rostro-chat-membership-auth = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-membership-auth" }
 serde_json = "1"
 
 [lib]
