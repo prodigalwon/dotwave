@@ -792,7 +792,7 @@ pub fn chat_send(
 /// 1:1 path — reserved for one-way payloads with no conversation:
 /// prekey-bundle publications (`chat_dr`) and, later,
 /// authority-signed System messages.
-pub(crate) fn chat_send_plain(
+pub fn chat_send_plain(
     node_rpc: String,
     sender_seed_hex: String,
     recipient_pubkey_hex: String,

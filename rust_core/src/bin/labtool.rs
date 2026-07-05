@@ -18,7 +18,7 @@ use rust_core::chat::{
     chat_deaddrop_pickup, chat_fetch, chat_fetch_at_pickup, chat_fetch_deaddrop,
     chat_gen_content_key, chat_gen_identity, chat_mint_return_pickup, chat_node_info,
     chat_read_content, chat_read_deaddrop, chat_send_deaddrop, chat_send_onion_2hop,
-    chat_send_to_pickup,
+    chat_send_plain, chat_send_to_pickup,
 };
 use rust_core::core::{
     chat_mint_test_cert, chat_resolve_identity, chat_setup_messaging, dev_cert_seed_hex,
@@ -529,6 +529,44 @@ fn main() {
                 prev = Some(outcome.new_self_hash_hex);
             }
             println!("done — poll with: labtool deaddrop-poll {label}");
+        }
+        "direct-self-send" => {
+            // direct-self-send "<text>" [rpc]
+            // DIRECT (non-onion) chunk-path smoke: ferdie sends a Plain
+            // message to ferdie's OWN keys via chat_send_prepared against
+            // ONE node's RPC. That node chunks+distributes to bucket peers.
+            // Run against the OBSERVER node's RPC (a non-validator, whose
+            // chat pushes the validators admit under the channel split).
+            // Exercises the whole chunk cutover: prepare_batch ->
+            // chat_send_prepared -> distribute_prepared. Poll back with
+            // `ferdie-read <rpc>`.
+            let text = args.get(2).expect("need \"<text>\"").to_string();
+            let rpc = args.get(3).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            let id = chat_gen_identity(FERDIE_CHAT_SEED.to_string()).expect("gen identity");
+            let ck = ferdie_content_key();
+            let cert_seed = dev_cert_seed_hex("//Ferdie".to_string());
+            let thumbprint =
+                chat_mint_test_cert(rpc.clone(), "//Ferdie".to_string(), cert_seed.clone(), 1_000_000)
+                    .expect("mint ferdie cert");
+            println!("ferdie cert thumbprint: {}", short(&thumbprint));
+            let outcome = chat_send_plain(
+                rpc.clone(),
+                FERDIE_CHAT_SEED.to_string(),
+                id.ed25519_pubkey_hex.clone(),
+                ck,
+                text.clone().into_bytes(),
+                5,
+                Some(thumbprint),
+                Some(cert_seed),
+            )
+            .expect("direct send");
+            println!(
+                "DIRECT SEND OK: text='{text}' msg_id {} shares {} pickup {}",
+                short(&outcome.message_id_hex),
+                outcome.share_count,
+                short(&outcome.recipient_pickup_key_hex),
+            );
+            println!("poll back with: labtool ferdie-read {rpc}");
         }
         "deaddrop-poll" => {
             // deaddrop-poll <label> [guard]
