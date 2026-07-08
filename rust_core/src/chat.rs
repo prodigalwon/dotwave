@@ -19,11 +19,12 @@
 //!
 //! Crypto calls are byte-identical to
 //! `substrate/bin/utils/rostro-chat-cli/src/main.rs`:
-//!   send:    `sign_inner` → `ss_seal` → `SealedEnvelope` →
+//!   send:    `sign_inner` → `hybrid_seal` (X25519 + ML-KEM-768 to the
+//!            recipient's SEAL key, docs/PQ-CHAT.md) → `SealedEnvelope` →
 //!             `prepare_batch` → `chat_send_prepared`
 //!   recover: `chat_fetch_shares` → group-by-message_id →
 //!             `combine_chunks_verified`
-//!            → `ss_unseal` → `verify_sender`
+//!            → `hybrid_unseal` → `verify_sender`
 //!
 //! The two `auth_*` parameters on [`chat_send`] are the cert-auth
 //! layer (Phase 2): the caller passes the zkpki cert thumbprint + the
@@ -45,7 +46,7 @@ use rand_core_06::{OsRng, RngCore};
 use rostro_chat_primitives::{
     chunk::{combine_chunks_verified, prepare_batch, PreparedBatch, TaggedChunk},
     descriptor::{MessageId, PickupKey, CHAT_TTL_SECONDS},
-    envelope::{sign_inner, EnvelopeKind, SealedEnvelope, UnsealedInner},
+    envelope::{sign_inner, SealedEnvelope, UnsealedInner},
     identity_key::{ed25519_seed_to_x25519_secret, ed25519_to_x25519_pubkey},
     verify::{verify_sender, ChunkChecksum},
 };
@@ -53,7 +54,7 @@ use rostro_chat_content_seal::{
     seal as content_seal, unseal_software as content_unseal_software, unseal_with, ContentCurve,
     ContentEcdh, ContentPublicKey, ContentSealError, ContentSealed, SoftwareContentKey,
 };
-use rostro_chat_sealed_sender::{seal as ss_seal, unseal as ss_unseal, SealedOutput};
+use rostro_chat_sealed_sender::{hybrid_seal, hybrid_unseal, HybridSealedOutput};
 use rostro_chat_onion::wrap_onion;
 use rostro_node_identity::NodeIdentity;
 
@@ -741,6 +742,10 @@ pub fn chat_send(
     sender_seed_hex: String,
     recipient_pubkey_hex: String,
     recipient_content_key_hex: String,
+    // The recipient's published SEAL record (ML-KEM-768 ek ‖ identity
+    // sig, 1248 bytes hex) — the PQ leg of the hybrid outer seal
+    // (docs/PQ-CHAT.md). Resolved from RNS or the identity card.
+    recipient_seal_record_hex: String,
     message: String,
     sender_name: String,
     total_shares: u8,
@@ -779,6 +784,7 @@ pub fn chat_send(
         &sender_seed_hex,
         &recipient_pubkey_hex,
         &recipient_content_key_hex,
+        &recipient_seal_record_hex,
         content,
         total_shares,
         auth_cert_thumbprint_hex,
@@ -797,6 +803,10 @@ pub fn chat_send_plain(
     sender_seed_hex: String,
     recipient_pubkey_hex: String,
     recipient_content_key_hex: String,
+    // The recipient's published SEAL record (ML-KEM-768 ek ‖ identity
+    // sig, 1248 bytes hex) — the PQ leg of the hybrid outer seal
+    // (docs/PQ-CHAT.md). Resolved from RNS or the identity card.
+    recipient_seal_record_hex: String,
     body: Vec<u8>,
     total_shares: u8,
     auth_cert_thumbprint_hex: Option<String>,
@@ -809,6 +819,7 @@ pub fn chat_send_plain(
         &sender_seed_hex,
         &recipient_pubkey_hex,
         &recipient_content_key_hex,
+        &recipient_seal_record_hex,
         content,
         total_shares,
         auth_cert_thumbprint_hex,
@@ -856,6 +867,10 @@ pub fn chat_send_onion(
     sender_seed_hex: String,
     recipient_pubkey_hex: String,
     recipient_content_key_hex: String,
+    // The recipient's published SEAL record (ML-KEM-768 ek ‖ identity
+    // sig, 1248 bytes hex) — the PQ leg of the hybrid outer seal
+    // (docs/PQ-CHAT.md). Resolved from RNS or the identity card.
+    recipient_seal_record_hex: String,
     message: String,
     sender_name: String,
     total_shares: u8,
@@ -872,6 +887,7 @@ pub fn chat_send_onion(
         &sender_seed_hex,
         &recipient_pubkey_hex,
         &recipient_content_key_hex,
+        &recipient_seal_record_hex,
         content,
         total_shares,
         auth_cert_thumbprint_hex,
@@ -896,6 +912,10 @@ pub fn chat_send_onion_2hop(
     sender_seed_hex: String,
     recipient_pubkey_hex: String,
     recipient_content_key_hex: String,
+    // The recipient's published SEAL record (ML-KEM-768 ek ‖ identity
+    // sig, 1248 bytes hex) — the PQ leg of the hybrid outer seal
+    // (docs/PQ-CHAT.md). Resolved from RNS or the identity card.
+    recipient_seal_record_hex: String,
     message: String,
     sender_name: String,
     total_shares: u8,
@@ -955,6 +975,7 @@ pub fn chat_send_onion_2hop(
         &sender_seed_hex,
         &recipient_pubkey_hex,
         &recipient_content_key_hex,
+        &recipient_seal_record_hex,
         content,
         total_shares,
         auth_cert_thumbprint_hex,
@@ -984,6 +1005,10 @@ pub fn chat_send_deaddrop(
     sender_seed_hex: String,
     recipient_pubkey_hex: String,
     recipient_content_key_hex: String,
+    // The recipient's published SEAL record (ML-KEM-768 ek ‖ identity
+    // sig, 1248 bytes hex) — the PQ leg of the hybrid outer seal
+    // (docs/PQ-CHAT.md). Resolved from RNS or the identity card.
+    recipient_seal_record_hex: String,
     label: String,
     message: String,
     sender_name: String,
@@ -1019,6 +1044,7 @@ pub fn chat_send_deaddrop(
         &sender_seed_hex,
         &recipient_pubkey_hex,
         &recipient_content_key_hex,
+        &recipient_seal_record_hex,
         content,
         total_shares,
         auth_cert_thumbprint_hex,
@@ -1153,6 +1179,10 @@ pub fn chat_send_to_pickup(
     sender_seed_hex: String,
     recipient_pubkey_hex: String,
     recipient_content_key_hex: String,
+    // The recipient's published SEAL record (ML-KEM-768 ek ‖ identity
+    // sig, 1248 bytes hex) — the PQ leg of the hybrid outer seal
+    // (docs/PQ-CHAT.md). Resolved from RNS or the identity card.
+    recipient_seal_record_hex: String,
     target_pickup_hex: String,
     return_pickup_hex: String,
     message: String,
@@ -1185,6 +1215,7 @@ pub fn chat_send_to_pickup(
         &sender_seed_hex,
         &recipient_pubkey_hex,
         &recipient_content_key_hex,
+        &recipient_seal_record_hex,
         content,
         total_shares,
         auth_cert_thumbprint_hex,
@@ -1197,20 +1228,87 @@ pub fn chat_send_to_pickup(
     Ok(outcome)
 }
 
-/// Build the SealedEnvelope (content-seal → sign → sealed-sender) for a
-/// pairwise send. Shared by the direct (`send_content`) and onion
+/// Domain for deriving the SEAL (sealed-sender hybrid KEM) keypair from
+/// the chat-identity seed. Matches rostro-chat-cli's derivation so lab
+/// identities agree across tools: `kem_seed = SHA-512(domain || seed)`.
+/// The RNS `SEAL` record publishes the ek (+ identity signature); the
+/// decap key is re-derived on device at read time.
+const SEAL_SEED_DOMAIN: &[u8] = b"rostro/chat/seal-seed/v1";
+
+/// Derive the ML-KEM-768 SEAL keypair from a chat-identity seed.
+pub(crate) fn seal_keypair_from_identity_seed(
+    seed: &[u8; 32],
+) -> (rostro_hybrid_kex::MlKemDecapKey, [u8; rostro_hybrid_kex::MLKEM768_EK_BYTES]) {
+    use sha2::{Digest, Sha512};
+    let mut h = Sha512::new();
+    h.update(SEAL_SEED_DOMAIN);
+    h.update(seed);
+    let digest = h.finalize();
+    let mut kem_seed = [0u8; rostro_hybrid_kex::MLKEM768_SEED_BYTES];
+    kem_seed.copy_from_slice(&digest);
+    rostro_hybrid_kex::mlkem_keypair_from_seed(&kem_seed)
+}
+
+/// The publishable SEAL record content for this identity: `ek(1184) ‖
+/// identity_sig(64)` = 1248 bytes hex — exactly the RNS `SEAL` record
+/// layout (docs/PQ-CHAT.md). Senders verify the signature against the
+/// recipient's CHAT key before hybrid-sealing to the ek.
+pub fn chat_gen_seal_record(identity_seed_hex: String) -> Result<String, String> {
+    let seed = decode_hex32(&identity_seed_hex)?;
+    let (_dk, ek) = seal_keypair_from_identity_seed(&seed);
+    let signing = ed25519_zebra::SigningKey::from(seed);
+    let sig = rostro_chat_dr::sign_seal_ek(&ek, &signing);
+    let mut out = Vec::with_capacity(ek.len() + 64);
+    out.extend_from_slice(&ek);
+    out.extend_from_slice(&sig);
+    Ok(hex::encode(out))
+}
+
+/// Decode + signature-verify a recipient's SEAL record (`ek ‖ sig`,
+/// 1248 bytes) against their CHAT identity key. The verification here
+/// is the sender-side handoff gate the record design requires: the
+/// chain only shape-checks, the sender must not seal to an unverified
+/// key.
+fn verified_seal_ek(
+    recipient_ed: &[u8; 32],
+    recipient_seal_record_hex: &str,
+) -> Result<[u8; rostro_hybrid_kex::MLKEM768_EK_BYTES], String> {
+    let bytes = hex::decode(recipient_seal_record_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("seal record hex: {e}"))?;
+    if bytes.len() != rostro_hybrid_kex::MLKEM768_EK_BYTES + 64 {
+        return Err(format!(
+            "seal record must be {} bytes (ek ‖ sig), got {}",
+            rostro_hybrid_kex::MLKEM768_EK_BYTES + 64,
+            bytes.len()
+        ));
+    }
+    let mut ek = [0u8; rostro_hybrid_kex::MLKEM768_EK_BYTES];
+    ek.copy_from_slice(&bytes[..rostro_hybrid_kex::MLKEM768_EK_BYTES]);
+    let mut sig = [0u8; 64];
+    sig.copy_from_slice(&bytes[rostro_hybrid_kex::MLKEM768_EK_BYTES..]);
+    rostro_chat_dr::verify_seal_ek(recipient_ed, &ek, &sig)
+        .map_err(|e| format!("SEAL record signature invalid: {e:?}"))?;
+    Ok(ek)
+}
+
+/// Build the SealedEnvelope (content-seal → sign → hybrid sealed-sender)
+/// for a pairwise send. Shared by the direct (`send_content`) and onion
 /// (`send_content_onion`) dispatch paths. Returns the envelope + the
-/// recipient's raw Ed25519 pubkey.
+/// recipient's raw Ed25519 pubkey. `recipient_seal_record_hex` is the
+/// recipient's published `SEAL` record (ek ‖ identity sig); its
+/// signature is verified here before sealing.
 fn build_sealed_envelope(
     sender_seed_hex: &str,
     recipient_pubkey_hex: &str,
     recipient_content_key_hex: &str,
+    recipient_seal_record_hex: &str,
     content_payload_bytes: &[u8],
 ) -> Result<(SealedEnvelope, [u8; 32]), String> {
     let sender_seed = decode_hex32(sender_seed_hex)?;
     let recipient_ed = decode_hex32(recipient_pubkey_hex)?;
     let recipient_x = ed25519_to_x25519_pubkey(&recipient_ed)
         .ok_or_else(|| "recipient pubkey not on Edwards curve".to_string())?;
+    let recipient_seal_ek = verified_seal_ek(&recipient_ed, recipient_seal_record_hex)?;
 
     let signing = ed25519_zebra::SigningKey::from(sender_seed);
 
@@ -1231,12 +1329,13 @@ fn build_sealed_envelope(
     let unsealed = sign_inner(inner_ciphertext, &message_id, &signing);
     let unsealed_encoded = unsealed.encode();
     let mut rng = OsRng;
-    let sealed = ss_seal(&recipient_x, &unsealed_encoded, &mut rng);
+    let sealed = hybrid_seal(&recipient_x, &recipient_seal_ek, &unsealed_encoded, &mut rng)
+        .map_err(|e| format!("hybrid seal: {e:?}"))?;
 
-    let envelope = SealedEnvelope {
-        kind: EnvelopeKind::Pairwise,
-        outer_ciphertext: sealed.ciphertext,
+    let envelope = SealedEnvelope::Pairwise {
         ephemeral_pubkey: sealed.ephemeral_pub,
+        pq_ct: sealed.pq_ct,
+        outer_ciphertext: sealed.ciphertext,
         message_id,
     };
     Ok((envelope, recipient_ed))
@@ -1265,7 +1364,7 @@ fn build_prepared_batch(
     prepare_batch(
         &envelope.encode(),
         n,
-        envelope.message_id,
+        *envelope.message_id(),
         PickupKey(pickup_key),
         now + CHAT_TTL_SECONDS,
     )
@@ -1310,6 +1409,7 @@ fn send_content_onion(
     sender_seed_hex: &str,
     recipient_pubkey_hex: &str,
     recipient_content_key_hex: &str,
+    recipient_seal_record_hex: &str,
     content_payload_bytes: Vec<u8>,
     total_shares: u8,
     auth_cert_thumbprint_hex: Option<String>,
@@ -1331,6 +1431,7 @@ fn send_content_onion(
         sender_seed_hex,
         recipient_pubkey_hex,
         recipient_content_key_hex,
+        recipient_seal_record_hex,
         &content_payload_bytes,
     )?;
 
@@ -1429,6 +1530,7 @@ fn send_content(
     sender_seed_hex: &str,
     recipient_pubkey_hex: &str,
     recipient_content_key_hex: &str,
+    recipient_seal_record_hex: &str,
     content_payload_bytes: Vec<u8>,
     total_shares: u8,
     auth_cert_thumbprint_hex: Option<String>,
@@ -1438,6 +1540,7 @@ fn send_content(
         sender_seed_hex,
         recipient_pubkey_hex,
         recipient_content_key_hex,
+        recipient_seal_record_hex,
         &content_payload_bytes,
     )?;
     // Direct DM: pickup is the recipient's pairwise bucket. Chunk +
@@ -1540,6 +1643,7 @@ fn fetch_and_decrypt(
     relay_peer: Option<String>,
 ) -> Result<Vec<AtRestMessage>, String> {
     let recipient_x_secret = ed25519_seed_to_x25519_secret(&recipient_seed);
+    let (seal_decap, _seal_ek) = seal_keypair_from_identity_seed(&recipient_seed);
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1615,15 +1719,22 @@ fn fetch_and_decrypt(
             Err(_) => continue,
         };
         // Pairwise only for now (group flow not yet wired).
-        if !matches!(envelope.kind, EnvelopeKind::Pairwise) {
+        let SealedEnvelope::Pairwise {
+            ephemeral_pubkey,
+            pq_ct,
+            outer_ciphertext,
+            message_id: env_message_id,
+        } = envelope
+        else {
             continue;
-        }
-
-        let sealed = SealedOutput {
-            ephemeral_pub: envelope.ephemeral_pubkey,
-            ciphertext: envelope.outer_ciphertext,
         };
-        let unsealed_bytes = match ss_unseal(&recipient_x_secret, &sealed) {
+
+        let sealed = HybridSealedOutput {
+            ephemeral_pub: ephemeral_pubkey,
+            pq_ct,
+            ciphertext: outer_ciphertext,
+        };
+        let unsealed_bytes = match hybrid_unseal(&recipient_x_secret, &seal_decap, &sealed) {
             Ok(b) => b,
             Err(_) => continue,
         };
@@ -1632,7 +1743,7 @@ fn fetch_and_decrypt(
             Err(_) => continue,
         };
         // Verify the sealed sender signature on-device.
-        let sender_pubkey = match verify_sender(&unsealed, &envelope.message_id) {
+        let sender_pubkey = match verify_sender(&unsealed, &env_message_id) {
             Ok(pk) => pk,
             Err(_) => continue,
         };

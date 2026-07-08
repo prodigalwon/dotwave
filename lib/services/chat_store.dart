@@ -282,12 +282,20 @@ class ChatContact {
   /// the inner content to it without re-resolving. Empty = dead-drop / unknown.
   final String contentKeyHex;
 
+  /// The contact's published SEAL record (RNS SEAL: ML-KEM-768 ek ‖ identity
+  /// sig, 1248 bytes hex) — the PQ leg of the hybrid outer seal
+  /// (docs/PQ-CHAT.md). Cached from resolution like the content key; the
+  /// signature is verified in rust_core at send time against the contact's
+  /// chat pubkey. Empty = unresolved (sends will refuse).
+  final String sealRecordHex;
+
   final String? label;
 
   const ChatContact({
     required this.pubkey,
     this.name = '',
     this.contentKeyHex = '',
+    this.sealRecordHex = '',
     this.label,
   });
 
@@ -301,12 +309,14 @@ class ChatContact {
           ? label!
           : shortPubkey;
 
-  Map<String, dynamic> toJson() => {'pk': pubkey, 'n': name, 'ck': contentKeyHex, 'l': label};
+  Map<String, dynamic> toJson() =>
+      {'pk': pubkey, 'n': name, 'ck': contentKeyHex, 'sr': sealRecordHex, 'l': label};
 
   factory ChatContact.fromJson(Map<String, dynamic> j) => ChatContact(
         pubkey: j['pk'] as String,
         name: (j['n'] as String?) ?? '',
         contentKeyHex: (j['ck'] as String?) ?? '',
+        sealRecordHex: (j['sr'] as String?) ?? '',
         label: j['l'] as String?,
       );
 }
@@ -419,6 +429,12 @@ class ChatStore extends ChangeNotifier {
     }
     return ''; // not registered yet
   }
+
+  /// This device's publishable SEAL record (ML-KEM-768 ek ‖ identity sig,
+  /// derived from the chat-identity seed in rust_core) — what the RNS SEAL
+  /// record carries, exposed for out-of-band identity-card exchange.
+  Future<String> sealRecord(String address) async =>
+      chatGenSealRecord(identitySeedHex: await seedHex(address));
 
   /// MINT (or rotate) this device's content key and return the publishable
   /// MESSAGE value. Hardware-first: a fresh non-extractable StrongBox P-256
@@ -632,7 +648,13 @@ class ChatStore extends ChangeNotifier {
     if (name.isEmpty) return (state: ChatKeyState.noName, name: '');
     try {
       final r = await chatResolveIdentity(name: name, rpcUrl: await nodeRpc());
-      final ready = r.found && r.ed25519PubkeyHex.isNotEmpty && r.hasMessageKey;
+      // Ready = the full 4-record identity (CHAT + MESSAGE + SEAL; PREKEY
+      // rides the same publish). A pre-PQ identity missing its SEAL record
+      // shows needsKeys so the user re-runs Register Keys once.
+      final ready = r.found &&
+          r.ed25519PubkeyHex.isNotEmpty &&
+          r.hasMessageKey &&
+          r.hasSealKey;
       return (
         state: ready ? ChatKeyState.ready : ChatKeyState.needsKeys,
         name: name,
@@ -658,6 +680,7 @@ class ChatStore extends ChangeNotifier {
       r.ed25519PubkeyHex,
       name: name,
       contentKeyHex: r.innerContentKeyHex,
+      sealRecordHex: r.sealRecordHex,
     );
   }
 
@@ -727,6 +750,7 @@ class ChatStore extends ChangeNotifier {
     String pubkey, {
     String? name,
     String? contentKeyHex,
+    String? sealRecordHex,
     String? label,
   }) async {
     final list = await contacts(address);
@@ -740,6 +764,9 @@ class ChatStore extends ChangeNotifier {
       contentKeyHex: (contentKeyHex != null && contentKeyHex.isNotEmpty)
           ? contentKeyHex
           : (prev?.contentKeyHex ?? ''),
+      sealRecordHex: (sealRecordHex != null && sealRecordHex.isNotEmpty)
+          ? sealRecordHex
+          : (prev?.sealRecordHex ?? ''),
       label: label ?? prev?.label,
     );
     if (idx >= 0) {
@@ -862,6 +889,21 @@ class ChatStore extends ChangeNotifier {
     return ck;
   }
 
+  /// The cached SEAL record for a contact — the PQ leg of the hybrid outer
+  /// seal. Same contract as [_recipientContentKey]: resolved by name and
+  /// cached; rust_core verifies its identity signature at send time.
+  Future<String> _recipientSealRecord(String address, String contactPubkey) async {
+    final c = await contactByPubkey(address, contactPubkey);
+    final sr = c?.sealRecordHex ?? '';
+    if (sr.isEmpty) {
+      throw StateError(
+          'no SEAL record for this contact — start the conversation by .rst name '
+          'so its SEAL record resolves (the contact may need to re-run '
+          'Register Keys on the PQ chain)');
+    }
+    return sr;
+  }
+
   // ── send / refresh (the RPC-facing surface) ─────────────────────
 
   /// Seal + sign + dispatch a message to [contactPubkey] through the
@@ -935,6 +977,8 @@ class ChatStore extends ChangeNotifier {
           recipientPubkeyHex: contactPubkey,
           recipientContentKeyHex:
               await _recipientContentKey(address, contactPubkey),
+          recipientSealRecordHex:
+              await _recipientSealRecord(address, contactPubkey),
           message: text,
           senderName:
               await myName(address), // claimed inner name; empty ok for Plain
@@ -1014,6 +1058,10 @@ class ChatStore extends ChangeNotifier {
     if (!r.hasMessageKey || r.innerContentKeyHex.isEmpty) {
       throw StateError("'$recipientName.rst' has no published content key");
     }
+    if (!r.hasSealKey || r.sealRecordHex.isEmpty) {
+      throw StateError("'$recipientName.rst' has no published SEAL record — "
+          'they need to re-run Register Keys on the PQ chain');
+    }
     final relay2 = await relay2Rpc();
     if (relay2.isEmpty) {
       throw StateError('no relay-2 configured — the 2-hop onion needs one '
@@ -1033,6 +1081,7 @@ class ChatStore extends ChangeNotifier {
       senderSeedHex: seed,
       recipientPubkeyHex: r.ed25519PubkeyHex,
       recipientContentKeyHex: r.innerContentKeyHex,
+      recipientSealRecordHex: r.sealRecordHex,
       label: callsign,
       message: text,
       senderName: await myName(address),
@@ -1218,6 +1267,12 @@ class ChatStore extends ChangeNotifier {
         final r = await chatResolveIdentity(name: read.claimedSenderName, rpcUrl: await nodeRpc());
         if (r.found && r.ed25519PubkeyHex == contactPubkey) {
           verifiedName = read.claimedSenderName;
+          // Cache the freshly-resolved keys against the verified contact so
+          // replying to an inbound sender needs no manual re-resolve (the
+          // hybrid outer seal requires their SEAL record).
+          await upsertContact(address, contactPubkey,
+              contentKeyHex: r.innerContentKeyHex,
+              sealRecordHex: r.sealRecordHex);
         }
       } catch (_) {
         // resolution failure → leave the name unverified (blank), never spoofable

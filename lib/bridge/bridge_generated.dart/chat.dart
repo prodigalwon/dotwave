@@ -7,7 +7,7 @@ import 'chat_dr.dart';
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_sealed_envelope`, `chat_auth_sign`, `chat_send_plain`, `content_curve_from_u8`, `deaddrop_read_from_inner`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `decode_sealed`, `fetch_and_decrypt`, `finish_read`, `frame_body_with_avatar`, `from_core`, `identity_from_seed`, `p256_signing_key`, `self_hash`, `send_content_onion`, `send_content`, `to_core`, `unframe_body`, `unordered`
+// These functions are ignored because they are not marked as `pub`: `build_cert_auth`, `build_prepared_batch`, `build_sealed_envelope`, `chat_auth_sign`, `content_curve_from_u8`, `deaddrop_read_from_inner`, `decode_content_scalar`, `decode_hex32_pub`, `decode_hex32`, `decode_sealed`, `fetch_and_decrypt`, `finish_read`, `frame_body_with_avatar`, `from_core`, `identity_from_seed`, `p256_signing_key`, `seal_keypair_from_identity_seed`, `self_hash`, `send_content_onion`, `send_content`, `to_core`, `unframe_body`, `unordered`, `verified_seal_ek`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChatFetchedShareRaw`, `ChatSendResultRpc`, `ChatShareDescriptorRpc`, `ContentPayload`, `InnerPayload`, `PrecomputedEcdh`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `curve`, `ecdh`
 
@@ -140,7 +140,7 @@ Future<String> chatCertPubkey({required String certSeedHex}) =>
     RustLib.instance.api.crateChatChatCertPubkey(certSeedHex: certSeedHex);
 
 /// Build + sign + sealed-sender-seal a pairwise message on-device, then
-/// dispatch it through the named node via `chat_send_envelope`.
+/// dispatch it through the named node via `chat_send_prepared`.
 ///
 /// `recipient_content_key_hex` is the recipient's published content key
 /// (hex of the SCALE curve-tagged `ContentPublicKey`, from the resolved
@@ -161,6 +161,7 @@ Future<ChatSendOutcome> chatSend({
   required String senderSeedHex,
   required String recipientPubkeyHex,
   required String recipientContentKeyHex,
+  required String recipientSealRecordHex,
   required String message,
   required String senderName,
   required int totalShares,
@@ -173,11 +174,38 @@ Future<ChatSendOutcome> chatSend({
   senderSeedHex: senderSeedHex,
   recipientPubkeyHex: recipientPubkeyHex,
   recipientContentKeyHex: recipientContentKeyHex,
+  recipientSealRecordHex: recipientSealRecordHex,
   message: message,
   senderName: senderName,
   totalShares: totalShares,
   drSessionStateHex: drSessionStateHex,
   x3DhInitHex: x3DhInitHex,
+  authCertThumbprintHex: authCertThumbprintHex,
+  authCertSeedHex: authCertSeedHex,
+);
+
+/// Send a NON-ratcheted [`ContentPayload::Plain`] body. NOT a user
+/// 1:1 path — reserved for one-way payloads with no conversation:
+/// prekey-bundle publications (`chat_dr`) and, later,
+/// authority-signed System messages.
+Future<ChatSendOutcome> chatSendPlain({
+  required String nodeRpc,
+  required String senderSeedHex,
+  required String recipientPubkeyHex,
+  required String recipientContentKeyHex,
+  required String recipientSealRecordHex,
+  required List<int> body,
+  required int totalShares,
+  String? authCertThumbprintHex,
+  String? authCertSeedHex,
+}) => RustLib.instance.api.crateChatChatSendPlain(
+  nodeRpc: nodeRpc,
+  senderSeedHex: senderSeedHex,
+  recipientPubkeyHex: recipientPubkeyHex,
+  recipientContentKeyHex: recipientContentKeyHex,
+  recipientSealRecordHex: recipientSealRecordHex,
+  body: body,
+  totalShares: totalShares,
   authCertThumbprintHex: authCertThumbprintHex,
   authCertSeedHex: authCertSeedHex,
 );
@@ -204,6 +232,7 @@ Future<ChatSendOutcome> chatSendOnion({
   required String senderSeedHex,
   required String recipientPubkeyHex,
   required String recipientContentKeyHex,
+  required String recipientSealRecordHex,
   required String message,
   required String senderName,
   required int totalShares,
@@ -215,6 +244,7 @@ Future<ChatSendOutcome> chatSendOnion({
   senderSeedHex: senderSeedHex,
   recipientPubkeyHex: recipientPubkeyHex,
   recipientContentKeyHex: recipientContentKeyHex,
+  recipientSealRecordHex: recipientSealRecordHex,
   message: message,
   senderName: senderName,
   totalShares: totalShares,
@@ -236,6 +266,7 @@ Future<ChatSendOutcome> chatSendOnion2Hop({
   required String senderSeedHex,
   required String recipientPubkeyHex,
   required String recipientContentKeyHex,
+  required String recipientSealRecordHex,
   required String message,
   required String senderName,
   required int totalShares,
@@ -253,6 +284,7 @@ Future<ChatSendOutcome> chatSendOnion2Hop({
   senderSeedHex: senderSeedHex,
   recipientPubkeyHex: recipientPubkeyHex,
   recipientContentKeyHex: recipientContentKeyHex,
+  recipientSealRecordHex: recipientSealRecordHex,
   message: message,
   senderName: senderName,
   totalShares: totalShares,
@@ -281,6 +313,7 @@ Future<ChatSendOutcome> chatSendDeaddrop({
   required String senderSeedHex,
   required String recipientPubkeyHex,
   required String recipientContentKeyHex,
+  required String recipientSealRecordHex,
   required String label,
   required String message,
   required String senderName,
@@ -296,6 +329,7 @@ Future<ChatSendOutcome> chatSendDeaddrop({
   senderSeedHex: senderSeedHex,
   recipientPubkeyHex: recipientPubkeyHex,
   recipientContentKeyHex: recipientContentKeyHex,
+  recipientSealRecordHex: recipientSealRecordHex,
   label: label,
   message: message,
   senderName: senderName,
@@ -366,6 +400,7 @@ Future<ChatSendOutcome> chatSendToPickup({
   required String senderSeedHex,
   required String recipientPubkeyHex,
   required String recipientContentKeyHex,
+  required String recipientSealRecordHex,
   required String targetPickupHex,
   required String returnPickupHex,
   required String message,
@@ -382,6 +417,7 @@ Future<ChatSendOutcome> chatSendToPickup({
   senderSeedHex: senderSeedHex,
   recipientPubkeyHex: recipientPubkeyHex,
   recipientContentKeyHex: recipientContentKeyHex,
+  recipientSealRecordHex: recipientSealRecordHex,
   targetPickupHex: targetPickupHex,
   returnPickupHex: returnPickupHex,
   message: message,
@@ -392,6 +428,15 @@ Future<ChatSendOutcome> chatSendToPickup({
   prevSelfHashHex: prevSelfHashHex,
   composedAtSecs: composedAtSecs,
 );
+
+/// The publishable SEAL record content for this identity: `ek(1184) ‖
+/// identity_sig(64)` = 1248 bytes hex — exactly the RNS `SEAL` record
+/// layout (docs/PQ-CHAT.md). Senders verify the signature against the
+/// recipient's CHAT key before hybrid-sealing to the ek.
+Future<String> chatGenSealRecord({required String identitySeedHex}) => RustLib
+    .instance
+    .api
+    .crateChatChatGenSealRecord(identitySeedHex: identitySeedHex);
 
 /// Fetch shares for the recipient, then reconstruct, OUTER-unseal and
 /// sender-verify any complete message stripes on-device. The content
@@ -505,7 +550,7 @@ class ChatIdentity {
           pickupKeyHex == other.pickupKeyHex;
 }
 
-/// Outcome of a successful `chat_send_envelope` dispatch.
+/// Outcome of a successful `chat_send_prepared` / onion dispatch.
 class ChatSendOutcome {
   final String messageIdHex;
   final int shareCount;

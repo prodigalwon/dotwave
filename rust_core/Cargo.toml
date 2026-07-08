@@ -21,8 +21,9 @@ subxt = { version = "0.50", default-features = false, features = ["jsonrpsee", "
 # without going through subxt's transitive re-export (subxt 0.50 doesn't
 # expose it under `subxt::ext`).
 scale-info = { version = "2.11", default-features = false }
-# All Rostro chat + client crates are path-depped from the rostro-main
-# checkout (/home/coder/Rostro) — one copy each, so their shared internal
+# All Rostro chat + client crates are path-depped from rostro-main
+# checkout (/home/coder/Rostro; pq-chat merged 882dbee6e7, hybrid sealed sender + PQXDH) — one
+# copy each, so their shared internal
 # deps (e.g. rostro-chat-primitives) resolve to a single version, no
 # two-versions-of-a-crate type mismatches. The dead-drop engine (the
 # OnionDeliverPayload.pickup_key wire cutover) is merged into rostro-main.
@@ -34,6 +35,9 @@ rostro-chat-sealed-sender = { path = "/home/coder/Rostro/substrate/utils/rostro-
 rostro-chat-content-seal = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-content-seal" }
 # Phase 5: Double Ratchet + full X3DH for forward-secret 1:1.
 rostro-chat-dr = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-dr" }
+# PQ: ML-KEM-768 keypair derivation for the SEAL (hybrid sealed-sender) and
+# PQSPK (PQXDH) keys; same vendored crate the chat crates use internally.
+rostro-hybrid-kex = { path = "/home/coder/Rostro/substrate/utils/rostro-hybrid-kex" }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 # Phase 4: one-hop onion (network-origin anonymity) + node identity.
 rostro-chat-onion = { path = "/home/coder/Rostro/substrate/utils/rostro-chat-onion" }
