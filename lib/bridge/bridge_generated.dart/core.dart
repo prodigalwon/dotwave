@@ -9,7 +9,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 // These functions are ignored because they are not marked as `pub`: `confirmed`, `connect_rostro_with_rpc`, `connect_rostro`, `decode_hex_32`, `decode_hex_bytes`, `decode_hex_n`, `decode_record_type_to_iana`, `dispatch_action`, `encode_record_type`, `estimate_action_fee`, `estimate_call`, `failed`, `fetch_best_nonce`, `fetch_root_thumbprint`, `hex_encode_lower`, `rostro_tx_params`, `run_streamed`, `submit_signed_watched`, `submit_typed`, `submitted`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Sr25519Signer`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `account_id`, `fmt`, `sign`
-// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `lab_authenticate_membership`, `lab_bootstrap_issuer`, `lab_create_plain_template`, `lab_mint_plain`, `lab_offer_contract`, `lab_register_name`, `lab_set_node_record`, `lab_test_enroll`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `lab_authenticate_membership`, `lab_bootstrap_issuer`, `lab_create_plain_template`, `lab_mint_enroll`, `lab_mint_plain`, `lab_offer_contract`, `lab_register_name`, `lab_set_node_record`, `lab_test_enroll`
 
 /// Estimate the network fee (in planck) for a write action, without the user's
 /// phrase. The fee depends only on the call's weight + encoded length, not the
@@ -959,11 +959,27 @@ class ResolvedChatIdentity {
   /// dead-drop (content key exchanged out-of-band).
   final bool hasMessageKey;
 
+  /// SEAL record (ML-KEM-768 ek ‖ identity sig, 1248 bytes hex) — the PQ
+  /// leg of the hybrid sealed-sender (docs/PQ-CHAT.md). Senders verify the
+  /// signature against the CHAT key before sealing; empty = not published
+  /// (name unreachable for hybrid sends).
+  final String sealRecordHex;
+  final bool hasSealKey;
+
+  /// PREKEY record (spk ‖ sig ‖ pqspk_ek ‖ sig, 1344 bytes hex) — the
+  /// PQXDH bootstrap bundle. Empty = not published.
+  final String prekeyRecordHex;
+  final bool hasPrekey;
+
   const ResolvedChatIdentity({
     required this.found,
     required this.ed25519PubkeyHex,
     required this.innerContentKeyHex,
     required this.hasMessageKey,
+    required this.sealRecordHex,
+    required this.hasSealKey,
+    required this.prekeyRecordHex,
+    required this.hasPrekey,
   });
 
   @override
@@ -971,7 +987,11 @@ class ResolvedChatIdentity {
       found.hashCode ^
       ed25519PubkeyHex.hashCode ^
       innerContentKeyHex.hashCode ^
-      hasMessageKey.hashCode;
+      hasMessageKey.hashCode ^
+      sealRecordHex.hashCode ^
+      hasSealKey.hashCode ^
+      prekeyRecordHex.hashCode ^
+      hasPrekey.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -981,7 +1001,11 @@ class ResolvedChatIdentity {
           found == other.found &&
           ed25519PubkeyHex == other.ed25519PubkeyHex &&
           innerContentKeyHex == other.innerContentKeyHex &&
-          hasMessageKey == other.hasMessageKey;
+          hasMessageKey == other.hasMessageKey &&
+          sealRecordHex == other.sealRecordHex &&
+          hasSealKey == other.hasSealKey &&
+          prekeyRecordHex == other.prekeyRecordHex &&
+          hasPrekey == other.hasPrekey;
 }
 
 class ResolvedName {

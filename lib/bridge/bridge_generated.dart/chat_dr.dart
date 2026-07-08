@@ -7,7 +7,7 @@ import 'chat.dart';
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `blake2`, `otpk_address_seed`, `responder_session_from_init`, `spk_secret_from_identity_seed`
+// These functions are ignored because they are not marked as `pub`: `blake2`, `otpk_address_seed`, `pqspk_keypair_from_identity_seed`, `responder_session_from_init`, `spk_secret_from_identity_seed`
 
 /// Generate the device's prekey material: the deterministic SPK
 /// (signed) + `opk_count` RANDOM one-time prekeys starting at
@@ -64,6 +64,8 @@ Future<DrInitiation> chatDrInitiate({
   required String recipientIdentityPubkeyHex,
   required String recipientSpkHex,
   required String recipientSpkSignatureHex,
+  required String recipientPqspkEkHex,
+  required String recipientPqspkSignatureHex,
   int? opkId,
   String? opkPubkeyHex,
 }) => RustLib.instance.api.crateChatDrChatDrInitiate(
@@ -71,6 +73,8 @@ Future<DrInitiation> chatDrInitiate({
   recipientIdentityPubkeyHex: recipientIdentityPubkeyHex,
   recipientSpkHex: recipientSpkHex,
   recipientSpkSignatureHex: recipientSpkSignatureHex,
+  recipientPqspkEkHex: recipientPqspkEkHex,
+  recipientPqspkSignatureHex: recipientPqspkSignatureHex,
   opkId: opkId,
   opkPubkeyHex: opkPubkeyHex,
 );
@@ -150,12 +154,22 @@ class DrOpkSecret {
 class DrPrekeySetup {
   final String spkPubkeyHex;
   final String spkSignatureHex;
+
+  /// ML-KEM-768 PQSPK encapsulation key (1184 bytes hex) — the PQ
+  /// leg of the PQXDH bootstrap, published with the SPK in the RNS
+  /// `PREKEY` record (docs/PQ-CHAT.md).
+  final String pqspkEkHex;
+
+  /// Identity signature over the PQSPK ek.
+  final String pqspkSignatureHex;
   final String opkBundleHex;
   final List<DrOpkSecret> opkSecrets;
 
   const DrPrekeySetup({
     required this.spkPubkeyHex,
     required this.spkSignatureHex,
+    required this.pqspkEkHex,
+    required this.pqspkSignatureHex,
     required this.opkBundleHex,
     required this.opkSecrets,
   });
@@ -164,6 +178,8 @@ class DrPrekeySetup {
   int get hashCode =>
       spkPubkeyHex.hashCode ^
       spkSignatureHex.hashCode ^
+      pqspkEkHex.hashCode ^
+      pqspkSignatureHex.hashCode ^
       opkBundleHex.hashCode ^
       opkSecrets.hashCode;
 
@@ -174,6 +190,8 @@ class DrPrekeySetup {
           runtimeType == other.runtimeType &&
           spkPubkeyHex == other.spkPubkeyHex &&
           spkSignatureHex == other.spkSignatureHex &&
+          pqspkEkHex == other.pqspkEkHex &&
+          pqspkSignatureHex == other.pqspkSignatureHex &&
           opkBundleHex == other.opkBundleHex &&
           opkSecrets == other.opkSecrets;
 }

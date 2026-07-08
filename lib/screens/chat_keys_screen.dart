@@ -24,6 +24,7 @@ class _ChatKeysScreenState extends State<ChatKeysScreen> {
 
   ChatIdentity? _identity;
   String _contentKey = '';
+  String _sealRecord = '';
   bool _loading = true;
 
   @override
@@ -35,10 +36,12 @@ class _ChatKeysScreenState extends State<ChatKeysScreen> {
   Future<void> _load() async {
     final id = await _store.identity(widget.address);
     final ck = await _store.contentKey(widget.address);
+    final sr = await _store.sealRecord(widget.address);
     if (!mounted) return;
     setState(() {
       _identity = id;
       _contentKey = ck;
+      _sealRecord = sr;
       _loading = false;
     });
   }
@@ -115,13 +118,21 @@ class _ChatKeysScreenState extends State<ChatKeysScreen> {
                       ? null
                       : () => _copy(_contentKey, 'Your content key'),
                 ),
+                _Field(
+                  label: 'Seal record (SEAL)',
+                  value: _sealRecord.isEmpty ? '—' : _sealRecord,
+                  onCopy: _sealRecord.isEmpty
+                      ? null
+                      : () => _copy(_sealRecord, 'Your seal record'),
+                ),
                 const SizedBox(height: 28),
                 Text('KEYS', style: tt.labelMedium),
                 const SizedBox(height: 8),
                 Text(
                   'Rotating mints a fresh content key in secure hardware and '
-                  'republishes your CHAT + MESSAGE records. New conversations use '
-                  'the new key; already-decrypted messages are unaffected.',
+                  'republishes your full chat identity (CHAT + MESSAGE + SEAL + '
+                  'PREKEY records). New conversations use the new keys; '
+                  'already-decrypted messages are unaffected.',
                   style: tt.bodySmall,
                 ),
                 const SizedBox(height: 12),

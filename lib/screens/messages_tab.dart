@@ -284,6 +284,7 @@ class _MessagesTabState extends State<MessagesTab> {
     final nameCtrl = TextEditingController();
     final pubkeyCtrl = TextEditingController();
     final contentKeyCtrl = TextEditingController();
+    final sealRecordCtrl = TextEditingController();
     final labelCtrl = TextEditingController();
     String? error;
     bool resolving = false;
@@ -346,6 +347,16 @@ class _MessagesTabState extends State<MessagesTab> {
               ),
               const SizedBox(height: 12),
               TextField(
+                controller: sealRecordCtrl,
+                style: Theme.of(ctx).textTheme.bodyMedium,
+                decoration: const InputDecoration(
+                  labelText: 'Seal record (hex)',
+                  hintText: "recipient's seal record — required to send",
+                  prefixIcon: Icon(Icons.enhanced_encryption_outlined, size: 18),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
                 controller: labelCtrl,
                 style: Theme.of(ctx).textTheme.bodyMedium,
                 decoration: const InputDecoration(
@@ -391,11 +402,18 @@ class _MessagesTabState extends State<MessagesTab> {
                           setSheet(() => error = 'Content key must be hex (even length).');
                           return;
                         }
+                        final sr = sealRecordCtrl.text.trim().replaceFirst(RegExp('^0x'), '');
+                        if (sr.isNotEmpty && !RegExp(r'^[0-9a-fA-F]{2496}$').hasMatch(sr)) {
+                          setSheet(() => error =
+                              'Seal record must be 2496 hex chars (1248 bytes: ek + signature).');
+                          return;
+                        }
                         final label = labelCtrl.text.trim();
                         final contact = await _store.upsertContact(
                           widget.address, raw.toLowerCase(),
                           label: label.isEmpty ? null : label,
                           contentKeyHex: ck.isEmpty ? null : ck.toLowerCase(),
+                          sealRecordHex: sr.isEmpty ? null : sr.toLowerCase(),
                         );
                         if (ctx.mounted) Navigator.pop(ctx);
                         _openThread(contact);
