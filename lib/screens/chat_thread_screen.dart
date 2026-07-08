@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/chat_store.dart';
+import '../services/text_scale_controller.dart';
 import '../theme.dart';
 import '../widgets/chat_avatar.dart';
 
@@ -39,6 +40,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   @override
   void initState() {
     super.initState();
+    // Inside a chat thread, pinch-to-zoom is PERSISTENT (sets a saved reading
+    // size) rather than the elastic snap-back used everywhere else.
+    TextScaleController.instance.enterChat();
     _store.addListener(_onStore);
     _open();
     // Pull new mail every few seconds while the thread is open.
@@ -76,6 +80,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   @override
   void dispose() {
+    // Leaving the thread returns the app to its baseline text size.
+    TextScaleController.instance.exitChat();
     _store.removeListener(_onStore);
     _poll?.cancel();
     _composer.dispose();
@@ -147,6 +153,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    // Hide the info banner while typing so the (short) landscape thread isn't
+    // swallowed by the keyboard.
+    final keyboardUp = MediaQuery.of(context).viewInsets.bottom > 0;
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(
@@ -179,9 +188,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           ],
         ),
       ),
-      body: Column(
+      // SafeArea keeps content clear of the landscape display cutout (left)
+      // and navigation bar (right); without it, bubbles clip under them.
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: Column(
         children: [
-          const _SecurityBanner(),
+          if (!keyboardUp) const _SecurityBanner(),
           Expanded(
             child: _messages.isEmpty
                 ? _ThreadEmptyState(name: widget.contact.display)
@@ -255,6 +269,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             onSend: _send,
           ),
         ],
+      ),
       ),
     );
   }
@@ -364,7 +379,11 @@ class _Bubble extends StatelessWidget {
       onTap: sealed ? onTapSealed : null,
       child: Container(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.74,
+          // 74% of width, but capped so bubbles don't sprawl on a wide
+          // landscape screen.
+          maxWidth: (MediaQuery.of(context).size.width * 0.74)
+              .clamp(0.0, 480.0)
+              .toDouble(),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(

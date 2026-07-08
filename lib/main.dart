@@ -18,6 +18,8 @@ import 'widgets/tx_badge_overlay.dart';
 import 'theme.dart';
 import 'screens/name_registration_screen.dart';
 import 'screens/seed_phrase_quiz_screen.dart';
+import 'services/text_scale_controller.dart';
+import 'widgets/pinch_text_zoom.dart';
 
 void main() async {
   final binding = WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +33,7 @@ void main() async {
   debugPrint('>>> Starting RustLib.init()');
   await RustLib.init();
   await ThemeController.instance.load(); // apply the persisted brand colour
+  await TextScaleController.instance.load(); // apply the persisted text zoom
   debugPrint('>>> RustLib done, starting app');
   runApp(const DotWaveApp());
 }
@@ -40,9 +43,13 @@ class DotWaveApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Rebuild the whole app (new ThemeData) whenever the brand accent changes.
+    // Rebuild the whole app whenever the brand accent OR the global text zoom
+    // changes.
     return AnimatedBuilder(
-      animation: ThemeController.instance,
+      animation: Listenable.merge([
+        ThemeController.instance,
+        TextScaleController.instance,
+      ]),
       builder: (context, _) => MaterialApp(
         title: 'Rostro',
         navigatorKey: rootNavigatorKey,
@@ -50,16 +57,29 @@ class DotWaveApp extends StatelessWidget {
         theme: AppTheme.dark,
         home: const SplashScreen(),
         builder: (context, child) {
-          // Pin the transaction tracker badge above every route.
-          return Stack(
-            children: [
-              if (child != null) child,
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 8,
-                right: 12,
-                child: const TxBadgeOverlay(),
+          final mq = MediaQuery.of(context);
+          // Global pinch-to-zoom text scale: applied here so every present
+          // and future screen inherits it. PinchTextZoom wraps everything so
+          // a two-finger pinch anywhere adjusts it. Blades reset the scaler
+          // for their own subtree, so they stay fixed.
+          return PinchTextZoom(
+            child: MediaQuery(
+              data: mq.copyWith(
+                textScaler:
+                    TextScaler.linear(TextScaleController.instance.scale),
               ),
-            ],
+              child: Stack(
+                children: [
+                  if (child != null) child,
+                  // Pin the transaction tracker badge above every route.
+                  Positioned(
+                    top: mq.padding.top + 8,
+                    right: 12,
+                    child: const TxBadgeOverlay(),
+                  ),
+                ],
+              ),
+            ),
           );
         },
       ),

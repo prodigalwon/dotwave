@@ -28,7 +28,10 @@ class _HomeShellState extends State<HomeShell> {
         builder: (context, _) => IndexedStack(
           index: _currentIndex,
           children: [
-            HomeTab(address: widget.address),
+            HomeTab(
+              address: widget.address,
+              onOpenMessages: () => setState(() => _currentIndex = 1),
+            ),
             MessagesTab(address: widget.address),
             ExploreTab(address: widget.address),
             ProfileTab(address: widget.address),

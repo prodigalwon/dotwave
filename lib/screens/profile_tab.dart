@@ -11,6 +11,7 @@ import 'manage_name_screen.dart';
 import 'settings_screen.dart';
 import 'name_registration_screen.dart';
 import 'zkpki_spoof_defense_test_screen.dart';
+import 'about_screen.dart';
 
 class ProfileTab extends StatefulWidget {
   final String address;
@@ -196,7 +197,9 @@ class _ProfileTabState extends State<ProfileTab> {
           _SettingsTile(
             icon: Icons.info_outline,
             label: 'About Rostro',
-            onTap: () {},
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
+            ),
           ),
 
           // Debug-only entry point for the cross-platform spoof defense

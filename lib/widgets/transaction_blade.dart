@@ -392,7 +392,11 @@ class _TransactionBladeState extends State<TransactionBlade>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // Blades are fixed-layout transaction/signing UI: the global pinch-to-zoom
+    // text scale must not reflow them. Reset the scaler for the blade subtree.
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+      child: Scaffold(
       backgroundColor: Colors.transparent,
       body: AnimatedBuilder(
         animation: _shrink,
@@ -643,6 +647,7 @@ class _TransactionBladeState extends State<TransactionBlade>
           if (_state == _BladeState.submitted) _submittedOverlay(),
         ],
         ),
+      ),
       ),
     );
   }

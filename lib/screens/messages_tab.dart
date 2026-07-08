@@ -441,16 +441,38 @@ class _MessagesTabState extends State<MessagesTab> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      // Fixed blade: with drag disabled, vertical drags go to the inner scroll
+      // view (content scrolls) instead of moving/dismissing the whole sheet.
+      enableDrag: false,
       builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 20, right: 20, top: 20,
-          bottom: 20 + MediaQuery.of(ctx).viewInsets.bottom,
-        ),
-        child: Column(
+        // Lift the whole sheet above the keyboard when a field is focused.
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: ConstrainedBox(
+          // The blade stays at its ~halfway height, fixed in place. The
+          // grabber notch is a FIXED header — always visible, so it reads as
+          // a blade — and the content below it is a view window that scrolls
+          // to reveal the below-the-fold sections (Admission cert / Mint).
+          // Content shorter than the cap hugs instead — no dead space.
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.55,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: _SheetGrabber(),
+              ),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.fromLTRB(
+                      20, 0, 20, 20 + MediaQuery.of(ctx).viewPadding.bottom),
+                  children: [
+                    Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _SheetGrabber(),
             Text('Relay nodes', style: Theme.of(ctx).textTheme.headlineSmall),
             const SizedBox(height: 4),
             Text(
@@ -551,6 +573,12 @@ class _MessagesTabState extends State<MessagesTab> {
               },
             ),
           ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
