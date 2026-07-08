@@ -144,9 +144,13 @@ class AppTheme {
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: Brightness.light,
         ),
+        // Syne has deep descenders; give the line-box room (height) and split
+        // the extra leading evenly so the "g" tail isn't clipped in the AppBar.
+        // leadingDistribution isn't forwarded by GoogleFonts, so copyWith it.
         titleTextStyle: GoogleFonts.syne(
           fontSize: 20, fontWeight: FontWeight.w600, color: textPrimary,
-        ),
+          height: 1.3,
+        ).copyWith(leadingDistribution: TextLeadingDistribution.even),
         iconTheme: const IconThemeData(color: textPrimary, size: 22),
       ),
 

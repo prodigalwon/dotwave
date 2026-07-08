@@ -121,6 +121,7 @@ class _MessagesTabState extends State<MessagesTab> {
   /// Banner CTA dispatch by ceremony state:
   /// • noName    → register a `.rst` name first (the prerequisite)
   /// • needsKeys → mint + publish CHAT/MESSAGE in a paid blade
+  /// • needsCert → mint the admission cert so drops are accepted
   /// • ready     → open Message Options (rotate keys)
   Future<void> _onBannerAction() async {
     switch (_keyState) {
@@ -135,6 +136,9 @@ class _MessagesTabState extends State<MessagesTab> {
         break;
       case ChatKeyState.needsKeys:
         await _openRegisterKeys();
+        break;
+      case ChatKeyState.needsCert:
+        await _openMintCert();
         break;
       case ChatKeyState.ready:
         await Navigator.push(
@@ -185,6 +189,39 @@ class _MessagesTabState extends State<MessagesTab> {
     );
   }
 
+  /// The paid "Register Chat Cert" action: mint the admission cert that lets
+  /// this account drop onion blobs. Records are already published (needsCert
+  /// implies keys are live) — this only provisions the cert, so it's a lighter
+  /// ceremony than Register Keys. Streams progress via [ChatStore.mintCertStream].
+  Future<void> _openMintCert() async {
+    final rpc = await _store.nodeRpc();
+    if (!mounted) return;
+    TransactionBlade.show(
+      context,
+      TransactionBlade(
+        transactionType: 'Register Chat Cert',
+        rpcUrl: rpc,
+        rows: [
+          TxRow('Name', '$_ownedName.rst'),
+          const TxRow('CERT', 'chat admission cert (drop onion blobs)'),
+        ],
+        costLabel: 'Network Fee',
+        trackerLabel: 'Register chat cert',
+        streamedSubmit: (phrase) =>
+            _store.mintCertStream(widget.address, phrase),
+        onSuccess: () async {
+          await _store.onCertConfirmed(widget.address);
+          await _loadKeyState();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Chat cert registered')),
+            );
+          }
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -216,6 +253,7 @@ class _MessagesTabState extends State<MessagesTab> {
                   children: [
                     _KeyStateBanner(
                       state: _keyState,
+                      name: _ownedName,
                       onAction: _onBannerAction,
                     ),
                     const SizedBox(height: 20),
@@ -592,12 +630,65 @@ class _MessagesTabState extends State<MessagesTab> {
 /// for the current state.
 class _KeyStateBanner extends StatelessWidget {
   final ChatKeyState state;
+  final String name; // owned `.rst` label (bare), for the "all set" affirmation
   final Future<void> Function() onAction;
-  const _KeyStateBanner({required this.state, required this.onAction});
+  const _KeyStateBanner(
+      {required this.state, required this.name, required this.onAction});
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+
+    // "All set" affirmation: the owned name with a green checkmark beside it,
+    // not a call-to-action. Tapping still opens Message Options (rotate keys).
+    if (state == ChatKeyState.ready) {
+      return Material(
+        color: AppTheme.surface2,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onAction,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Icon(Icons.verified_outlined,
+                    color: AppTheme.accent, size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              name.isNotEmpty ? '$name.rst' : 'Messaging ready',
+                              overflow: TextOverflow.ellipsis,
+                              style: tt.titleSmall?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.check_circle,
+                              color: Colors.greenAccent, size: 16),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text("You're all set — keys + chat cert active",
+                          style: tt.bodySmall?.copyWith(color: Colors.white54)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: Colors.white24, size: 20),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final (IconData icon, String title, String subtitle, Color color, bool primary) =
         switch (state) {
       ChatKeyState.noName => (
@@ -614,13 +705,15 @@ class _KeyStateBanner extends StatelessWidget {
         AppTheme.accent,
         true,
       ),
-      ChatKeyState.ready => (
-        Icons.tune,
-        'Message Options',
-        'Manage or rotate your chat keys',
-        Colors.white54,
-        false,
+      ChatKeyState.needsCert => (
+        Icons.verified_user_outlined,
+        'Register Chat Cert',
+        'You need a chat cert to send messages — mint it to finish setup',
+        Colors.orangeAccent,
+        true,
       ),
+      // Handled by the early return above; listed for switch exhaustiveness.
+      ChatKeyState.ready => (Icons.tune, '', '', Colors.white54, false),
     };
     return Material(
       color: primary ? color.withValues(alpha: 0.12) : AppTheme.surface2,

@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../config/rpc_endpoints.dart';
 import '../services/avatar_service.dart';
+import '../services/chat_store.dart';
 import '../services/feed_service.dart';
 import '../models/feed_item.dart';
 import '../widgets/feed_card.dart';
@@ -125,29 +126,10 @@ class _HomeTabState extends State<HomeTab> {
   }
 
   Future<void> _resolveOwnedName() async {
-    try {
-      const storage = FlutterSecureStorage();
-      final stored = await storage.read(key: _storageKey);
-      if (stored == null || stored.isEmpty) {
-        if (mounted) setState(() => _ownedName = null);
-        return;
-      }
-      // Verify the stored name still resolves to this address on-chain.
-      final resolved = await RustLib.instance.api.crateCoreResolveNameVerified(
-        name: stored,
-        rpcUrl: _rpcUrl,
-      );
-      final stillOwned = resolved?.owner == widget.address;
-      if (!stillOwned) {
-        await storage.delete(key: _storageKey);
-      }
-      if (mounted) setState(() => _ownedName = stillOwned ? stored : null);
-    } catch (e) {
-      // Don't clear the header on a transient error, but don't fail silently
-      // either — a swallowed decode error here is exactly what hid the
-      // AccountId32 bug. Surface it to the log.
-      debugPrint('resolveOwnedName failed: $e');
-    }
+    // Delegate to the shared resolver so Home, Messages, and Profile all show
+    // the same name and reverify (but never blank offline) identically.
+    final name = await ChatStore.instance.resolveOwnedName(widget.address);
+    if (mounted) setState(() => _ownedName = name);
   }
 
   /// Silently reverse-lookup the address on-chain. If a name is found it is

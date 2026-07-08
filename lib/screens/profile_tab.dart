@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/avatar_service.dart';
+import '../services/chat_store.dart';
 import 'avatar_screen.dart';
 import 'manage_name_screen.dart';
 import 'settings_screen.dart';
@@ -34,8 +35,6 @@ class _ProfileTabState extends State<ProfileTab> {
   String get _truncatedAddress =>
       '${_address.substring(0, 8)}...${_address.substring(_address.length - 6)}';
 
-  String get _storageKey => 'owned_name_$_address';
-
   @override
   void initState() {
     super.initState();
@@ -44,10 +43,10 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
   Future<void> _loadOwnedName() async {
-    const storage = FlutterSecureStorage();
-    final stored = await storage.read(key: _storageKey);
-    if (!mounted) return;
-    setState(() => _ownedName = (stored != null && stored.isNotEmpty) ? stored : null);
+    // Shared resolver: shows the local name and reverifies when the node is
+    // reachable (never blanks offline). Same source as Home and Messages.
+    final name = await ChatStore.instance.resolveOwnedName(_address);
+    if (mounted) setState(() => _ownedName = name);
   }
 
   Future<void> _loadAvatar() async {
