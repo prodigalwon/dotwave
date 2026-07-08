@@ -20,6 +20,7 @@ import '../bridge/bridge_generated.dart/core.dart'
 import '../config/rpc_endpoints.dart';
 import 'avatar_service.dart';
 import 'content_key_service.dart';
+import 'guard_discovery_service.dart';
 import 'membership_session_service.dart';
 
 /// Where an account stands in the messaging-setup ceremony — drives the
@@ -977,8 +978,15 @@ class ChatStore extends ChangeNotifier {
   /// cheaper alternative to cert-auth, layered on next.
   Future<ChatMessage> send(String address, String contactPubkey, String text) async {
     final seed = await seedHex(address);
-    final node = await nodeRpc();
-    final relay2 = await relay2Rpc();
+    // Spread across discovered guards at random (distinct guard + relay-2), so
+    // no single guard sees the whole conversation. Falls back to the hand-
+    // configured pair until discovery is populated.
+    final hop = await GuardDiscovery.instance.pickGuardAndRelay(
+      fallbackGuard: await nodeRpc(),
+      fallbackRelay2: await relay2Rpc(),
+    );
+    final node = hop.guard;
+    final relay2 = hop.relay2;
     if (relay2.isEmpty) {
       throw StateError(
           'no relay-2 configured — the 2-hop onion needs a second chat node '
@@ -1054,6 +1062,11 @@ class ChatStore extends ChangeNotifier {
       );
       outcome = await dispatch(session);
     }
+
+    // A drop landed on these two — keep them fresh in the guard cache via our
+    // own clock (no-op for the hand-configured fallback pair).
+    await GuardDiscovery.instance.markContacted(node);
+    await GuardDiscovery.instance.markContacted(relay2);
 
     // Persist the new tip BEFORE appending locally: a crash after the send
     // but before this would otherwise re-chain the next message to the old
@@ -1177,6 +1190,12 @@ class ChatStore extends ChangeNotifier {
   Future<int> refresh(String address) async {
     final seed = await seedHex(address);
     final node = await nodeRpc();
+    // Opportunistically refresh the discovered-guard cache (auth-gated +
+    // throttled inside; no-op until the discovery RPC lands).
+    await GuardDiscovery.instance.refreshGuards(
+      authenticated: (await certAuth(address)) != null,
+      nodeRpc: node,
+    );
     final fetched = await chatFetch(
       nodeRpc: node,
       recipientSeedHex: seed,

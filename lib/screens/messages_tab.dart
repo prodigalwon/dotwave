@@ -470,11 +470,14 @@ class _MessagesTabState extends State<MessagesTab> {
   // ── node-settings sheet ────────────────────────────────────────────
 
   void _showNodeSheet() async {
-    final current = await _store.nodeRpc();
     final currentRelay2 = await _store.relay2Rpc();
     if (!mounted) return;
-    final ctrl = TextEditingController(text: current);
-    final relay2Ctrl = TextEditingController(text: currentRelay2);
+    // Manual override starts on only if nodes are already pinned (a relay-2 is
+    // configured). Fields always start BLANK — the placeholder guides input and
+    // we never surface node addresses here (neither auto mode nor existing pins).
+    var manual = currentRelay2.isNotEmpty;
+    final ctrl = TextEditingController();
+    final relay2Ctrl = TextEditingController();
 
     showModalBottomSheet(
       context: context,
@@ -514,57 +517,100 @@ class _MessagesTabState extends State<MessagesTab> {
             Text('Relay nodes', style: Theme.of(ctx).textTheme.headlineSmall),
             const SizedBox(height: 4),
             Text(
-              'The guard is the node this device sends through and pulls messages from. '
-              'The 2-hop onion forwards through a second chat node (relay-2) so no single '
-              'relay sees both you and the recipient. In the lab, point these at two '
-              'different non-validator nodes on your network.',
+              'Your device sends through a guard and forwards over a 2-hop onion '
+              'via a second chat node (relay-2), so no single relay sees both you '
+              'and the recipient. Guards are selected automatically from live '
+              'community nodes — turn on manual entry only to pin specific nodes '
+              '(e.g. in the lab).',
               style: Theme.of(ctx).textTheme.bodySmall,
             ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: ctrl,
-              style: Theme.of(ctx).textTheme.bodyMedium,
-              decoration: const InputDecoration(
-                labelText: 'Guard RPC URL',
-                hintText: 'ws://192.168.1.x:9944',
-                prefixIcon: Icon(Icons.dns_outlined, size: 18),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: relay2Ctrl,
-              style: Theme.of(ctx).textTheme.bodyMedium,
-              decoration: const InputDecoration(
-                labelText: 'Relay-2 RPC URL',
-                hintText: 'ws://192.168.1.y:9945 (different node)',
-                prefixIcon: Icon(Icons.alt_route_outlined, size: 18),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      await _store.setNodeRpc(null); // reset to default
-                      await _store.setRelay2Rpc(null);
-                      if (ctx.mounted) Navigator.pop(ctx);
-                    },
-                    child: const Text('Reset'),
+            const SizedBox(height: 8),
+            StatefulBuilder(
+              builder: (ctx, setSheet) => Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CheckboxListTile(
+                    value: manual,
+                    onChanged: (v) => setSheet(() {
+                      manual = v ?? false;
+                      // Blank either way: manual shows a clean placeholder to
+                      // type into; auto shows the grayed "Automatic" hint.
+                      ctrl.clear();
+                      relay2Ctrl.clear();
+                    }),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    dense: true,
+                    title: const Text('Enter manually'),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () async {
-                      await _store.setNodeRpc(ctrl.text);
-                      await _store.setRelay2Rpc(relay2Ctrl.text);
-                      if (ctx.mounted) Navigator.pop(ctx);
-                    },
-                    child: const Text('Save'),
+                  const SizedBox(height: 4),
+                  TextField(
+                    controller: ctrl,
+                    enabled: manual,
+                    style: Theme.of(ctx).textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      labelText: 'Guard RPC URL',
+                      hintText: manual ? 'ws://192.168.1.x:9944' : 'Automatic',
+                      prefixIcon: const Icon(Icons.dns_outlined, size: 18),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: relay2Ctrl,
+                    enabled: manual,
+                    style: Theme.of(ctx).textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      labelText: 'Relay-2 RPC URL',
+                      hintText: manual
+                          ? 'ws://192.168.1.y:9945 (different node)'
+                          : 'Automatic',
+                      prefixIcon: const Icon(Icons.alt_route_outlined, size: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          // Just empties the inputs so the user can retype. To
+                          // drop overrides entirely, uncheck "Enter manually"
+                          // and Save (that resets to automatic selection).
+                          onPressed: () => setSheet(() {
+                            ctrl.clear();
+                            relay2Ctrl.clear();
+                          }),
+                          child: const Text('Clear'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () async {
+                            if (manual) {
+                              // Only overwrite fields the user actually typed; a
+                              // blank field leaves the existing pin intact (use
+                              // Reset to clear).
+                              if (ctrl.text.trim().isNotEmpty) {
+                                await _store.setNodeRpc(ctrl.text);
+                              }
+                              if (relay2Ctrl.text.trim().isNotEmpty) {
+                                await _store.setRelay2Rpc(relay2Ctrl.text);
+                              }
+                            } else {
+                              // Automatic: clear overrides so discovery selects.
+                              await _store.setNodeRpc(null);
+                              await _store.setRelay2Rpc(null);
+                            }
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          },
+                          child: const Text('Save'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
             const Divider(height: 32),
             Text('Admission cert', style: Theme.of(ctx).textTheme.titleMedium),
