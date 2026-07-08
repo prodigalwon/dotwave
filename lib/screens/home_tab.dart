@@ -6,13 +6,19 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../bridge/bridge_generated.dart/frb_generated.dart';
 import '../config/rpc_endpoints.dart';
 import '../services/avatar_service.dart';
+import '../services/feed_service.dart';
+import '../models/feed_item.dart';
+import '../widgets/feed_card.dart';
 import 'avatar_screen.dart';
 import 'receive_screen.dart';
 import 'send_screen.dart';
 
 class HomeTab extends StatefulWidget {
   final String address;
-  const HomeTab({super.key, required this.address});
+
+  /// Switch the shell to the Messages tab (a feed message row opens there).
+  final VoidCallback? onOpenMessages;
+  const HomeTab({super.key, required this.address, this.onOpenMessages});
 
   @override
   State<HomeTab> createState() => _HomeTabState();
@@ -44,6 +50,17 @@ class _HomeTabState extends State<HomeTab> {
   String get _displayIdentity => _ownedName ??
       '${widget.address.substring(0, 6)}...${widget.address.substring(widget.address.length - 4)}';
 
+  /// True once this account has resolved a canonical .rst name.
+  bool get _hasName => _ownedName != null && _ownedName!.isNotEmpty;
+
+  /// Time-of-day greeting (was hardcoded "Good morning").
+  String get _greeting {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -56,6 +73,41 @@ class _HomeTabState extends State<HomeTab> {
     _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_lastRefreshed != null && mounted) setState(() {});
     });
+    FeedService.instance.addListener(_onFeed);
+  }
+
+  void _onFeed() {
+    if (mounted) setState(() {});
+  }
+
+  /// The activity feed, newest-first.
+  List<FeedItem> get _feed => FeedService.instance.items;
+
+  /// The red "remove" backdrop revealed as a feed row is swiped away.
+  Widget _dismissBg(Alignment align) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 22),
+      alignment: align,
+      decoration: BoxDecoration(
+        color: AppTheme.error.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: const Icon(Icons.delete_outline, color: AppTheme.error),
+    );
+  }
+
+  void _onFeedTap(FeedItem item) {
+    // Messages open the conversation (never the plaintext); everything else
+    // opens a detail popup.
+    if (item.kind == FeedKind.message) {
+      widget.onOpenMessages?.call();
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      builder: (_) => FeedDetailDialog(item: item),
+    );
   }
 
   String get _storageKey => 'owned_name_${widget.address}';
@@ -120,6 +172,7 @@ class _HomeTabState extends State<HomeTab> {
   void dispose() {
     _refreshTimer?.cancel();
     _namePoller?.cancel();
+    FeedService.instance.removeListener(_onFeed);
     super.dispose();
   }
 
@@ -185,20 +238,23 @@ class _HomeTabState extends State<HomeTab> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Good morning',
-                                style: TextStyle(
+                              Text(
+                                _greeting,
+                                style: const TextStyle(
                                   color: Colors.white60,
-                                  fontSize: 14,
+                                  fontSize: 16,
                                 ),
                               ),
                               const SizedBox(height: 4),
+                              // Canonical name gets emphasis (bigger, bold, "!");
+                              // a bare address stays plain (lighter, smaller).
                               Text(
-                                _displayIdentity,
-                                style: const TextStyle(
+                                _hasName ? '$_ownedName!' : _displayIdentity,
+                                style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                                  fontSize: _hasName ? 26 : 20,
+                                  fontWeight:
+                                      _hasName ? FontWeight.bold : FontWeight.w500,
                                 ),
                               ),
                             ],
@@ -232,9 +288,10 @@ class _HomeTabState extends State<HomeTab> {
 
                     const SizedBox(height: 32),
 
-                    // Balance card
-                    SizedBox(
-                      height: 160,
+                    // Balance card. A minimum height keeps its proportions,
+                    // but it grows with the text scale instead of clipping.
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 160),
                       child: Builder(
                         builder: (_) {
                           const token   = 'RST';
@@ -265,6 +322,7 @@ class _HomeTabState extends State<HomeTab> {
                                 ),
                               ),
                               child: Column(
+                                mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
@@ -380,21 +438,73 @@ class _HomeTabState extends State<HomeTab> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 32),
-                        child: Text(
-                          'No activity yet',
-                          style: TextStyle(color: Colors.white38),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
             ),
+            // ── Activity feed ────────────────────────────────────────────
+            // Source-agnostic stream (chain activity, chat events, identity
+            // events, posts), newest-first, social-feed styled. Empty state
+            // when there's nothing yet.
+            if (_feed.isEmpty)
+              const SliverToBoxAdapter(child: _FeedEmptyState())
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                sliver: SliverList.builder(
+                  itemCount: _feed.length,
+                  itemBuilder: (_, i) {
+                    final item = _feed[i];
+                    // Swipe either direction to dismiss the entry.
+                    return Dismissible(
+                      key: ValueKey(item.id),
+                      direction: DismissDirection.horizontal,
+                      background: _dismissBg(Alignment.centerLeft),
+                      secondaryBackground: _dismissBg(Alignment.centerRight),
+                      onDismissed: (_) => FeedService.instance.remove(item.id),
+                      child: FeedCard(
+                        item: item,
+                        onTap: () => _onFeedTap(item),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Shown under "Recent Activity" when the feed has no entries yet.
+class _FeedEmptyState extends StatelessWidget {
+  const _FeedEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+      child: Column(
+        children: [
+          Icon(Icons.dynamic_feed_outlined,
+              size: 40, color: Colors.white24),
+          const SizedBox(height: 12),
+          const Text(
+            'Nothing here yet',
+            style: TextStyle(
+                color: Colors.white54,
+                fontSize: 15,
+                fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Your transactions, messages and updates will show up here.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white38, fontSize: 13, height: 1.4),
+          ),
+        ],
       ),
     );
   }
