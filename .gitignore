@@ -48,3 +48,7 @@ CLAUDE.md
 skill.md
 backlog.md
 .claude
+# cargo-ndk copies ark_circom as a standalone cdylib, but it is statically
+# linked into librust_core.so (readelf: no NEEDED entry). Redundant build
+# artifact — never ship it.
+android/app/src/main/jniLibs/**/libark_circom-*.so
