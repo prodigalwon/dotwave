@@ -64,7 +64,7 @@ class _ChatKeysScreenState extends State<ChatKeysScreen> {
         rows: [
           TxRow('Name', '${widget.name}.rst'),
           const TxRow('Content key', 'fresh silicon P-256 (StrongBox)'),
-          const TxRow('Records', 'CHAT + MESSAGE re-published'),
+          const TxRow('Records', 'CHAT + MESSAGE + SEAL + PREKEY re-published'),
         ],
         costLabel: 'Network Fee',
         trackerLabel: 'Rotate chat keys',

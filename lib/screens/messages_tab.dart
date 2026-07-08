@@ -163,8 +163,10 @@ class _MessagesTabState extends State<MessagesTab> {
         rpcUrl: rpc,
         rows: [
           TxRow('Name', '$_ownedName.rst'),
-          const TxRow('MESSAGE', 'silicon content key (StrongBox P-256)'),
           const TxRow('CHAT', 'software chat address (Ed25519)'),
+          const TxRow('MESSAGE', 'silicon content key (StrongBox P-256)'),
+          const TxRow('SEAL', 'post-quantum sealing key (ML-KEM-768)'),
+          const TxRow('PREKEY', 'PQXDH bootstrap (X25519 + ML-KEM-768)'),
         ],
         costLabel: 'Network Fee',
         trackerLabel: 'Register chat keys',
@@ -580,7 +582,7 @@ class _KeyStateBanner extends StatelessWidget {
       ChatKeyState.needsKeys => (
         Icons.vpn_key_outlined,
         'Register Keys',
-        'Publish your CHAT + MESSAGE keys so others can reach you',
+        'Publish your CHAT, MESSAGE, SEAL + PREKEY records so others can reach you',
         AppTheme.accent,
         true,
       ),
