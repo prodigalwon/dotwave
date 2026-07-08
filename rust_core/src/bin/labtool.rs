@@ -16,7 +16,8 @@
 
 use rust_core::chat::{
     chat_deaddrop_pickup, chat_fetch, chat_fetch_at_pickup, chat_fetch_deaddrop,
-    chat_gen_content_key, chat_gen_identity, chat_mint_return_pickup, chat_node_info,
+    chat_gen_content_key, chat_gen_identity, chat_gen_seal_record, chat_mint_return_pickup,
+    chat_node_info,
     chat_read_content, chat_read_deaddrop, chat_send_deaddrop, chat_send_onion_2hop,
     chat_send_plain, chat_send_to_pickup,
 };
@@ -91,6 +92,113 @@ fn main() {
             println!("chat address: {}", id.ed25519_pubkey_hex);
             println!("content key:  {ck}");
         }
+        "bob-setup" => {
+            // bob-setup [rpc] — the box-side SENDER identity for the hybrid
+            // round trip: registers bob.rst (signer //Eve) + publishes the
+            // full 4-record chat identity (CHAT + SEAL + PREKEY + MESSAGE).
+            let rpc = args.get(2).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            let id = chat_gen_identity(BOB_CHAT_SEED.to_string()).expect("gen identity");
+            let ck = chat_gen_content_key(CURVE_P256, BOB_CONTENT_SEED.to_string()).expect("bob ck");
+            println!("registering bob.rst on {rpc} ...");
+            match chat_setup_messaging(
+                "bob".to_string(),
+                "//Eve".to_string(),
+                rpc,
+                BOB_CHAT_SEED.to_string(),
+                ck.clone(),
+            ) {
+                Ok(o) => println!("setup ok: published={} name=bob.rst", o.published),
+                Err(e) => {
+                    eprintln!("setup FAILED: {e}");
+                    std::process::exit(1);
+                }
+            }
+            println!("chat address: {}", id.ed25519_pubkey_hex);
+            println!("content key:  {ck}");
+        }
+        "bob-say" => {
+            // bob-say "<text>" [recipient_name] [guard] [relay2] [chain]
+            // Box-side sender half of the hybrid round trip: bob sends ONE
+            // custom-text message to <recipient_name>.rst (default ferdie),
+            // resolved from the 4-record chat identity, hybrid-sealed
+            // (X25519 + ML-KEM-768 to the resolved SEAL record) and
+            // 2-hop-onion routed. Cert //Eve.
+            let text = args.get(2).expect("need \"<text>\"").to_string();
+            let recipient_name = args.get(3).map(String::as_str).unwrap_or("ferdie").trim_end_matches(".rst").to_string();
+            let guard = args.get(4).map(String::as_str).unwrap_or("ws://127.0.0.1:9954").to_string();
+            let relay2 = args.get(5).map(String::as_str).unwrap_or("ws://127.0.0.1:9955").to_string();
+            let chain = args.get(6).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+
+            let resolved = chat_resolve_identity(recipient_name.clone(), chain.clone())
+                .expect("resolve recipient");
+            if !resolved.found || !resolved.has_message_key || !resolved.has_seal_key {
+                eprintln!(
+                    "'{recipient_name}.rst' unreachable: found={} message={} seal={} — run ferdie-setup first",
+                    resolved.found, resolved.has_message_key, resolved.has_seal_key
+                );
+                std::process::exit(1);
+            }
+
+            let cert_seed = dev_cert_seed_hex("//Eve".to_string());
+            let thumbprint =
+                chat_mint_test_cert(chain.clone(), "//Eve".to_string(), cert_seed.clone(), 1_000_000)
+                    .expect("mint bob cert");
+            println!("bob cert thumbprint: {}", short(&thumbprint));
+            let guard_pk = chat_node_info(guard.clone()).expect("guard node info");
+            let relay2_pk = chat_node_info(relay2.clone()).expect("relay-2 node info");
+
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+            let outcome = chat_send_onion_2hop(
+                guard.clone(),
+                guard_pk,
+                relay2_pk,
+                BOB_CHAT_SEED.to_string(),
+                resolved.ed25519_pubkey_hex.clone(),
+                resolved.inner_content_key_hex.clone(),
+                resolved.seal_record_hex.clone(),
+                text.clone(),
+                "bob".to_string(),
+                5,
+                Some(thumbprint),
+                Some(cert_seed),
+                None,
+                now,
+                None, // no avatar
+                None, // no session (cert-auth path)
+                None,
+            )
+            .expect("send onion");
+            println!(
+                "sent '{text}' -> '{recipient_name}.rst'  msg_id {} self={}",
+                short(&outcome.message_id_hex),
+                short(&outcome.new_self_hash_hex),
+            );
+        }
+        "bob-read" => {
+            // bob-read [rpc] — fetch + decrypt bob's inbox (the reply half
+            // of the round trip: hybrid_unseal with bob's derived SEAL
+            // decap key, then the P-256 content unseal).
+            let rpc = args.get(2).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            let msgs = chat_fetch(rpc, BOB_CHAT_SEED.to_string(), None).expect("fetch");
+            println!("fetched {} message(s) for bob:", msgs.len());
+            for (i, m) in msgs.iter().enumerate() {
+                match chat_read_content(
+                    m.sealed_content_hex.clone(),
+                    CURVE_P256,
+                    BOB_CONTENT_SEED.to_string(),
+                    None,
+                    BOB_CHAT_SEED.to_string(),
+                    vec![],
+                ) {
+                    Ok(r) => println!(
+                        "  [{i}] id={} from='{}' text='{}'",
+                        short(&m.message_id_hex), r.claimed_sender_name, r.plaintext
+                    ),
+                    Err(e) => println!("  [{i}] id={} READ FAILED: {e}", short(&m.message_id_hex)),
+                }
+            }
+        }
         // Resolve a name's published chat identity (CHAT + MESSAGE records) —
         // exactly what the app does before sending. Use to confirm a recipient is
         // reachable through a given node (e.g. the guard the phone talks to).
@@ -99,8 +207,10 @@ fn main() {
             let rpc = args.get(3).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
             match chat_resolve_identity(name.clone(), rpc.clone()) {
                 Ok(r) => println!(
-                    "{name} @ {rpc}: found={} has_message_key={}\n  chat address: {}\n  content key:  {}",
-                    r.found, r.has_message_key, r.ed25519_pubkey_hex, r.inner_content_key_hex
+                    "{name} @ {rpc}: found={} has_message_key={} has_seal_key={} has_prekey={}\n  chat address: {}\n  content key:  {}\n  seal record:  {}",
+                    r.found, r.has_message_key, r.has_seal_key, r.has_prekey,
+                    r.ed25519_pubkey_hex, r.inner_content_key_hex,
+                    if r.seal_record_hex.is_empty() { "—".to_string() } else { format!("{}…", &r.seal_record_hex[..16.min(r.seal_record_hex.len())]) },
                 ),
                 Err(e) => {
                     eprintln!("resolve FAILED: {e}");
@@ -269,9 +379,9 @@ fn main() {
             // 2. Resolve the recipient's published identity → content key.
             let resolved = chat_resolve_identity(recipient_name.clone(), chain.clone())
                 .expect("resolve recipient");
-            if !resolved.found || !resolved.has_message_key {
-                eprintln!("recipient '{recipient_name}' has no published MESSAGE content key — \
-                           can't seal to it");
+            if !resolved.found || !resolved.has_message_key || !resolved.has_seal_key {
+                eprintln!("recipient '{recipient_name}' is missing a MESSAGE or SEAL record — \
+                           can't hybrid-seal to it");
                 std::process::exit(1);
             }
             // Impersonation guard: the resolved CHAT key must equal the verified
@@ -306,6 +416,7 @@ fn main() {
                     FERDIE_CHAT_SEED.to_string(),
                     resolved.ed25519_pubkey_hex.clone(),
                     resolved.inner_content_key_hex.clone(),
+                    resolved.seal_record_hex.clone(),
                     body.clone(),
                     "ferdie.rst".to_string(),
                     5,
@@ -370,7 +481,7 @@ fn main() {
             // 2. Resolve the recipient's published CHAT + MESSAGE.
             let resolved = chat_resolve_identity(recipient_name.clone(), chain.clone())
                 .expect("resolve recipient");
-            if !resolved.found || !resolved.has_message_key {
+            if !resolved.found || !resolved.has_message_key || !resolved.has_seal_key {
                 eprintln!("recipient '{recipient_name}' has no published MESSAGE content key");
                 std::process::exit(1);
             }
@@ -398,6 +509,7 @@ fn main() {
                 FERDIE_CHAT_SEED.to_string(),
                 resolved.ed25519_pubkey_hex.clone(),
                 resolved.inner_content_key_hex.clone(),
+                resolved.seal_record_hex.clone(),
                 text.clone(),
                 "ferdie".to_string(),
                 5,
@@ -418,18 +530,19 @@ fn main() {
             println!("refresh the conversation in the app to receive it.");
         }
         "ferdie-send-to" => {
-            // ferdie-send-to <recipient_pubkey_hex> <content_key_hex> [count] [start]
-            //                [guard_rpc] [relay2_rpc] [chain_rpc]
+            // ferdie-send-to <recipient_pubkey_hex> <content_key_hex> <seal_record_hex>
+            //                [count] [start] [guard_rpc] [relay2_rpc] [chain_rpc]
             // Out-of-band recipient (no published name needed): the phone's
-            // "Your chat address" + "Your content key" from the app's identity
-            // card. Sends `count` CHAINED messages (bodies start..start+count).
+            // "Your chat address" + "Your content key" + SEAL record from the
+            // app's identity card. Sends `count` CHAINED messages.
             let recipient_pubkey = args.get(2).expect("need <recipient_pubkey_hex>").trim_start_matches("0x").to_string();
             let content_key = args.get(3).expect("need <content_key_hex>").trim_start_matches("0x").to_string();
-            let count: u32 = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(5);
-            let start: u32 = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(21);
-            let guard = args.get(6).map(String::as_str).unwrap_or("ws://127.0.0.1:9954").to_string();
-            let relay2 = args.get(7).map(String::as_str).unwrap_or("ws://127.0.0.1:9955").to_string();
-            let chain = args.get(8).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            let seal_record = args.get(4).expect("need <seal_record_hex> (ek ‖ sig, 1248B)").trim_start_matches("0x").to_string();
+            let count: u32 = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(5);
+            let start: u32 = args.get(6).and_then(|s| s.parse().ok()).unwrap_or(21);
+            let guard = args.get(7).map(String::as_str).unwrap_or("ws://127.0.0.1:9954").to_string();
+            let relay2 = args.get(8).map(String::as_str).unwrap_or("ws://127.0.0.1:9955").to_string();
+            let chain = args.get(9).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
 
             // Ferdie's admission cert (idempotent).
             let cert_seed = dev_cert_seed_hex("//Ferdie".to_string());
@@ -453,6 +566,7 @@ fn main() {
                     FERDIE_CHAT_SEED.to_string(),
                     recipient_pubkey.clone(),
                     content_key.clone(),
+                    seal_record.clone(),
                     body.clone(),
                     "ferdie.rst".to_string(),
                     5,
@@ -477,18 +591,19 @@ fn main() {
         }
         "deaddrop-send-to" => {
             // deaddrop-send-to <label> <recipient_pubkey_hex> <content_key_hex>
-            //                  [count] [start] [guard] [relay2] [chain]
+            //                  <seal_record_hex> [count] [start] [guard] [relay2] [chain]
             // A DEAD DROP: routed by `label` (callsign) instead of recipient
             // identity, sealed to the recipient's REAL out-of-band keys. The
             // recipient polls with `deaddrop-poll <label>`.
             let label = args.get(2).expect("need <label>").to_string();
             let recipient_pubkey = args.get(3).expect("need <recipient_pubkey_hex>").trim_start_matches("0x").to_string();
             let content_key = args.get(4).expect("need <content_key_hex>").trim_start_matches("0x").to_string();
-            let count: u32 = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(1);
-            let start: u32 = args.get(6).and_then(|s| s.parse().ok()).unwrap_or(21);
-            let guard = args.get(7).map(String::as_str).unwrap_or("ws://127.0.0.1:9954").to_string();
-            let relay2 = args.get(8).map(String::as_str).unwrap_or("ws://127.0.0.1:9955").to_string();
-            let chain = args.get(9).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
+            let seal_record = args.get(5).expect("need <seal_record_hex> (ek ‖ sig, 1248B)").trim_start_matches("0x").to_string();
+            let count: u32 = args.get(6).and_then(|s| s.parse().ok()).unwrap_or(1);
+            let start: u32 = args.get(7).and_then(|s| s.parse().ok()).unwrap_or(21);
+            let guard = args.get(8).map(String::as_str).unwrap_or("ws://127.0.0.1:9954").to_string();
+            let relay2 = args.get(9).map(String::as_str).unwrap_or("ws://127.0.0.1:9955").to_string();
+            let chain = args.get(10).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
 
             let cert_seed = dev_cert_seed_hex("//Ferdie".to_string());
             let thumbprint =
@@ -510,6 +625,7 @@ fn main() {
                     FERDIE_CHAT_SEED.to_string(),
                     recipient_pubkey.clone(),
                     content_key.clone(),
+                    seal_record.clone(),
                     label.clone(),
                     body.clone(),
                     "ferdie.rst".to_string(),
@@ -549,11 +665,14 @@ fn main() {
                 chat_mint_test_cert(rpc.clone(), "//Ferdie".to_string(), cert_seed.clone(), 1_000_000)
                     .expect("mint ferdie cert");
             println!("ferdie cert thumbprint: {}", short(&thumbprint));
+            let seal_record = chat_gen_seal_record(FERDIE_CHAT_SEED.to_string())
+                .expect("ferdie seal record");
             let outcome = chat_send_plain(
                 rpc.clone(),
                 FERDIE_CHAT_SEED.to_string(),
                 id.ed25519_pubkey_hex.clone(),
                 ck,
+                seal_record,
                 text.clone().into_bytes(),
                 5,
                 Some(thumbprint),
@@ -611,6 +730,8 @@ fn main() {
             let alice_ck = ferdie_content_key();
             let bob = chat_gen_identity(BOB_CHAT_SEED.to_string()).expect("bob id");
             let bob_ck = chat_gen_content_key(CURVE_P256, BOB_CONTENT_SEED.to_string()).expect("bob ck");
+            let alice_seal = chat_gen_seal_record(FERDIE_CHAT_SEED.to_string()).expect("alice seal");
+            let bob_seal = chat_gen_seal_record(BOB_CHAT_SEED.to_string()).expect("bob seal");
 
             let alice_cert_seed = dev_cert_seed_hex("//Ferdie".to_string());
             let alice_thumb = chat_mint_test_cert(chain.clone(), "//Ferdie".to_string(), alice_cert_seed.clone(), 1_000_000).expect("alice cert");
@@ -646,7 +767,7 @@ fn main() {
             let mut bob_t = DeadDropThread::responder();
             chat_send_to_pickup(
                 guard.clone(), guard_pk.clone(), relay2_pk.clone(),
-                FERDIE_CHAT_SEED.to_string(), bob.ed25519_pubkey_hex.clone(), bob_ck.clone(),
+                FERDIE_CHAT_SEED.to_string(), bob.ed25519_pubkey_hex.clone(), bob_ck.clone(), bob_seal.clone(),
                 callsign_pickup.clone(), a1.clone(),
                 "open".to_string(), "alice".to_string(), 5,
                 Some(alice_thumb.clone()), Some(alice_cert_seed.clone()), None, base_ts,
@@ -663,7 +784,7 @@ fn main() {
                 let b_target = hex::encode(bob_t.outbound_target.unwrap());
                 chat_send_to_pickup(
                     guard.clone(), guard_pk.clone(), relay2_pk.clone(),
-                    BOB_CHAT_SEED.to_string(), alice.ed25519_pubkey_hex.clone(), alice_ck.clone(),
+                    BOB_CHAT_SEED.to_string(), alice.ed25519_pubkey_hex.clone(), alice_ck.clone(), alice_seal.clone(),
                     b_target.clone(), b_new.clone(),
                     format!("bob-{round}"), "bob".to_string(), 5,
                     Some(bob_thumb.clone()), Some(bob_cert_seed.clone()), None, ts,
@@ -678,7 +799,7 @@ fn main() {
                 let a_target = hex::encode(alice_t.outbound_target.unwrap());
                 chat_send_to_pickup(
                     guard.clone(), guard_pk.clone(), relay2_pk.clone(),
-                    FERDIE_CHAT_SEED.to_string(), bob.ed25519_pubkey_hex.clone(), bob_ck.clone(),
+                    FERDIE_CHAT_SEED.to_string(), bob.ed25519_pubkey_hex.clone(), bob_ck.clone(), bob_seal.clone(),
                     a_target.clone(), a_new.clone(),
                     format!("alice-{round}"), "alice".to_string(), 5,
                     Some(alice_thumb.clone()), Some(alice_cert_seed.clone()), None, ts,
@@ -711,7 +832,7 @@ fn main() {
             let chain = args.get(7).map(String::as_str).unwrap_or(DEFAULT_RPC).to_string();
 
             let resolved = chat_resolve_identity(recipient_name.clone(), chain.clone()).expect("resolve recipient");
-            if !resolved.found || !resolved.has_message_key {
+            if !resolved.found || !resolved.has_message_key || !resolved.has_seal_key {
                 eprintln!("'{recipient_name}.rst' not found or has no published MESSAGE content key");
                 std::process::exit(1);
             }
@@ -725,6 +846,7 @@ fn main() {
                 FERDIE_CHAT_SEED.to_string(),
                 resolved.ed25519_pubkey_hex.clone(),
                 resolved.inner_content_key_hex.clone(),
+                resolved.seal_record_hex.clone(),
                 callsign.clone(),
                 text.clone(),
                 "ferdie".to_string(),

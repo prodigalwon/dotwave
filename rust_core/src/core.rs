@@ -901,6 +901,8 @@ pub fn register_name(name: String, phrase: String, rpc_url: String) -> Result<St
 /// IANA private-use codes for the typed chat records.
 const RT_CHAT_IANA: u32 = 65293;
 const RT_MESSAGE_IANA: u32 = 65294;
+const RT_PREKEY_IANA: u32 = 65296;
+const RT_SEAL_IANA: u32 = 65297;
 
 /// FRB-facing resolved chat identity for a `.rst` name.
 pub struct ResolvedChatIdentity {
@@ -913,6 +915,16 @@ pub struct ResolvedChatIdentity {
     /// True if a MESSAGE record is present (content sealing possible); false =
     /// dead-drop (content key exchanged out-of-band).
     pub has_message_key: bool,
+    /// SEAL record (ML-KEM-768 ek ‖ identity sig, 1248 bytes hex) — the PQ
+    /// leg of the hybrid sealed-sender (docs/PQ-CHAT.md). Senders verify the
+    /// signature against the CHAT key before sealing; empty = not published
+    /// (name unreachable for hybrid sends).
+    pub seal_record_hex: String,
+    pub has_seal_key: bool,
+    /// PREKEY record (spk ‖ sig ‖ pqspk_ek ‖ sig, 1344 bytes hex) — the
+    /// PQXDH bootstrap bundle. Empty = not published.
+    pub prekey_record_hex: String,
+    pub has_prekey: bool,
 }
 
 /// Publish this device's chat identity under `name` (which the signer must own)
@@ -956,14 +968,34 @@ pub fn chat_publish_identity(
     // 1. CHAT — the 32-byte Ed25519 mail address (required).
     let chat_tx = set_record("CHAT", outer_ed25519.to_vec())?;
 
-    // 2. MESSAGE — the curve-tagged content key (on by default; omit = dead-drop).
+    // 2. SEAL — the hybrid sealed-sender KEM key (ek ‖ sig, 1248 bytes).
+    //    Required even for dead-drop identities: every pairwise envelope,
+    //    dead drops included, is hybrid-sealed (docs/PQ-CHAT.md).
+    let seal_record = hex::decode(crate::chat::chat_gen_seal_record(hex::encode(seed))?)
+        .expect("chat_gen_seal_record returns hex");
+    let seal_tx = set_record("SEAL", seal_record)?;
+
+    // 3. PREKEY — the PQXDH bootstrap bundle (spk ‖ sig ‖ pqspk_ek ‖ sig,
+    //    1344 bytes), derived like the SPK from the identity seed.
+    let prekeys = crate::chat_dr::chat_dr_gen_prekeys(hex::encode(seed), 0, 0)?;
+    let mut prekey_record = Vec::with_capacity(32 + 64 + 1184 + 64);
+    let dec = |h: &str, what: &str| {
+        hex::decode(h).map_err(|e| format!("{what} hex: {e}"))
+    };
+    prekey_record.extend_from_slice(&dec(&prekeys.spk_pubkey_hex, "spk")?);
+    prekey_record.extend_from_slice(&dec(&prekeys.spk_signature_hex, "spk sig")?);
+    prekey_record.extend_from_slice(&dec(&prekeys.pqspk_ek_hex, "pqspk")?);
+    prekey_record.extend_from_slice(&dec(&prekeys.pqspk_signature_hex, "pqspk sig")?);
+    let prekey_tx = set_record("PREKEY", prekey_record)?;
+
+    // 4. MESSAGE — the curve-tagged content key (on by default; omit = dead-drop).
     let inner_content_key = hex::decode(inner_content_key_hex.trim_start_matches("0x"))
         .map_err(|e| format!("bad content key hex: {e}"))?;
     if inner_content_key.is_empty() {
-        return Ok(chat_tx); // dead-drop: CHAT only
+        return Ok(format!("{chat_tx};{seal_tx};{prekey_tx}")); // dead-drop: no MESSAGE
     }
     let message_tx = set_record("MESSAGE", inner_content_key)?;
-    Ok(format!("{chat_tx};{message_tx}"))
+    Ok(format!("{chat_tx};{seal_tx};{prekey_tx};{message_tx}"))
 }
 
 /// Resolve `name` → its published chat identity (typed CHAT + MESSAGE records).
@@ -972,10 +1004,18 @@ pub fn chat_publish_identity(
 /// Built on the existing `lookup_records` machinery (no duplicate runtime-API
 /// call): one query for both typed records, picked out by IANA code.
 pub fn chat_resolve_identity(name: String, rpc_url: String) -> Result<ResolvedChatIdentity, String> {
-    let records = lookup_records(name, vec![RT_CHAT_IANA, RT_MESSAGE_IANA], rpc_url)?;
+    // Exactly the resolver's MAX_QUERY_TYPES=4: the full chat identity
+    // (CHAT + MESSAGE + PREKEY + SEAL) in one lookup (docs/PQ-CHAT.md).
+    let records = lookup_records(
+        name,
+        vec![RT_CHAT_IANA, RT_MESSAGE_IANA, RT_PREKEY_IANA, RT_SEAL_IANA],
+        rpc_url,
+    )?;
 
     let chat = records.iter().find(|r| r.record_type == RT_CHAT_IANA);
     let message = records.iter().find(|r| r.record_type == RT_MESSAGE_IANA);
+    let prekey = records.iter().find(|r| r.record_type == RT_PREKEY_IANA);
+    let seal = records.iter().find(|r| r.record_type == RT_SEAL_IANA);
 
     match chat {
         Some(c) if c.content.len() == 32 => Ok(ResolvedChatIdentity {
@@ -983,6 +1023,10 @@ pub fn chat_resolve_identity(name: String, rpc_url: String) -> Result<ResolvedCh
             ed25519_pubkey_hex: hex::encode(&c.content),
             inner_content_key_hex: message.map(|m| hex::encode(&m.content)).unwrap_or_default(),
             has_message_key: message.is_some_and(|m| !m.content.is_empty()),
+            seal_record_hex: seal.map(|r| hex::encode(&r.content)).unwrap_or_default(),
+            has_seal_key: seal.is_some_and(|r| !r.content.is_empty()),
+            prekey_record_hex: prekey.map(|r| hex::encode(&r.content)).unwrap_or_default(),
+            has_prekey: prekey.is_some_and(|r| !r.content.is_empty()),
         }),
         Some(_) => Err("CHAT record is not a 32-byte Ed25519 key".to_string()),
         None => Ok(ResolvedChatIdentity {
@@ -990,6 +1034,10 @@ pub fn chat_resolve_identity(name: String, rpc_url: String) -> Result<ResolvedCh
             ed25519_pubkey_hex: String::new(),
             inner_content_key_hex: String::new(),
             has_message_key: false,
+            seal_record_hex: String::new(),
+            has_seal_key: false,
+            prekey_record_hex: String::new(),
+            has_prekey: false,
         }),
     }
 }
@@ -1320,8 +1368,11 @@ fn encode_record_type(iana_code: u32, out: &mut Vec<u8>) {
         // 11=A, 12=AAAA, 13=CNAME, 14=TXT have no IANA private-use code.
         65293 => 15, // CHAT    (Ed25519 mail address, 32 bytes)
         65294 => 16, // MESSAGE (curve-tagged ContentPublicKey)
+        65295 => 17, // NODE    (guard libp2p identity)
+        65296 => 18, // PREKEY  (spk ‖ sig ‖ pqspk_ek ‖ sig, 1344 bytes)
+        65297 => 19, // SEAL    (ML-KEM-768 ek ‖ sig, 1248 bytes)
         _ => {
-            out.push(17); // Unknown(u16) — index 17 after CHAT(15)/MESSAGE(16)
+            out.push(20); // Unknown(u16) — index 20 after SEAL(19)
             out.extend_from_slice(&(iana_code as u16).to_le_bytes());
             return;
         },
@@ -1343,6 +1394,9 @@ fn decode_record_type_to_iana(value: &scale_value::Value<()>) -> Result<u32, Str
         "CONTRACT" => 65287,
         "PUBKEY2" => 65288,
         "PUBKEY3" => 65289,
+        "NODE" => 65295,
+        "PREKEY" => 65296,
+        "SEAL" => 65297,
         "ORIGIN" => 65290,
         "IPFS" => 65291,
         "CONTENT" => 65292,

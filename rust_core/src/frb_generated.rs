@@ -684,6 +684,11 @@ fn wire__crate__chat_dr__chat_dr_initiate_impl(
                         api_recipient_identity_pubkey_hex,
                         api_recipient_spk_hex,
                         api_recipient_spk_signature_hex,
+                        // PQ-PLACEHOLDER (pq-chat-labtool-v0): the Dart bridge predates the
+                        // hybrid seal; regenerated at P3c. An empty record fails the
+                        // seal-record verification with a clear error rather than sealing.
+                        String::new(),
+                        String::new(),
                         api_opk_id,
                         api_opk_pubkey_hex,
                     )?;
@@ -1449,6 +1454,10 @@ fn wire__crate__chat__chat_send_impl(
                         api_sender_seed_hex,
                         api_recipient_pubkey_hex,
                         api_recipient_content_key_hex,
+                        // PQ-PLACEHOLDER (pq-chat-labtool-v0): the Dart bridge predates the
+                        // hybrid seal; regenerated at P3c. An empty record fails the
+                        // seal-record verification with a clear error rather than sealing.
+                        String::new(),
                         api_message,
                         api_sender_name,
                         api_total_shares,
@@ -1509,6 +1518,10 @@ fn wire__crate__chat__chat_send_deaddrop_impl(
                         api_sender_seed_hex,
                         api_recipient_pubkey_hex,
                         api_recipient_content_key_hex,
+                        // PQ-PLACEHOLDER (pq-chat-labtool-v0): the Dart bridge predates the
+                        // hybrid seal; regenerated at P3c. An empty record fails the
+                        // seal-record verification with a clear error rather than sealing.
+                        String::new(),
                         api_label,
                         api_message,
                         api_sender_name,
@@ -1565,6 +1578,10 @@ fn wire__crate__chat__chat_send_onion_impl(
                         api_sender_seed_hex,
                         api_recipient_pubkey_hex,
                         api_recipient_content_key_hex,
+                        // PQ-PLACEHOLDER (pq-chat-labtool-v0): the Dart bridge predates the
+                        // hybrid seal; regenerated at P3c. An empty record fails the
+                        // seal-record verification with a clear error rather than sealing.
+                        String::new(),
                         api_message,
                         api_sender_name,
                         api_total_shares,
@@ -1625,6 +1642,10 @@ fn wire__crate__chat__chat_send_onion_2hop_impl(
                         api_sender_seed_hex,
                         api_recipient_pubkey_hex,
                         api_recipient_content_key_hex,
+                        // PQ-PLACEHOLDER (pq-chat-labtool-v0): the Dart bridge predates the
+                        // hybrid seal; regenerated at P3c. An empty record fails the
+                        // seal-record verification with a clear error rather than sealing.
+                        String::new(),
                         api_message,
                         api_sender_name,
                         api_total_shares,
@@ -1689,6 +1710,10 @@ fn wire__crate__chat__chat_send_to_pickup_impl(
                         api_sender_seed_hex,
                         api_recipient_pubkey_hex,
                         api_recipient_content_key_hex,
+                        // PQ-PLACEHOLDER (pq-chat-labtool-v0): the Dart bridge predates the
+                        // hybrid seal; regenerated at P3c. An empty record fails the
+                        // seal-record verification with a clear error rather than sealing.
+                        String::new(),
                         api_target_pickup_hex,
                         api_return_pickup_hex,
                         api_message,
@@ -4645,6 +4670,9 @@ impl SseDecode for crate::chat_dr::DrPrekeySetup {
         return crate::chat_dr::DrPrekeySetup {
             spk_pubkey_hex: var_spkPubkeyHex,
             spk_signature_hex: var_spkSignatureHex,
+            // PQ-PLACEHOLDER (pq-chat-labtool-v0): regenerated at P3c.
+            pqspk_ek_hex: String::new(),
+            pqspk_signature_hex: String::new(),
             opk_bundle_hex: var_opkBundleHex,
             opk_secrets: var_opkSecrets,
         };
@@ -5143,6 +5171,11 @@ impl SseDecode for crate::core::ResolvedChatIdentity {
             ed25519_pubkey_hex: var_ed25519PubkeyHex,
             inner_content_key_hex: var_innerContentKeyHex,
             has_message_key: var_hasMessageKey,
+            // PQ-PLACEHOLDER (pq-chat-labtool-v0): regenerated at P3c.
+            seal_record_hex: String::new(),
+            has_seal_key: false,
+            prekey_record_hex: String::new(),
+            has_prekey: false,
         };
     }
 }

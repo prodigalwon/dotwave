@@ -76,6 +76,29 @@ pub(crate) fn spk_secret_from_identity_seed(seed: &[u8; 32]) -> X25519SecretKey 
     X25519SecretKey::from(blake2(&[seed, SPK_SEED_DOMAIN]))
 }
 
+/// Domain for deriving the PQSPK (ML-KEM-768 PQXDH prekey) keypair
+/// from the identity seed. Deterministic like the SPK: the responder
+/// re-derives the decapsulation key at read time, and deleting old
+/// epochs (bootstrap forward secrecy) is the same productionization
+/// item as SPK rotation. Distinct from the SEAL key's domain — the
+/// two KEM keys deliberately never coincide (docs/PQ-CHAT.md).
+const PQSPK_SEED_DOMAIN: &[u8] = b"rostro/chat/pqspk-seed/v1";
+
+/// Derive the device's PQSPK ML-KEM-768 keypair from the identity
+/// seed: `kem_seed = SHA-512(domain || seed)` (the FIPS 203 d‖z).
+pub(crate) fn pqspk_keypair_from_identity_seed(
+    seed: &[u8; 32],
+) -> (rostro_hybrid_kex::MlKemDecapKey, [u8; rostro_hybrid_kex::MLKEM768_EK_BYTES]) {
+    use sha2::{Digest, Sha512};
+    let mut h = Sha512::new();
+    h.update(PQSPK_SEED_DOMAIN);
+    h.update(seed);
+    let digest = h.finalize();
+    let mut kem_seed = [0u8; rostro_hybrid_kex::MLKEM768_SEED_BYTES];
+    kem_seed.copy_from_slice(&digest);
+    rostro_hybrid_kex::mlkem_keypair_from_seed(&kem_seed)
+}
+
 /// Derive the (publicly-derivable) OPK mailbox address seed for an
 /// identity pubkey. The returned bytes are an Ed25519 seed: its
 /// pubkey is the "recipient" the bundle is sealed to, and the
@@ -95,6 +118,12 @@ pub(crate) fn otpk_address_seed(identity_ed25519_pub: &[u8; 32]) -> [u8; 32] {
 pub struct DrPrekeySetup {
     pub spk_pubkey_hex: String,
     pub spk_signature_hex: String,
+    /// ML-KEM-768 PQSPK encapsulation key (1184 bytes hex) — the PQ
+    /// leg of the PQXDH bootstrap, published with the SPK in the RNS
+    /// `PREKEY` record (docs/PQ-CHAT.md).
+    pub pqspk_ek_hex: String,
+    /// Identity signature over the PQSPK ek.
+    pub pqspk_signature_hex: String,
     pub opk_bundle_hex: String,
     pub opk_secrets: Vec<DrOpkSecret>,
 }
@@ -136,6 +165,9 @@ pub fn chat_dr_gen_prekeys(
     let spk_pub = X25519PublicKey::from(&spk_secret);
     let spk_signature = sign_spk(&spk_pub, &signing);
 
+    let (_pqspk_dk, pqspk_ek) = pqspk_keypair_from_identity_seed(&seed);
+    let pqspk_signature = rostro_chat_dr::sign_pqspk(&pqspk_ek, &signing);
+
     let mut bundle = Vec::with_capacity(opk_count as usize);
     let mut secrets = Vec::with_capacity(opk_count as usize);
     for i in 0..opk_count {
@@ -153,6 +185,8 @@ pub fn chat_dr_gen_prekeys(
     Ok(DrPrekeySetup {
         spk_pubkey_hex: hex::encode(spk_pub.as_bytes()),
         spk_signature_hex: hex::encode(spk_signature),
+        pqspk_ek_hex: hex::encode(pqspk_ek),
+        pqspk_signature_hex: hex::encode(pqspk_signature),
         opk_bundle_hex: hex::encode(bundle.encode()),
         opk_secrets: secrets,
     })
@@ -182,11 +216,16 @@ pub fn chat_dr_publish_opks(
     let bundle_bytes = hex::decode(opk_bundle_hex.trim_start_matches("0x"))
         .map_err(|e| format!("opk bundle hex: {e}"))?;
 
+    // The mailbox address's SEAL record derives from the same public
+    // addr_seed as its content key — anyone can seal to the mailbox.
+    let addr_seal_record = crate::chat::chat_gen_seal_record(hex::encode(addr_seed))?;
+
     chat_send_plain(
         node_rpc,
         identity_seed_hex,
         hex::encode(addr_pub),
         addr_content_key,
+        addr_seal_record,
         bundle_bytes,
         total_shares,
         auth_cert_thumbprint_hex,
@@ -256,6 +295,11 @@ pub fn chat_dr_initiate(
     recipient_identity_pubkey_hex: String,
     recipient_spk_hex: String,
     recipient_spk_signature_hex: String,
+    // PQXDH: the recipient's ML-KEM-768 PQSPK ek (1184 bytes hex) +
+    // identity signature, from the RNS `PREKEY` record. Verified here
+    // before encapsulating (docs/PQ-CHAT.md).
+    recipient_pqspk_ek_hex: String,
+    recipient_pqspk_signature_hex: String,
     opk_id: Option<u32>,
     opk_pubkey_hex: Option<String>,
 ) -> Result<DrInitiation, String> {
@@ -279,20 +323,37 @@ pub fn chat_dr_initiate(
         _ => return Err("opk_id and opk_pubkey_hex must be passed together".into()),
     };
 
+    let pqspk_bytes = hex::decode(recipient_pqspk_ek_hex.trim_start_matches("0x"))
+        .map_err(|e| format!("pqspk ek hex: {e}"))?;
+    let pqspk_ek: [u8; rostro_hybrid_kex::MLKEM768_EK_BYTES] = pqspk_bytes
+        .try_into()
+        .map_err(|_| "pqspk ek must be exactly 1184 bytes".to_string())?;
+    let pqspk_sig_bytes =
+        hex::decode(recipient_pqspk_signature_hex.trim_start_matches("0x"))
+            .map_err(|e| format!("pqspk signature hex: {e}"))?;
+    let pqspk_signature: [u8; 64] = pqspk_sig_bytes
+        .try_into()
+        .map_err(|_| "pqspk signature must be 64 bytes".to_string())?;
+
     let bundle = PrekeyBundle {
         identity_ed25519: recipient_ed,
         identity_x25519: recipient_x,
         spk_x25519: spk,
         spk_signature,
+        pqspk_ek,
+        pqspk_signature,
         opk,
     };
     verify_spk(&bundle).map_err(|e| format!("SPK signature invalid: {e:?}"))?;
+    rostro_chat_dr::verify_pqspk(&bundle)
+        .map_err(|e| format!("PQSPK signature invalid: {e:?}"))?;
     // The signature covers the SPK preimage; sanity-pin the domain so
     // a future preimage change can't silently pass stale signatures.
     debug_assert!(spk_preimage(&spk).starts_with(b"rostro/chat-channel/spk/v1"));
 
     let (init, sk, ephemeral) =
-        x3dh_initiate(&my_identity_x, my_identity_ed, &bundle, &mut rand_core_06::OsRng);
+        x3dh_initiate(&my_identity_x, my_identity_ed, &bundle, &mut rand_core_06::OsRng)
+            .map_err(|e| format!("x3dh initiate: {e:?}"))?;
     let session =
         Session::from_handshake_initiator(sk, ephemeral, X25519PublicKey::from(spk));
 
@@ -310,6 +371,7 @@ pub(crate) fn responder_session_from_init(
 ) -> Result<Session, String> {
     let my_identity_x = X25519SecretKey::from(ed25519_seed_to_x25519_secret(identity_seed));
     let spk_secret = spk_secret_from_identity_seed(identity_seed);
+    let (pqspk_decap, _pqspk_ek) = pqspk_keypair_from_identity_seed(identity_seed);
 
     let initiator_x = ed25519_to_x25519_pubkey(&init.initiator_identity_ed25519)
         .ok_or("initiator identity not a valid Edwards point")?;
@@ -332,6 +394,7 @@ pub(crate) fn responder_session_from_init(
         &my_identity_x,
         &spk_secret,
         opk_secret.as_ref(),
+        &pqspk_decap,
         &X25519PublicKey::from(initiator_x),
         init,
     )
