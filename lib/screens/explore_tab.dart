@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
+import 'games/games_screen.dart';
 import 'zkpki_screen.dart';
 
 class ExploreTab extends StatelessWidget {
@@ -81,6 +82,12 @@ final _apps = [
     icon: Icons.verified_user_outlined,
     color: Color(0xFFF59E0B),
     open: (address) => ZkPkiScreen(address: address),
+  ),
+  _RostroApp(
+    name: 'Games',
+    icon: Icons.sports_esports_outlined,
+    color: Color(0xFFEC4899),
+    open: (_) => const GamesScreen(),
   ),
   _RostroApp(
     name: 'More',
