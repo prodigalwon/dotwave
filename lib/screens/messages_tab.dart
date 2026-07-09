@@ -92,8 +92,9 @@ class _MessagesTabState extends State<MessagesTab> {
     });
     // Load any contact icons (received on a first message) for the list rows.
     for (final c in contacts) {
-      _contactAvatars[c.pubkey] =
-          await AvatarService.instance.contactAvatar(c.pubkey);
+      _contactAvatars[c.pubkey] = await AvatarService.instance.contactAvatar(
+        c.pubkey,
+      );
     }
     if (mounted) setState(() => _contacts = List.of(contacts));
   }
@@ -246,52 +247,64 @@ class _MessagesTabState extends State<MessagesTab> {
               onRefresh: _refresh,
               child: _loading
                   ? Center(
-                      child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2))
+                      child: CircularProgressIndicator(
+                        color: AppTheme.accent,
+                        strokeWidth: 2,
+                      ),
+                    )
                   : ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  children: [
-                    _KeyStateBanner(
-                      state: _keyState,
-                      name: _ownedName,
-                      onAction: _onBannerAction,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      children: [
+                        _KeyStateBanner(
+                          state: _keyState,
+                          name: _ownedName,
+                          onAction: _onBannerAction,
+                        ),
+                        const SizedBox(height: 20),
+                        if (_contacts.isEmpty && !_hasDeadDrops)
+                          _EmptyState(onStart: _showNewMessageSheet)
+                        else ...[
+                          if (_contacts.isNotEmpty) ...[
+                            _SectionHeader(
+                              label: 'Conversations',
+                              count: _contacts.length,
+                              expanded: _conversationsExpanded,
+                              onTap: () => setState(
+                                () => _conversationsExpanded =
+                                    !_conversationsExpanded,
+                              ),
+                            ),
+                            if (_conversationsExpanded)
+                              ..._contacts.map(
+                                (c) => _ConversationRow(
+                                  contact: c,
+                                  last: _store.lastMessage(
+                                    widget.address,
+                                    c.pubkey,
+                                  ),
+                                  avatar: _contactAvatars[c.pubkey],
+                                  onTap: () => _openThread(c),
+                                ),
+                              ),
+                          ],
+                          // Dead Drops — hidden until a drop has been received.
+                          if (_hasDeadDrops) ...[
+                            const SizedBox(height: 12),
+                            _SectionHeader(
+                              label: 'Dead Drops',
+                              count: _deadDrops.length,
+                              expanded: _deadDropsExpanded,
+                              onTap: () => setState(
+                                () => _deadDropsExpanded = !_deadDropsExpanded,
+                              ),
+                            ),
+                            if (_deadDropsExpanded)
+                              ..._deadDrops.map((d) => _DeadDropRow(thread: d)),
+                          ],
+                        ],
+                      ],
                     ),
-                    const SizedBox(height: 20),
-                    if (_contacts.isEmpty && !_hasDeadDrops)
-                      _EmptyState(onStart: _showNewMessageSheet)
-                    else ...[
-                      if (_contacts.isNotEmpty) ...[
-                        _SectionHeader(
-                          label: 'Conversations',
-                          count: _contacts.length,
-                          expanded: _conversationsExpanded,
-                          onTap: () => setState(() =>
-                              _conversationsExpanded = !_conversationsExpanded),
-                        ),
-                        if (_conversationsExpanded)
-                          ..._contacts.map((c) => _ConversationRow(
-                                contact: c,
-                                last: _store.lastMessage(widget.address, c.pubkey),
-                                avatar: _contactAvatars[c.pubkey],
-                                onTap: () => _openThread(c),
-                              )),
-                      ],
-                      // Dead Drops — hidden until a drop has been received.
-                      if (_hasDeadDrops) ...[
-                        const SizedBox(height: 12),
-                        _SectionHeader(
-                          label: 'Dead Drops',
-                          count: _deadDrops.length,
-                          expanded: _deadDropsExpanded,
-                          onTap: () => setState(() =>
-                              _deadDropsExpanded = !_deadDropsExpanded),
-                        ),
-                        if (_deadDropsExpanded)
-                          ..._deadDrops.map((d) => _DeadDropRow(thread: d)),
-                      ],
-                    ],
-                  ],
-                ),
             ),
             // New-message pencil — pinned to the bottom of the body (just above
             // HomeShell's nav bar) with a small standard margin, and pulled 20%
@@ -335,7 +348,9 @@ class _MessagesTabState extends State<MessagesTab> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => Padding(
           padding: EdgeInsets.only(
-            left: 20, right: 20, top: 20,
+            left: 20,
+            right: 20,
+            top: 20,
             bottom: 20 + MediaQuery.of(ctx).viewInsets.bottom,
           ),
           child: Column(
@@ -343,8 +358,10 @@ class _MessagesTabState extends State<MessagesTab> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _SheetGrabber(),
-              Text('New conversation',
-                  style: Theme.of(ctx).textTheme.headlineSmall),
+              Text(
+                'New conversation',
+                style: Theme.of(ctx).textTheme.headlineSmall,
+              ),
               const SizedBox(height: 4),
               Text(
                 "Start by .rst name (resolved on-chain), or paste the recipient's "
@@ -364,7 +381,10 @@ class _MessagesTabState extends State<MessagesTab> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text('— or enter manually —', style: Theme.of(ctx).textTheme.labelSmall),
+              Text(
+                '— or enter manually —',
+                style: Theme.of(ctx).textTheme.labelSmall,
+              ),
               const SizedBox(height: 8),
               TextField(
                 controller: pubkeyCtrl,
@@ -392,7 +412,10 @@ class _MessagesTabState extends State<MessagesTab> {
                 decoration: const InputDecoration(
                   labelText: 'Seal record (hex)',
                   hintText: "recipient's seal record — required to send",
-                  prefixIcon: Icon(Icons.enhanced_encryption_outlined, size: 18),
+                  prefixIcon: Icon(
+                    Icons.enhanced_encryption_outlined,
+                    size: 18,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -410,7 +433,10 @@ class _MessagesTabState extends State<MessagesTab> {
                 onPressed: resolving
                     ? null
                     : () async {
-                        final name = nameCtrl.text.trim().replaceFirst(RegExp(r'\.rst$'), '');
+                        final name = nameCtrl.text.trim().replaceFirst(
+                          RegExp(r'\.rst$'),
+                          '',
+                        );
                         // Path 1: resolve by .rst name (hits the node).
                         if (name.isNotEmpty) {
                           setSheet(() {
@@ -418,8 +444,10 @@ class _MessagesTabState extends State<MessagesTab> {
                             error = null;
                           });
                           try {
-                            final contact =
-                                await _store.resolveContactByName(widget.address, name);
+                            final contact = await _store.resolveContactByName(
+                              widget.address,
+                              name,
+                            );
                             if (ctx.mounted) Navigator.pop(ctx);
                             _openThread(contact);
                           } catch (e) {
@@ -431,26 +459,45 @@ class _MessagesTabState extends State<MessagesTab> {
                           return;
                         }
                         // Path 2: manual address + content key.
-                        final raw = pubkeyCtrl.text.trim().replaceFirst(RegExp('^0x'), '');
+                        final raw = pubkeyCtrl.text.trim().replaceFirst(
+                          RegExp('^0x'),
+                          '',
+                        );
                         if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(raw)) {
-                          setSheet(() => error =
-                              'Enter a .rst name above, or a 64-hex chat address.');
+                          setSheet(
+                            () => error =
+                                'Enter a .rst name above, or a 64-hex chat address.',
+                          );
                           return;
                         }
-                        final ck = contentKeyCtrl.text.trim().replaceFirst(RegExp('^0x'), '');
-                        if (ck.isNotEmpty && !RegExp(r'^([0-9a-fA-F]{2})+$').hasMatch(ck)) {
-                          setSheet(() => error = 'Content key must be hex (even length).');
+                        final ck = contentKeyCtrl.text.trim().replaceFirst(
+                          RegExp('^0x'),
+                          '',
+                        );
+                        if (ck.isNotEmpty &&
+                            !RegExp(r'^([0-9a-fA-F]{2})+$').hasMatch(ck)) {
+                          setSheet(
+                            () => error =
+                                'Content key must be hex (even length).',
+                          );
                           return;
                         }
-                        final sr = sealRecordCtrl.text.trim().replaceFirst(RegExp('^0x'), '');
-                        if (sr.isNotEmpty && !RegExp(r'^[0-9a-fA-F]{2496}$').hasMatch(sr)) {
-                          setSheet(() => error =
-                              'Seal record must be 2496 hex chars (1248 bytes: ek + signature).');
+                        final sr = sealRecordCtrl.text.trim().replaceFirst(
+                          RegExp('^0x'),
+                          '',
+                        );
+                        if (sr.isNotEmpty &&
+                            !RegExp(r'^[0-9a-fA-F]{2496}$').hasMatch(sr)) {
+                          setSheet(
+                            () => error =
+                                'Seal record must be 2496 hex chars (1248 bytes: ek + signature).',
+                          );
                           return;
                         }
                         final label = labelCtrl.text.trim();
                         final contact = await _store.upsertContact(
-                          widget.address, raw.toLowerCase(),
+                          widget.address,
+                          raw.toLowerCase(),
                           label: label.isEmpty ? null : label,
                           contentKeyHex: ck.isEmpty ? null : ck.toLowerCase(),
                           sealRecordHex: sr.isEmpty ? null : sr.toLowerCase(),
@@ -482,189 +529,254 @@ class _MessagesTabState extends State<MessagesTab> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      // Fixed blade: with drag disabled, vertical drags go to the inner scroll
-      // view (content scrolls) instead of moving/dismissing the whole sheet.
+      // The blade opens at ~55% height but isn't fixed: drag the notch to
+      // resize it, or release it low enough to close. Drag stays disabled here
+      // so the inner list scrolls (content) while ONLY the notch resizes.
       enableDrag: false,
-      builder: (ctx) => Padding(
-        // Lift the whole sheet above the keyboard when a field is focused.
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: ConstrainedBox(
-          // The blade stays at its ~halfway height, fixed in place. The
-          // grabber notch is a FIXED header — always visible, so it reads as
-          // a blade — and the content below it is a view window that scrolls
-          // to reveal the below-the-fold sections (Admission cert / Mint).
-          // Content shorter than the cap hugs instead — no dead space.
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(ctx).size.height * 0.55,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: _SheetGrabber(),
-              ),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.fromLTRB(
-                      20, 0, 20, 20 + MediaQuery.of(ctx).viewPadding.bottom),
-                  children: [
-                    Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Relay nodes', style: Theme.of(ctx).textTheme.headlineSmall),
-            const SizedBox(height: 4),
-            Text(
-              'Your device sends through a guard and forwards over a 2-hop onion '
-              'via a second chat node (relay-2), so no single relay sees both you '
-              'and the recipient. Guards are selected automatically from live '
-              'community nodes — turn on manual entry only to pin specific nodes '
-              '(e.g. in the lab).',
-              style: Theme.of(ctx).textTheme.bodySmall,
+      builder: (ctx) {
+        var heightFactor = 0.55; // fraction of screen height the blade occupies
+        return StatefulBuilder(
+          builder: (ctx, setSheet) => Padding(
+            // Lift the whole sheet above the keyboard when a field is focused.
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
             ),
-            const SizedBox(height: 8),
-            StatefulBuilder(
-              builder: (ctx, setSheet) => Column(
+            child: ConstrainedBox(
+              // The blade's height follows the notch drag; content below the
+              // notch is a view window that scrolls to reveal below-the-fold
+              // sections. Content shorter than the cap hugs — no dead space.
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(ctx).size.height * heightFactor,
+              ),
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CheckboxListTile(
-                    value: manual,
-                    onChanged: (v) => setSheet(() {
-                      manual = v ?? false;
-                      // Blank either way: manual shows a clean placeholder to
-                      // type into; auto shows the grayed "Automatic" hint.
-                      ctrl.clear();
-                      relay2Ctrl.clear();
+                  // Only the notch is a drag target: drag to resize, release
+                  // below a threshold to dismiss. The content list is untouched,
+                  // so dragging IT still scrolls (never resizes the blade).
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onVerticalDragUpdate: (d) => setSheet(() {
+                      final h = MediaQuery.of(ctx).size.height;
+                      heightFactor = (heightFactor - d.delta.dy / h).clamp(
+                        0.3,
+                        0.92,
+                      );
                     }),
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    dense: true,
-                    title: const Text('Enter manually'),
-                  ),
-                  const SizedBox(height: 4),
-                  TextField(
-                    controller: ctrl,
-                    enabled: manual,
-                    style: Theme.of(ctx).textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      labelText: 'Guard RPC URL',
-                      hintText: manual ? 'ws://192.168.1.x:9944' : 'Automatic',
-                      prefixIcon: const Icon(Icons.dns_outlined, size: 18),
+                    onVerticalDragEnd: (_) {
+                      if (heightFactor <= 0.38 && ctx.mounted) {
+                        Navigator.of(ctx).pop();
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: _SheetGrabber(),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: relay2Ctrl,
-                    enabled: manual,
-                    style: Theme.of(ctx).textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      labelText: 'Relay-2 RPC URL',
-                      hintText: manual
-                          ? 'ws://192.168.1.y:9945 (different node)'
-                          : 'Automatic',
-                      prefixIcon: const Icon(Icons.alt_route_outlined, size: 18),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          // Just empties the inputs so the user can retype. To
-                          // drop overrides entirely, uncheck "Enter manually"
-                          // and Save (that resets to automatic selection).
-                          onPressed: () => setSheet(() {
-                            ctrl.clear();
-                            relay2Ctrl.clear();
-                          }),
-                          child: const Text('Clear'),
-                        ),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        0,
+                        20,
+                        20 + MediaQuery.of(ctx).viewPadding.bottom,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: () async {
-                            if (manual) {
-                              // Only overwrite fields the user actually typed; a
-                              // blank field leaves the existing pin intact (use
-                              // Reset to clear).
-                              if (ctrl.text.trim().isNotEmpty) {
+                      children: [
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Relay nodes',
+                              style: Theme.of(ctx).textTheme.headlineSmall,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Your device sends through a guard and forwards over a 2-hop onion '
+                              'via a second chat node (relay-2), so no single relay sees both you '
+                              'and the recipient. Guards are selected automatically from live '
+                              'community nodes — turn on manual entry only to pin specific nodes '
+                              '(e.g. in the lab).',
+                              style: Theme.of(ctx).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 8),
+                            StatefulBuilder(
+                              builder: (ctx, setSheet) => Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  CheckboxListTile(
+                                    value: manual,
+                                    onChanged: (v) => setSheet(() {
+                                      manual = v ?? false;
+                                      // Blank either way: manual shows a clean placeholder to
+                                      // type into; auto shows the grayed "Automatic" hint.
+                                      ctrl.clear();
+                                      relay2Ctrl.clear();
+                                    }),
+                                    contentPadding: EdgeInsets.zero,
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
+                                    dense: true,
+                                    title: const Text('Enter manually'),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  TextField(
+                                    controller: ctrl,
+                                    enabled: manual,
+                                    style: Theme.of(ctx).textTheme.bodyMedium,
+                                    decoration: InputDecoration(
+                                      labelText: 'Guard RPC URL',
+                                      hintText: manual
+                                          ? 'ws://192.168.1.x:9944'
+                                          : 'Automatic',
+                                      prefixIcon: const Icon(
+                                        Icons.dns_outlined,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  TextField(
+                                    controller: relay2Ctrl,
+                                    enabled: manual,
+                                    style: Theme.of(ctx).textTheme.bodyMedium,
+                                    decoration: InputDecoration(
+                                      labelText: 'Relay-2 RPC URL',
+                                      hintText: manual
+                                          ? 'ws://192.168.1.y:9945 (different node)'
+                                          : 'Automatic',
+                                      prefixIcon: const Icon(
+                                        Icons.alt_route_outlined,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton(
+                                          // Just empties the inputs so the user can retype. To
+                                          // drop overrides entirely, uncheck "Enter manually"
+                                          // and Save (that resets to automatic selection).
+                                          onPressed: () => setSheet(() {
+                                            ctrl.clear();
+                                            relay2Ctrl.clear();
+                                          }),
+                                          child: const Text('Clear'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: FilledButton(
+                                          onPressed: () async {
+                                            if (manual) {
+                                              // Only overwrite fields the user actually typed; a
+                                              // blank field leaves the existing pin intact (use
+                                              // Reset to clear).
+                                              if (ctrl.text.trim().isNotEmpty) {
+                                                await _store.setNodeRpc(
+                                                  ctrl.text,
+                                                );
+                                              }
+                                              if (relay2Ctrl.text
+                                                  .trim()
+                                                  .isNotEmpty) {
+                                                await _store.setRelay2Rpc(
+                                                  relay2Ctrl.text,
+                                                );
+                                              }
+                                            } else {
+                                              // Automatic: clear overrides so discovery selects.
+                                              await _store.setNodeRpc(null);
+                                              await _store.setRelay2Rpc(null);
+                                            }
+                                            if (ctx.mounted) Navigator.pop(ctx);
+                                          },
+                                          child: const Text('Save'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Divider(height: 32),
+                            Text(
+                              'Admission cert',
+                              style: Theme.of(ctx).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Every onion drop is signed by an Active device cert. Mint one once '
+                              '(a chain extrinsic — needs a block-producing chain) before sending.',
+                              style: Theme.of(ctx).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              icon: const Icon(
+                                Icons.verified_user_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Mint admission cert'),
+                              onPressed: () async {
+                                // Persist the guard URL first so the mint RPC targets it.
                                 await _store.setNodeRpc(ctrl.text);
-                              }
-                              if (relay2Ctrl.text.trim().isNotEmpty) {
                                 await _store.setRelay2Rpc(relay2Ctrl.text);
-                              }
-                            } else {
-                              // Automatic: clear overrides so discovery selects.
-                              await _store.setNodeRpc(null);
-                              await _store.setRelay2Rpc(null);
-                            }
-                            if (ctx.mounted) Navigator.pop(ctx);
-                          },
-                          child: const Text('Save'),
+                                if (!mounted) return;
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                if (!mounted) return;
+                                TransactionBlade.show(
+                                  context,
+                                  TransactionBlade(
+                                    transactionType: 'Mint Admission Cert',
+                                    rpcUrl: ctrl.text,
+                                    rows: [
+                                      TxRow(
+                                        'Account',
+                                        '${widget.address.substring(0, 6)}…${widget.address.substring(widget.address.length - 4)}',
+                                      ),
+                                      const TxRow(
+                                        'Cert',
+                                        'dev admission (P-256)',
+                                      ),
+                                    ],
+                                    trackerLabel: 'Mint admission cert',
+                                    streamedSubmit: (phrase) => _store
+                                        .mintCertStream(widget.address, phrase),
+                                    onSuccess: () async {
+                                      await _store.onCertConfirmed(
+                                        widget.address,
+                                      );
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Admission cert minted',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-            const Divider(height: 32),
-            Text('Admission cert', style: Theme.of(ctx).textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              'Every onion drop is signed by an Active device cert. Mint one once '
-              '(a chain extrinsic — needs a block-producing chain) before sending.',
-              style: Theme.of(ctx).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.verified_user_outlined, size: 18),
-              label: const Text('Mint admission cert'),
-              onPressed: () async {
-                // Persist the guard URL first so the mint RPC targets it.
-                await _store.setNodeRpc(ctrl.text);
-                await _store.setRelay2Rpc(relay2Ctrl.text);
-                if (!mounted) return;
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (!mounted) return;
-                TransactionBlade.show(
-                  context,
-                  TransactionBlade(
-                    transactionType: 'Mint Admission Cert',
-                    rpcUrl: ctrl.text,
-                    rows: [
-                      TxRow('Account',
-                          '${widget.address.substring(0, 6)}…${widget.address.substring(widget.address.length - 4)}'),
-                      const TxRow('Cert', 'dev admission (P-256)'),
-                    ],
-                    trackerLabel: 'Mint admission cert',
-                    streamedSubmit: (phrase) =>
-                        _store.mintCertStream(widget.address, phrase),
-                    onSuccess: () async {
-                      await _store.onCertConfirmed(widget.address);
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Admission cert minted')),
-                        );
-                      }
-                    },
-                  ),
-                );
-              },
-            ),
-          ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -678,8 +790,11 @@ class _KeyStateBanner extends StatelessWidget {
   final ChatKeyState state;
   final String name; // owned `.rst` label (bare), for the "all set" affirmation
   final Future<void> Function() onAction;
-  const _KeyStateBanner(
-      {required this.state, required this.name, required this.onAction});
+  const _KeyStateBanner({
+    required this.state,
+    required this.name,
+    required this.onAction,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -698,8 +813,7 @@ class _KeyStateBanner extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             child: Row(
               children: [
-                Icon(Icons.verified_outlined,
-                    color: AppTheme.accent, size: 22),
+                Icon(Icons.verified_outlined, color: AppTheme.accent, size: 22),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -712,22 +826,32 @@ class _KeyStateBanner extends StatelessWidget {
                               name.isNotEmpty ? '$name.rst' : 'Messaging ready',
                               overflow: TextOverflow.ellipsis,
                               style: tt.titleSmall?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600),
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 6),
-                          const Icon(Icons.check_circle,
-                              color: Colors.greenAccent, size: 16),
+                          const Icon(
+                            Icons.check_circle,
+                            color: Colors.greenAccent,
+                            size: 16,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 2),
-                      Text("You're all set — keys + chat cert active",
-                          style: tt.bodySmall?.copyWith(color: Colors.white54)),
+                      Text(
+                        "You're all set — keys + chat cert active",
+                        style: tt.bodySmall?.copyWith(color: Colors.white54),
+                      ),
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: Colors.white24, size: 20),
+                const Icon(
+                  Icons.chevron_right,
+                  color: Colors.white24,
+                  size: 20,
+                ),
               ],
             ),
           ),
@@ -735,8 +859,13 @@ class _KeyStateBanner extends StatelessWidget {
       );
     }
 
-    final (IconData icon, String title, String subtitle, Color color, bool primary) =
-        switch (state) {
+    final (
+      IconData icon,
+      String title,
+      String subtitle,
+      Color color,
+      bool primary,
+    ) = switch (state) {
       ChatKeyState.noName => (
         Icons.badge_outlined,
         'No Name Registered',
@@ -777,13 +906,18 @@ class _KeyStateBanner extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title,
-                        style: tt.titleSmall?.copyWith(
-                            color: primary ? color : Colors.white,
-                            fontWeight: FontWeight.w600)),
+                    Text(
+                      title,
+                      style: tt.titleSmall?.copyWith(
+                        color: primary ? color : Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(subtitle,
-                        style: tt.bodySmall?.copyWith(color: Colors.white54)),
+                    Text(
+                      subtitle,
+                      style: tt.bodySmall?.copyWith(color: Colors.white54),
+                    ),
                   ],
                 ),
               ),
@@ -833,7 +967,10 @@ class _SectionHeader extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               if (count > 0)
-                Text('$count', style: tt.labelSmall?.copyWith(color: Colors.white38)),
+                Text(
+                  '$count',
+                  style: tt.labelSmall?.copyWith(color: Colors.white38),
+                ),
             ],
           ),
         ),
@@ -876,18 +1013,27 @@ class _DeadDropRow extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(thread.label,
-                          style: tt.titleMedium,
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(
+                        thread.label,
+                        style: tt.titleMedium,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       const SizedBox(height: 2),
-                      Text(thread.preview,
-                          style: tt.bodySmall,
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(
+                        thread.preview,
+                        style: tt.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
                   ),
                 ),
-                const Icon(Icons.markunread_mailbox_outlined,
-                    size: 16, color: Colors.white38),
+                const Icon(
+                  Icons.markunread_mailbox_outlined,
+                  size: 16,
+                  color: Colors.white38,
+                ),
               ],
             ),
           ),
@@ -904,8 +1050,12 @@ class _ConversationRow extends StatelessWidget {
   final ChatMessage? last;
   final Uint8List? avatar; // contact's icon (from their first message), if any
   final VoidCallback onTap;
-  const _ConversationRow(
-      {required this.contact, required this.last, this.avatar, required this.onTap});
+  const _ConversationRow({
+    required this.contact,
+    required this.last,
+    this.avatar,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -930,13 +1080,19 @@ class _ConversationRow extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(contact.display,
-                          style: tt.titleMedium,
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(
+                        contact.display,
+                        style: tt.titleMedium,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       const SizedBox(height: 2),
-                      Text(preview,
-                          style: tt.bodySmall,
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(
+                        preview,
+                        style: tt.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
                   ),
                 ),
@@ -973,7 +1129,11 @@ class _EmptyState extends StatelessWidget {
               color: AppTheme.accentGlow,
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.shield_outlined, color: AppTheme.accent, size: 36),
+            child: Icon(
+              Icons.shield_outlined,
+              color: AppTheme.accent,
+              size: 36,
+            ),
           ),
           const SizedBox(height: 20),
           Text('Private messaging', style: tt.headlineSmall),
