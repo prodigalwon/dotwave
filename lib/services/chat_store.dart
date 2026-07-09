@@ -8,6 +8,7 @@ import '../bridge/bridge_generated.dart/chat.dart';
 import '../bridge/bridge_generated.dart/core.dart'
     show
         chatResolveIdentity,
+        resolveNameVerified,
         chatSetupMessaging,
         ChatSetupOutcome,
         devCertSeedHex,
@@ -19,6 +20,7 @@ import '../bridge/bridge_generated.dart/core.dart'
 import '../config/rpc_endpoints.dart';
 import 'avatar_service.dart';
 import 'content_key_service.dart';
+import 'guard_discovery_service.dart';
 import 'membership_session_service.dart';
 
 /// Where an account stands in the messaging-setup ceremony — drives the
@@ -31,7 +33,12 @@ enum ChatKeyState {
   /// needs to mint + publish keys (the paid "Register Keys" action).
   needsKeys,
 
-  /// Name owned and CHAT + MESSAGE both live — messaging is ready.
+  /// Name owned and CHAT/MESSAGE/SEAL records live, but no admission cert has
+  /// been minted — the user can't drop onion blobs yet and must mint a chat
+  /// cert (the paid "Register Chat Cert" action).
+  needsCert,
+
+  /// Name owned, records live, AND an admission cert is held — all set.
   ready,
 }
 
@@ -640,28 +647,69 @@ class ChatStore extends ChangeNotifier {
   Future<String> ownedName(String address) async =>
       (await _storage.read(key: 'owned_name_$address')) ?? '';
 
+  /// The single source of truth for this account's displayed `.rst` name,
+  /// shared by the Home, Messages, and Profile tabs.
+  ///
+  /// Returns the locally-held owned name (null when none is claimed). When the
+  /// node is reachable it reverifies ownership and revokes the name ONLY if the
+  /// chain has positively reassigned it to a different owner (a transfer),
+  /// deleting the shared `owned_name_$address` key so every surface converges
+  /// on its next read. A transient/unreachable node or an unresolvable answer
+  /// is never treated as loss: offline means there is no source of truth, so
+  /// the local name stands unchanged.
+  Future<String?> resolveOwnedName(String address) async {
+    final stored = await ownedName(address);
+    if (stored.isEmpty) return null;
+    try {
+      final resolved =
+          await resolveNameVerified(name: stored, rpcUrl: await nodeRpc());
+      if (resolved != null && resolved.owner != address) {
+        await _storage.delete(key: 'owned_name_$address');
+        notifyListeners();
+        return null;
+      }
+    } catch (e) {
+      // Node unreachable / decode error — keep the local name (no source of
+      // truth to revoke on), but don't fail silently.
+      debugPrint('resolveOwnedName verify failed: $e');
+    }
+    return stored;
+  }
+
   /// Where this account stands in the messaging-setup ceremony, for the
   /// messages-screen banner. Polls the owned name + its on-chain CHAT/MESSAGE
   /// records. `name` is the owned name ('' when [ChatKeyState.noName]).
   Future<({ChatKeyState state, String name})> keyState(String address) async {
-    final name = await ownedName(address);
+    final name = await resolveOwnedName(address) ?? '';
     if (name.isEmpty) return (state: ChatKeyState.noName, name: '');
+    // A locally-cached cert thumbprint is strong evidence setup completed: the
+    // cert is minted as part of the keys ceremony (registerKeysStream), so its
+    // presence implies the records were published too.
+    final hasLocalCert = (await certAuth(address)) != null;
     try {
       final r = await chatResolveIdentity(name: name, rpcUrl: await nodeRpc());
-      // Ready = the full 4-record identity (CHAT + MESSAGE + SEAL; PREKEY
-      // rides the same publish). A pre-PQ identity missing its SEAL record
-      // shows needsKeys so the user re-runs Register Keys once.
-      final ready = r.found &&
+      // Records live = the full identity (CHAT + MESSAGE + SEAL; PREKEY rides
+      // the same publish). A pre-PQ identity missing its SEAL record shows
+      // needsKeys so the user re-runs Register Keys once.
+      final recordsReady = r.found &&
           r.ed25519PubkeyHex.isNotEmpty &&
           r.hasMessageKey &&
           r.hasSealKey;
+      if (!recordsReady) return (state: ChatKeyState.needsKeys, name: name);
+      // Records are live, but dropping onion blobs also needs an admission
+      // cert. Opportunistically re-cache the on-chain thumbprint (self-heals a
+      // cleared local cache), then gate readiness on holding a cert.
+      if (!hasLocalCert) await _cacheCertThumbprint(address);
+      final hasCert = (await certAuth(address)) != null;
       return (
-        state: ready ? ChatKeyState.ready : ChatKeyState.needsKeys,
+        state: hasCert ? ChatKeyState.ready : ChatKeyState.needsCert,
         name: name,
       );
     } catch (_) {
-      // Can't resolve right now (node down / not producing) — treat as
-      // not-yet-confirmed rather than asserting readiness.
+      // Node unreachable — no source of truth, so hold the last-known-good from
+      // local signals rather than demoting: a cached cert means the user
+      // finished setup, so keep showing "all set" while offline.
+      if (hasLocalCert) return (state: ChatKeyState.ready, name: name);
       return (state: ChatKeyState.needsKeys, name: name);
     }
   }
@@ -930,8 +978,15 @@ class ChatStore extends ChangeNotifier {
   /// cheaper alternative to cert-auth, layered on next.
   Future<ChatMessage> send(String address, String contactPubkey, String text) async {
     final seed = await seedHex(address);
-    final node = await nodeRpc();
-    final relay2 = await relay2Rpc();
+    // Spread across discovered guards at random (distinct guard + relay-2), so
+    // no single guard sees the whole conversation. Falls back to the hand-
+    // configured pair until discovery is populated.
+    final hop = await GuardDiscovery.instance.pickGuardAndRelay(
+      fallbackGuard: await nodeRpc(),
+      fallbackRelay2: await relay2Rpc(),
+    );
+    final node = hop.guard;
+    final relay2 = hop.relay2;
     if (relay2.isEmpty) {
       throw StateError(
           'no relay-2 configured — the 2-hop onion needs a second chat node '
@@ -1007,6 +1062,11 @@ class ChatStore extends ChangeNotifier {
       );
       outcome = await dispatch(session);
     }
+
+    // A drop landed on these two — keep them fresh in the guard cache via our
+    // own clock (no-op for the hand-configured fallback pair).
+    await GuardDiscovery.instance.markContacted(node);
+    await GuardDiscovery.instance.markContacted(relay2);
 
     // Persist the new tip BEFORE appending locally: a crash after the send
     // but before this would otherwise re-chain the next message to the old
@@ -1130,6 +1190,12 @@ class ChatStore extends ChangeNotifier {
   Future<int> refresh(String address) async {
     final seed = await seedHex(address);
     final node = await nodeRpc();
+    // Opportunistically refresh the discovered-guard cache (auth-gated +
+    // throttled inside; no-op until the discovery RPC lands).
+    await GuardDiscovery.instance.refreshGuards(
+      authenticated: (await certAuth(address)) != null,
+      nodeRpc: node,
+    );
     final fetched = await chatFetch(
       nodeRpc: node,
       recipientSeedHex: seed,
